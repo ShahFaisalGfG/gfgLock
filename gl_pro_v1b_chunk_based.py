@@ -1,4 +1,8 @@
 # v2_gfglock_chunk_mp.py
+
+# install requirements using requirements.txt or run below command in terminal.
+# pip install pycryptodome
+
 import os
 import hashlib
 import datetime

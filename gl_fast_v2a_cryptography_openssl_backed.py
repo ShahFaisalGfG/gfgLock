@@ -1,4 +1,8 @@
 # gfglock_cryptography.py
+
+# install requirements using requirements.txt(pip install -r requirements.txt) or run below command in terminal.
+# pip install cryptography
+
 import os, time, datetime, hashlib
 from multiprocessing import Pool, cpu_count, freeze_support
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -122,5 +126,9 @@ if __name__ == "__main__":
     freeze_support()
     threads = clamp_threads(4)
     # Example usage:
-    # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads)
-    decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads)
+    encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads)
+    # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads)
+
+
+    # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True)
+    # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123")
