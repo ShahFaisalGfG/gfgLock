@@ -3,7 +3,7 @@ import os
 import hashlib
 import datetime
 import time
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count, freeze_support
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
@@ -200,5 +200,12 @@ def decrypt_folder(folder, password, enable_logs=False, threads=1):
     print(f"Time elapsed: {format_duration(elapsed)}")
 
 # --- Example usage ---
-# encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, enable_logs=True, threads=4)
-# decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", enable_logs=True, threads=4)
+if __name__ == "__main__":
+    freeze_support()  # Windows multiprocessing safety
+
+    # Adjust threads safely
+    threads = clamp_threads(4)
+
+    # Example calls
+    # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, enable_logs=True, threads=threads)
+    # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", enable_logs=True, threads=threads)
