@@ -38,6 +38,16 @@ def format_duration(seconds):
         mins, secs = divmod(remainder, 60)
         return f"{hours} hrs {mins} mins {secs} sec"
 
+def get_cpu_thread_count() -> int:
+    """
+    Detects the number of logical CPU threads available on the system.
+    Returns(int): The number of logical CPU threads. Returns 0 if the number cannot be determined.
+    """
+    cpu_count = os.cpu_count()
+    if cpu_count is None:
+        return 0  # Return 0 if the count is undetermined
+    return cpu_count
+
 def clamp_threads(threads):
     # Safe clamp: 1..max(cpu_count - 1, 1), avoid oversubscription
     try:
@@ -207,8 +217,11 @@ def decrypt_folder(folder, password, enable_logs=False, threads=1):
 if __name__ == "__main__":
     freeze_support()  # Windows multiprocessing safety
 
-    # Adjust threads safely
-    threads = clamp_threads(4)
+    total_threads = get_cpu_thread_count()
+    # using half of total threads for balanced performance to avoid system overload
+    optimal_threads = total_threads / 2
+    threads = clamp_threads(optimal_threads)
+    print(f"total threads: {total_threads}\nUsing: {optimal_threads}")
 
     # Example calls
     # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, enable_logs=True, threads=threads)
