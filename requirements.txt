@@ -1,2 +1,4 @@
 cryptography>=42.0.0
 pycryptodome>=3.20.0
+PyQt5>=5.15
+pyinstaller>=5.11
