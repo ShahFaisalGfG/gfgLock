@@ -167,12 +167,18 @@ def decrypt_folder(folder, password, enable_logs=False, threads=1, chunk_size=4*
 if __name__ == "__main__":
     freeze_support()
 
+    # Use chunk Sizes between 1-64mb while on moderns SSDs & NVMes you can use upto 128mb
+    s1_chunk = 1 * 1024 * 1024  # very gentle, but slower
+    s8_chunk = 8 * 1024 * 1024  # balanced, recommended default
+    s16_chunk = 16 * 1024 * 1024  # faster
+    s18_chunk = 18 * 1024 * 1024  # faster
+
     total_threads = get_cpu_thread_count()
     # using half of total threads for balanced performance to avoid system overload
-    optimal_threads = total_threads / 2
+    optimal_threads = total_threads // 2
     threads = clamp_threads(optimal_threads)
-    print(f"total threads: {total_threads}\nUsing: {optimal_threads}")
+    print(f"total threads: {total_threads}\nUsing: {threads}")
 
     # Example usage:
-    # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads)
-    # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads)
+    # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads, chunk_size=s18_chunk)
+    # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads, chunk_size=s18_chunk)

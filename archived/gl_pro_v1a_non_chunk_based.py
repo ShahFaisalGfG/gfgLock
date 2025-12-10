@@ -73,7 +73,7 @@ def encrypt_file(filepath, password, encrypt_name=False, enable_logs=False):
         if filepath.endswith(".gfglock"):
             msg = f"{filepath} is already encrypted"
             if enable_logs:
-                log_message("gfglock.logs", msg)
+                log_message("../gfglock.logs", msg)
             print(msg)
             return False
 
@@ -103,7 +103,7 @@ def encrypt_file(filepath, password, encrypt_name=False, enable_logs=False):
         os.remove(filepath)
         msg = f"Encrypted: {filepath} -> {new_path}"
         if enable_logs:
-            log_message("gfglock.logs", msg)
+            log_message("../gfglock.logs", msg)
         print(msg)
         return True
 
@@ -115,14 +115,14 @@ def encrypt_file(filepath, password, encrypt_name=False, enable_logs=False):
 def decrypt_file(filepath, password, enable_logs=False):
     try:
         if not os.path.exists(filepath):
-            log_message("failed_dec_gfglock.log", f"File not found: {filepath}")
+            log_message("../failed_dec_gfglock.log", f"File not found: {filepath}")
             print(f"Critical error: {filepath} not found")
             return False
 
         if not filepath.endswith(".gfglock"):
             msg = f"{filepath} is already decrypted"
             if enable_logs:
-                log_message("gfglock.logs", msg)
+                log_message("../gfglock.logs", msg)
             print(msg)
             return False
 
@@ -147,12 +147,12 @@ def decrypt_file(filepath, password, enable_logs=False):
         os.remove(filepath)
         msg = f"Decrypted: {filepath} -> {new_path}"
         if enable_logs:
-            log_message("gfglock.logs", msg)
+            log_message("../gfglock.logs", msg)
         print(msg)
         return True
 
     except Exception as e:
-        log_message("failed_dec_gfglock.log", f"Failed to decrypt {filepath}: {e}")
+        log_message("../failed_dec_gfglock.log", f"Failed to decrypt {filepath}: {e}")
         print(f"Critical error while decrypting {filepath}: {e}")
         return False
 
@@ -219,9 +219,9 @@ if __name__ == "__main__":
 
     total_threads = get_cpu_thread_count()
     # using half of total threads for balanced performance to avoid system overload
-    optimal_threads = total_threads / 2
+    optimal_threads = total_threads // 2
     threads = clamp_threads(optimal_threads)
-    print(f"total threads: {total_threads}\nUsing: {optimal_threads}")
+    print(f"total threads: {total_threads}\nUsing: {threads}")
 
     # Example calls
     # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, enable_logs=True, threads=threads)

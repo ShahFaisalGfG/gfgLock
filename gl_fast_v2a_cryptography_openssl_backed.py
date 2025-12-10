@@ -102,30 +102,33 @@ def decrypt_file(path, password, chunk_size=8*1024*1024):
 def _enc(args): return encrypt_file(*args)
 def _dec(args): return decrypt_file(*args)
 
-def encrypt_folder(folder, password, encrypt_name=False, threads=1):
+def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=8*1024*1024):
     start = time.time(); count = 0
     files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs]
     threads = clamp_threads(threads)
     if threads == 1:
         for fp in files:
-            if encrypt_file(fp, password, encrypt_name): count += 1
+            if encrypt_file(fp, password, encrypt_name, chunk_size=chunk_size):
+                count += 1
     else:
-        args_list = [(fp, password, encrypt_name) for fp in files]
+        args_list = [(fp, password, encrypt_name, chunk_size) for fp in files]
         with Pool(processes=threads) as pool:
             for ok in pool.imap_unordered(_enc, args_list):
                 if ok: count += 1
     elapsed = time.time() - start
     print(f"{count} files encrypted successfully.\nTime elapsed: {format_duration(elapsed)}")
 
-def decrypt_folder(folder, password, threads=1):
+
+def decrypt_folder(folder, password, threads=1, chunk_size=8*1024*1024):
     start = time.time(); count = 0
     files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs]
     threads = clamp_threads(threads)
     if threads == 1:
         for fp in files:
-            if decrypt_file(fp, password): count += 1
+            if decrypt_file(fp, password, chunk_size=chunk_size):
+                count += 1
     else:
-        args_list = [(fp, password) for fp in files]
+        args_list = [(fp, password, chunk_size) for fp in files]
         with Pool(processes=threads) as pool:
             for ok in pool.imap_unordered(_dec, args_list):
                 if ok: count += 1
@@ -135,16 +138,22 @@ def decrypt_folder(folder, password, threads=1):
 if __name__ == "__main__":
     freeze_support()
 
+# Use chunk Sizes between 1-64mb while on moderns SSDs & NVMes you can use upto 128mb
+    s1_chunk = 1 * 1024 * 1024 # very gentle, but slower
+    s8_chunk = 8*1024*1024 # balanced, recommended default
+    s16_chunk = 16*1024*1024 # faster
+    s18_chunk = 18*1024*1024 # faster
+
     total_threads = get_cpu_thread_count()
     # using half of total threads for balanced performance to avoid system overload
-    optimal_threads = total_threads / 2
+    optimal_threads = total_threads // 2
     threads = clamp_threads(optimal_threads)
-    print(f"total threads: {total_threads}\nUsing: {optimal_threads}")
+    print(f"total threads: {total_threads}\nUsing: {threads}")
 
     # Example usage multiple threads:
-    # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads)
-    # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads)
+    encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads, chunk_size=s18_chunk)
+    decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads, chunk_size=s18_chunk)
 
-    # Example usage single threads:
+    # Example usage single thread & 8mb(default chunk size):
     # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True)
     # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123")

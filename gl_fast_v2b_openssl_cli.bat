@@ -3,7 +3,6 @@ setlocal EnableDelayedExpansion
 
 goto :main
 
-
 :: ============================================================
 :: gl_fast_v2b_openssl_cli.bat - Production Ready
 :: encrypt: gl_fast_v2b_openssl_cli.bat encrypt "C:\Users\shahf\Music\Archives2" "mypassword"
