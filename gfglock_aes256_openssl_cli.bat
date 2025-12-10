@@ -3,12 +3,12 @@ setlocal EnableDelayedExpansion
 
 goto :main
 
+:: gfglock_aes256_openssl_cli.bat
 :: ============================================================
 :: gl_fast_v2b_openssl_cli.bat - Production Ready
 :: encrypt: gl_fast_v2b_openssl_cli.bat encrypt "C:\Users\shahf\Music\Archives2" "mypassword"
 :: decrypt: gl_fast_v2b_openssl_cli.bat decrypt "C:\Users\shahf\Music\Archives2" "mypassword"
 :: ============================================================
-
 
 
 :: ============================================================
@@ -18,7 +18,7 @@ goto :main
 ::  Single file encrypt:
 ::    gl_fast_v2b_openssl_cli.bat encrypt "C:\path\to\file.ext" "password"
 ::  Single file decrypt:
-::    gl_fast_v2b_openssl_cli.bat decrypt "C:\path\to\file.ext.gfglock" "password"
+::    gl_fast_v2b_openssl_cli.bat decrypt "C:\path\to\file.ext.gfgssl" "password"
 ::  Folder (recursive) encrypt:
 ::    gl_fast_v2b_openssl_cli.bat encrypt "C:\path\to\folder" "password" folder
 ::  Folder (recursive) decrypt:
@@ -29,7 +29,7 @@ goto :main
 
 :: ============================================================
 :: Notes:
-::  - Encrypted files are created as: original_name.ext.gfglock
+::  - Encrypted files are created as: original_name.ext.gfgssl
 ::  - Decryption restores original_name.ext
 ::  - Original file is deleted only on successful encrypt/decrypt.
 :: ============================================================
@@ -45,12 +45,12 @@ if not exist "%INFILE%" (
     exit /b 1
 )
 
-if /i "%INFILE:~-8%"==".gfglock" (
+if /i "%INFILE:~-8%"==".gfgssl" (
     echo [SKIP] Already encrypted: "%INFILE%"
     exit /b 0
 )
 
-set "OUTFILE=%INFILE%.gfglock"
+set "OUTFILE=%INFILE%.gfgssl"
 "%OPENSSL_EXE%" enc -aes-256-cfb -salt -pbkdf2 -pass pass:"%PASSWORD%" -in "%INFILE%" -out "%OUTFILE%"
 if errorlevel 1 (
     echo [ERR] Encryption failed: "%INFILE%"
@@ -68,7 +68,7 @@ exit /b 0
 :decrypt_file
 set "INFILE=%~1"
 
-if /i not "%INFILE:~-8%"==".gfglock" (
+if /i not "%INFILE:~-8%"==".gfgssl" (
     echo [SKIP] Not an encrypted file: "%INFILE%"
     exit /b 0
 )
@@ -109,11 +109,11 @@ exit /b
 :decrypt_folder
 set "FOLDER=%~1"
 echo Folder mode detected.
-echo Decrypting all .gfglock files in: "%FOLDER%"
+echo Decrypting all .gfgssl files in: "%FOLDER%"
 echo.
 
 set "STARTTIME=%TIME%"
-for /f "delims=" %%F in ('dir /b /s /a-d "%FOLDER%"^|findstr /i "\.gfglock$"') do (
+for /f "delims=" %%F in ('dir /b /s /a-d "%FOLDER%"^|findstr /i "\.gfgssl$"') do (
     call :decrypt_file "%%F"
 )
 set "ENDTIME=%TIME%"

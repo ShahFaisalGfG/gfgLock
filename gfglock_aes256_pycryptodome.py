@@ -1,4 +1,4 @@
-# v2_gfglock_chunk_mp.py
+# gfglock_aes256_pycryptodome.py
 
 # install requirements using requirements.txt or run below command in terminal.
 # pip install pycryptodome
@@ -56,7 +56,7 @@ def encrypt_file(filepath, password, encrypt_name=False, enable_logs=False, chun
             log_message("failed_enc_gfglock.log", f"File not found: {filepath}")
             print(f"Critical error: {filepath} not found")
             return False
-        if filepath.endswith(".gfglock"):
+        if filepath.endswith(".gfgpcd"):
             msg = f"{filepath} is already encrypted"
             if enable_logs: log_message("gfglock.logs", msg)
             print(msg); return False
@@ -68,10 +68,10 @@ def encrypt_file(filepath, password, encrypt_name=False, enable_logs=False, chun
         if encrypt_name:
             now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             rand_part = str(int.from_bytes(get_random_bytes(4), 'big'))
-            new_name = f"{now}_{rand_part}.gfglock"
+            new_name = f"{now}_{rand_part}.gfgpcd"
         else:
             base_name = os.path.splitext(os.path.basename(filepath))[0]
-            new_name = base_name + ".gfglock"
+            new_name = base_name + ".gfgpcd"
 
         new_path = os.path.join(os.path.dirname(filepath), new_name)
         with open(filepath, 'rb') as fin, open(new_path, 'wb') as fout:
@@ -99,7 +99,7 @@ def decrypt_file(filepath, password, enable_logs=False, chunk_size=4*1024*1024):
             log_message("failed_dec_gfglock.log", f"File not found: {filepath}")
             print(f"Critical error: {filepath} not found")
             return False
-        if not filepath.endswith(".gfglock"):
+        if not filepath.endswith(".gfgpcd"):
             msg = f"{filepath} is already decrypted"
             if enable_logs: log_message("gfglock.logs", msg)
             print(msg); return False

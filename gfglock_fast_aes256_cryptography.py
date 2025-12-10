@@ -1,4 +1,4 @@
-# gfglock_cryptography.py
+# gfglock_fast_aes256_cryptography.py
 
 # install requirements using requirements.txt(pip install -r requirements.txt) or run below command in terminal.
 # pip install cryptography
