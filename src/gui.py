@@ -1,6 +1,9 @@
 # gui.py
 import sys
 import os
+
+from PyQt5.QtCore import Qt
+
 os.environ["QT_QPA_PLATFORM"] = "windows"
 
 from PyQt5 import QtWidgets, QtCore, QtGui
@@ -17,7 +20,14 @@ class ProgressDialog(QtWidgets.QDialog):
     def __init__(self, total, parent=None):
         super().__init__(parent)
 
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        help_action = QtWidgets.QAction("Help", self)
+        help_action.triggered.connect(lambda: QtWidgets.QMessageBox.information(
+            self,
+            "Usage Guide",
+            "See README.md for full usage instructions:\nhttps://github.com/shahfaisalgfg/gfgLock"
+        ))
+        self.addAction(help_action)
         self.setWindowTitle("Progress")
         self.resize(520, 160)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
@@ -48,7 +58,7 @@ class EncryptDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.mode = mode
 
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setWindowTitle("Encryption" if mode == "encrypt" else "Decryption")
         self.resize(700, 480)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
@@ -268,7 +278,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setWindowTitle("gfgLock")
         self.resize(720, 420)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.ico")))
@@ -304,6 +314,42 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+
+    args = sys.argv[1:]
+    if args:
+        mode = None
+        paths = []
+
+        # First argument is explicit mode from registry
+        if args[0].lower() == "encrypt":
+            mode = "encrypt"
+            paths = args[1:]
+        elif args[0].lower() == "decrypt":
+            mode = "decrypt"
+            paths = args[1:]
+
+        if mode and paths:
+            dlg = EncryptDialog(None, mode)
+            for p in paths:
+                if os.path.isfile(p):
+                    dlg.list_widget.addItem(p)
+                elif os.path.isdir(p):
+                    for root, _, files in os.walk(p):
+                        for fn in files:
+                            dlg.list_widget.addItem(os.path.join(root, fn))
+            dlg.exec_()
+            sys.exit(0)
+
+        # Auto-detect double-clicked .gfglock file
+        gfglock_files = [a for a in args if os.path.isfile(a) and a.endswith(".gfglock")]
+        if gfglock_files:
+            dlg = EncryptDialog(None, "decrypt")
+            for f in gfglock_files:
+                dlg.list_widget.addItem(f)
+            dlg.exec_()
+            sys.exit(0)
+
+    # Default launch → show main window
     win = MainWindow()
     win.show()
     sys.exit(app.exec_())

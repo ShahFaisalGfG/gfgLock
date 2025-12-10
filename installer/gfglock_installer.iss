@@ -85,6 +85,23 @@ Root: HKCR; Subkey: ".gfglock"; ValueType: string; ValueName: ""; ValueData: "gf
 Root: HKCR; Subkey: "gfgLock.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCR; Subkey: "gfgLock.gfglock\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
 Root: HKCR; Subkey: "gfgLock.gfglock\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
+; Context menu for all files
+Root: HKCR; Subkey: "*\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "*\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "*\\shell\\gfgLockEncrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" encrypt %*"; Flags: uninsdeletekey
+
+Root: HKCR; Subkey: "*\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "*\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "*\\shell\\gfgLockDecrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
+
+; Context menu for folders
+Root: HKCR; Subkey: "Directory\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "Directory\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "Directory\\shell\\gfgLockEncrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" encrypt %*"; Flags: uninsdeletekey
+
+Root: HKCR; Subkey: "Directory\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "Directory\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "Directory\\shell\\gfgLockDecrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
 
 ; Context menu entries
 Root: HKCR; Subkey: "gfgLock.gfglock\shell\decrypt"; ValueType: string; ValueName: ""; ValueData: "&Decrypt with gfgLock"; Tasks: associate
@@ -117,7 +134,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
-    if MsgBox('Are you sure you want to completely remove {MyAppName} and all of its components?',
+    if MsgBox('Are you sure you want to completely remove {#MyAppName} and all of its components?',
       mbConfirmation, MB_YESNO) = IDNO then
       Abort;
   end;
