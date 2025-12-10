@@ -109,6 +109,12 @@ All three scripts use **AES‑256 (Advanced Encryption Standard, 256‑bit key)*
 
 A collection of AES-256 file encryption/decryption implementations using different cryptographic libraries and methods.
 
+### Output Extensions
+- Cryptography backend → `.gfglock`
+- PyCryptodome backend → `.gfgpcd`
+- OpenSSL CLI backend → `.gfgssl`
+
+⚠️ Important: Always decrypt files with the same script that encrypted them.
 ## 📊 Comparison Table
 
 | Feature / Tool | `gfglock_aes256_pycryptodome.py` | `gfglock_fast_aes256_cryptography.py` | `gfglock_aes256_openssl_cli.bat` |
