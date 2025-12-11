@@ -38,10 +38,21 @@ def format_duration(seconds):
 def derive_key(password): return hashlib.sha256(password.encode()).digest()
 
 def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024):
+    logs = []
     try:
-        if not os.path.exists(path): print(f"Critical error: {path} not found"); return False
-        if path.endswith(".gfglock"): print(f"{path} is already encrypted"); return False
-        key = derive_key(password); iv = token_bytes(16)
+        if not os.path.exists(path):
+            msg = f"Critical error: {path} not found"
+            logs.append(msg)
+            print(msg)
+            return False, "\n".join(logs)
+        if path.endswith(".gfglock"):
+            msg = f"{path} is already encrypted"
+            logs.append(msg)
+            print(msg)
+            return False, "\n".join(logs)
+
+        key = derive_key(password)
+        iv = token_bytes(16)
         cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
         encryptor = cipher.encryptor()
         if encrypt_name:
@@ -58,20 +69,35 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024):
             fout.write(encryptor.update(name_meta))
             while True:
                 chunk = fin.read(chunk_size)
-                if not chunk: break
+                if not chunk:
+                    break
                 fout.write(encryptor.update(chunk))
             fout.write(encryptor.finalize())
         os.remove(path)
-        print(f"Encrypted: {path} -> {out_path}")
-        return True
+        msg = f"Encrypted: {path} -> {out_path}"
+        logs.append(msg)
+        print(msg)
+        return True, "\n".join(logs)
     except Exception as e:
-        print(f"Critical error while encrypting {path}: {e}")
-        return False
+        msg = f"Critical error while encrypting {path}: {e}"
+        logs.append(msg)
+        print(msg)
+        return False, "\n".join(logs)
 
 def decrypt_file(path, password, chunk_size=8*1024*1024):
+    logs = []
     try:
-        if not os.path.exists(path): print(f"Critical error: {path} not found"); return False
-        if not path.endswith(".gfglock"): print(f"{path} is already decrypted"); return False
+        if not os.path.exists(path):
+            msg = f"Critical error: {path} not found"
+            logs.append(msg)
+            print(msg)
+            return False, "\n".join(logs)
+        if not path.endswith(".gfglock"):
+            msg = f"{path} is already decrypted"
+            logs.append(msg)
+            print(msg)
+            return False, "\n".join(logs)
+
         key = derive_key(password)
         with open(path, "rb") as fin:
             iv = fin.read(16)
@@ -80,27 +106,38 @@ def decrypt_file(path, password, chunk_size=8*1024*1024):
             meta = b""
             while True:
                 b = fin.read(1)
-                if not b: raise ValueError("Missing metadata")
+                if not b:
+                    raise ValueError("Missing metadata")
                 db = decryptor.update(b)
-                if db == b"\0": break
+                if db == b"\0":
+                    break
                 meta += db
             original_name = meta.decode("utf-8")
             out_path = os.path.join(os.path.dirname(path), original_name)
             with open(out_path, "wb") as fout:
                 while True:
                     chunk = fin.read(chunk_size)
-                    if not chunk: break
+                    if not chunk:
+                        break
                     fout.write(decryptor.update(chunk))
                 fout.write(decryptor.finalize())
         os.remove(path)
-        print(f"Decrypted: {path} -> {out_path}")
-        return True
+        msg = f"Decrypted: {path} -> {out_path}"
+        logs.append(msg)
+        print(msg)
+        return True, "\n".join(logs)
     except Exception as e:
-        print(f"Critical error while decrypting {path}: {e}")
-        return False
+        msg = f"Critical error while decrypting {path}: {e}"
+        logs.append(msg)
+        print(msg)
+        return False, "\n".join(logs)
 
-def _enc(args): return encrypt_file(*args)
-def _dec(args): return decrypt_file(*args)
+def _enc(args):
+    return encrypt_file(*args)
+
+
+def _dec(args):
+    return decrypt_file(*args)
 
 def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=8*1024*1024):
     start = time.time(); count = 0
@@ -108,13 +145,23 @@ def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=8
     threads = clamp_threads(threads)
     if threads == 1:
         for fp in files:
-            if encrypt_file(fp, password, encrypt_name, chunk_size=chunk_size):
+            ok = encrypt_file(fp, password, encrypt_name, chunk_size=chunk_size)
+            if isinstance(ok, tuple):
+                success = ok[0]
+            else:
+                success = bool(ok)
+            if success:
                 count += 1
     else:
         args_list = [(fp, password, encrypt_name, chunk_size) for fp in files]
         with Pool(processes=threads) as pool:
             for ok in pool.imap_unordered(_enc, args_list):
-                if ok: count += 1
+                if isinstance(ok, tuple):
+                    success = ok[0]
+                else:
+                    success = bool(ok)
+                if success:
+                    count += 1
     elapsed = time.time() - start
     print(f"{count} files encrypted successfully.\nTime elapsed: {format_duration(elapsed)}")
 
@@ -125,13 +172,23 @@ def decrypt_folder(folder, password, threads=1, chunk_size=8*1024*1024):
     threads = clamp_threads(threads)
     if threads == 1:
         for fp in files:
-            if decrypt_file(fp, password, chunk_size=chunk_size):
+            ok = decrypt_file(fp, password, chunk_size=chunk_size)
+            if isinstance(ok, tuple):
+                success = ok[0]
+            else:
+                success = bool(ok)
+            if success:
                 count += 1
     else:
         args_list = [(fp, password, chunk_size) for fp in files]
         with Pool(processes=threads) as pool:
             for ok in pool.imap_unordered(_dec, args_list):
-                if ok: count += 1
+                if isinstance(ok, tuple):
+                    success = ok[0]
+                else:
+                    success = bool(ok)
+                if success:
+                    count += 1
     elapsed = time.time() - start
     print(f"{count} files decrypted successfully.\nTime elapsed: {format_duration(elapsed)}")
 

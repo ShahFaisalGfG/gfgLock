@@ -11,7 +11,7 @@ class WorkerSignals(QtCore.QObject):
     file_changed = QtCore.pyqtSignal(str)
     status = QtCore.pyqtSignal(str)
     error = QtCore.pyqtSignal(str)
-    finished = QtCore.pyqtSignal(float, int)   # elapsed_time, total_files
+    finished = QtCore.pyqtSignal(float, int, int, int, int)   # elapsed_time, total_files, succeeded, failed, skipped_already_encrypted
 
 
 class EncryptDecryptWorker(QtCore.QRunnable):
@@ -36,10 +36,20 @@ class EncryptDecryptWorker(QtCore.QRunnable):
         total = len(self.paths)
         done = 0
         start_time = time.time()
+        # initialize counts so they're available even on unexpected errors
+        succeeded = 0
+        failed = 0
+        skipped_already_encrypted = 0
+        failed_files = []
 
         try:
+            succeeded = 0
+            failed = 0
+            skipped_already_encrypted = 0
+            failed_files = []
+
             with ThreadPoolExecutor(max_workers=self.threads) as executor:
-                futures = []
+                future_to_path = {}
 
                 for p in self.paths:
                     if self._cancelled:
@@ -52,24 +62,56 @@ class EncryptDecryptWorker(QtCore.QRunnable):
                         job = partial(core.decrypt_file, p, self.password,
                                       self.chunk_size)
 
-                    futures.append(executor.submit(job))
+                    fut = executor.submit(job)
+                    future_to_path[fut] = p
 
-                for fut in as_completed(futures):
+                for fut in as_completed(future_to_path):
                     if self._cancelled:
                         break
 
+                    p = future_to_path.get(fut, "")
                     try:
-                        fut.result()
+                        result = fut.result()
+                        # result expected as (success, message) from core
+                        if isinstance(result, tuple):
+                            success, msg = result
+                        else:
+                            success = bool(result)
+                            msg = ""
+
+                        # forward core message to GUI logs
+                        if msg:
+                            self.signals.status.emit(msg)
+
+                        if success:
+                            succeeded += 1
+                        else:
+                            # Check if this was an expected 'already encrypted' skip
+                            is_already_encrypted = False
+                            if self.mode == 'encrypt':
+                                if msg and 'already encrypted' in msg.lower():
+                                    is_already_encrypted = True
+                                elif p and p.lower().endswith('.gfglock'):
+                                    is_already_encrypted = True
+
+                            if is_already_encrypted:
+                                skipped_already_encrypted += 1
+                            else:
+                                failed += 1
+                                failed_files.append(p)
                     except Exception as e:
+                        failed += 1
+                        failed_files.append(p)
                         self.signals.error.emit(str(e))
 
                     done += 1
                     self.signals.progress.emit(done, total)
-                    self.signals.file_changed.emit(f"{done}/{total}")
+                    # notify current file label (path)
+                    self.signals.file_changed.emit(p)
 
         except Exception as e:
             self.signals.error.emit(str(e))
 
         elapsed = time.time() - start_time
         self.signals.status.emit(f"Completed in {elapsed:.2f} sec")
-        self.signals.finished.emit(elapsed, total)
+        self.signals.finished.emit(elapsed, total, succeeded, failed, skipped_already_encrypted)

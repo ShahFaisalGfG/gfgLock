@@ -48,13 +48,13 @@ class ProgressDialog(QtWidgets.QDialog):
     def __init__(self, total, parent=None):
         super().__init__(parent)
 
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint) # type: ignore
         help_action = QtWidgets.QAction("Help", self)
         help_action.triggered.connect(lambda: QtWidgets.QMessageBox.information(
             self,
             "Usage Guide",
             "See README.md for full usage instructions:\nhttps://github.com/shahfaisalgfg/gfgLock"
-        ))
+        )) # type: ignore
         self.addAction(help_action)
         self.setWindowTitle("Progress")
         self.resize(520, 300)  # Made taller for logs
@@ -92,7 +92,7 @@ class EncryptDialog(QtWidgets.QDialog):
         self.errors = []
         self.current_file = ""
 
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint) # type: ignore
         self.setWindowTitle("Encryption" if mode == "encrypt" else "Decryption")
         self.resize(700, 480)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
@@ -103,6 +103,8 @@ class EncryptDialog(QtWidgets.QDialog):
         self.list_widget = QtWidgets.QListWidget()
         self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         enc_main.addWidget(self.list_widget)
+        # Keep track of counts and selections
+        self.list_widget.itemSelectionChanged.connect(lambda: self.update_count_label())
 
         # Add files/folders
         h = QtWidgets.QHBoxLayout()
@@ -184,11 +186,14 @@ class EncryptDialog(QtWidgets.QDialog):
 
         # Bottom Start/Cancel buttons
         bottom = QtWidgets.QHBoxLayout()
+        # File count label on the left
+        self.count_label = QtWidgets.QLabel("0 files")
+        bottom.addWidget(self.count_label)
+        bottom.addStretch()
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
         self.btn_start = QtWidgets.QPushButton(
             "Start Encryption" if self.mode == "encrypt" else "Start Decryption"
         )
-        bottom.addStretch()
         bottom.addWidget(self.btn_cancel)
         bottom.addWidget(self.btn_start)
         enc_main.addLayout(bottom)
@@ -199,6 +204,24 @@ class EncryptDialog(QtWidgets.QDialog):
         self.btn_remove.clicked.connect(self.remove_selected)
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_start.clicked.connect(self.start_op)
+
+        # Set initial focus and tab order
+        self.pass_input.setFocus()
+        # Make start button the default so Enter triggers it
+        self.btn_start.setDefault(True)
+        self.btn_start.setAutoDefault(True)
+
+        if self.mode == "encrypt":
+            # password -> confirm -> start
+            self.setTabOrder(self.pass_input, self.confirm_pass_input)
+            self.setTabOrder(self.confirm_pass_input, self.btn_start)
+        else:
+            # decryption: password -> start
+            self.setTabOrder(self.pass_input, self.btn_start)
+
+        # Enable drag & drop on the list widget
+        self.list_widget.setAcceptDrops(True)
+        self.list_widget.installEventFilter(self)
 
         self.worker = None
         self.progress_dlg = None
@@ -218,6 +241,7 @@ class EncryptDialog(QtWidgets.QDialog):
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files")
         for f in files:
             self.add_path_to_list(f)
+        self.update_count_label()
 
     def add_folders(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder")
@@ -225,20 +249,77 @@ class EncryptDialog(QtWidgets.QDialog):
             for root, _, files in os.walk(folder):
                 for fn in files:
                     self.add_path_to_list(os.path.join(root, fn))
+        self.update_count_label()
 
     def remove_selected(self):
         for item in self.list_widget.selectedItems():
             self.list_widget.takeItem(self.list_widget.row(item))
+        self.update_count_label()
 
     def add_path_to_list(self, path):
         # Add only unique absolute normalized paths
         p = os.path.abspath(path)
-        items = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
+        items = [self.list_widget.item(i).text() for i in range(self.list_widget.count())] # type: ignore
         if p not in items:
             self.list_widget.addItem(p)
+            self.update_count_label()
+
+    def update_count_label(self):
+        total = self.list_widget.count()
+        selected = len(self.list_widget.selectedItems())
+        if selected > 0:
+            text = f"{total} files | {selected} selected"
+        else:
+            text = f"{total} files"
+        self.count_label.setText(text)
+
+    def eventFilter(self, a0, a1):
+        # Handle drag & drop on the list widget: accept filesystem URLs.
+        # Use parameter names that match the base signature to satisfy the
+        # static analyzer.
+        obj = a0
+        event = a1
+        if obj is self.list_widget:
+            try:
+                etype = event.type()  # type: ignore[attr-defined]
+            except Exception:
+                return super().eventFilter(a0, a1)
+
+            if etype == QtCore.QEvent.DragEnter:  # type: ignore[attr-defined]
+                get_mime = getattr(event, 'mimeData', None)
+                mime = get_mime() if callable(get_mime) else None
+                if mime and getattr(mime, 'hasUrls', lambda: False)():
+                    accept_fn = getattr(event, 'accept', None)
+                    if callable(accept_fn):
+                        accept_fn()
+                    return True
+
+            if etype == QtCore.QEvent.Drop:  # type: ignore[attr-defined]
+                get_mime = getattr(event, 'mimeData', None)
+                mime = get_mime() if callable(get_mime) else None
+                if mime and getattr(mime, 'hasUrls', lambda: False)():
+                    urls = getattr(mime, 'urls', lambda: [])()
+                    for url in urls:
+                        try:
+                            local = url.toLocalFile()
+                        except Exception:
+                            local = str(getattr(url, 'toString', lambda: str(url))())
+                        if os.path.isdir(local):
+                            for root, _, files in os.walk(local):
+                                for fn in files:
+                                    self.add_path_to_list(os.path.join(root, fn))
+                        elif os.path.isfile(local):
+                            self.add_path_to_list(local)
+                    self.update_count_label()
+                    accept_fn = getattr(event, 'accept', None)
+                    if callable(accept_fn):
+                        accept_fn()
+                    return True
+
+        return super().eventFilter(a0, a1)
 
     def start_op(self):
-        paths = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
+        paths = [self.list_widget.item(i).text() for i in range(self.list_widget.count())] # type: ignore
 
         if not paths:
             QtWidgets.QMessageBox.warning(self, "No files", "Add files first.")
@@ -279,48 +360,109 @@ class EncryptDialog(QtWidgets.QDialog):
             chunk_size=chunk_size
         )
 
-        self.worker.signals.progress.connect(self.on_progress, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.worker.signals.file_changed.connect(self.on_current_file, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.worker.signals.status.connect(self.on_status, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.worker.signals.error.connect(self.on_error, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.worker.signals.finished.connect(self.on_finished, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.worker.signals.progress.connect(self.on_progress, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
+        self.worker.signals.file_changed.connect(self.on_current_file, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
+        self.worker.signals.status.connect(self.on_status, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
+        self.worker.signals.error.connect(self.on_error, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
+        self.worker.signals.finished.connect(self.on_finished, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
 
         self.progress_dlg.btn_cancel.clicked.connect(self.worker.cancel)
 
-        self.threadpool.start(self.worker)
+        self.threadpool.start(self.worker) # type: ignore
 
     def on_progress(self, done, total):
-        self.progress_dlg.progress_bar.setValue(done)
-        self.progress_dlg.detail.setText(f"{done}/{total}")
+        self.progress_dlg.progress_bar.setValue(done) # type: ignore
+        self.progress_dlg.detail.setText(f"{done}/{total}") # type: ignore
 
     def on_current_file(self, text):
-        if self.current_file:
-            self.progress_dlg.logs.appendPlainText(f"Completed {self.mode}: {self.current_file}")
+        # Update the current file label only. Actual logs from core are
+        # forwarded via the status signal and will be appended to the logs panel.
         self.current_file = text
-        self.progress_dlg.label_current.setText("Current: " + text)
-        self.progress_dlg.logs.appendPlainText(f"Starting {self.mode}: {text}")
+        if text:
+            self.progress_dlg.label_current.setText("Current: " + text) # type: ignore
+        else:
+            self.progress_dlg.label_current.setText("Current:") # type: ignore
 
     def on_status(self, msg):
-        self.progress_dlg.logs.appendPlainText(msg)
+        # Append core/log messages to the logs panel exactly as they would
+        # appear on the console.
+        self.progress_dlg.logs.appendPlainText(msg) # type: ignore
 
     def on_error(self, msg):
-        error_msg = f"Critical error while {self.mode}ing {self.current_file}: {msg}"
-        self.progress_dlg.logs.appendPlainText(error_msg)
+        # Keep a record of errors; status messages from core are already
+        # appended via on_status. Store errors for final reporting.
+        error_msg = f"{msg}"
+        self.progress_dlg.logs.appendPlainText(error_msg) # type: ignore
         self.errors.append(error_msg)
 
-    def on_finished(self, elapsed, total):
-        if self.current_file:
-            self.progress_dlg.logs.appendPlainText(f"Completed {self.mode}: {self.current_file}")
+    def on_finished(self, elapsed, total, succeeded, failed, skipped):
+        # Summarize operation and show a concise result message.
         op = "Encrypted" if self.mode == "encrypt" else "Decrypted"
-        successful = total - len(self.errors)
-        if self.errors:
-            msg = f"{op} with errors. Successfully {op.lower()} {successful}/{total} files in {elapsed:.2f} seconds.\nSee logs for details."
+
+
+        # Compose a single combined message including details
+        lines = [f"{op} {succeeded} files in {elapsed:.2f} seconds."]
+        if skipped > 0 and self.mode == "encrypt":
+            lines.append(f"{skipped} files were already encrypted.")
+        if failed > 0:
             if self.mode == "decrypt":
-                msg += "\nPossible reasons: wrong password, insufficient permissions, or file corruption."
-            QtWidgets.QMessageBox.warning(self, f"{op} with Errors", msg)
+                lines.append(f"{failed} files decryption failed.")
+                lines.append("Possible reasons: wrong password, insufficient permissions, or file corruption.")
+            else:
+                lines.append(f"{failed} files failed to encrypt.")
+
+        full_msg = "\n".join(lines)
+        # Show a single dialog. This call blocks until user clicks OK.
+        if failed > 0:
+            QtWidgets.QMessageBox.warning(self, f"{op} completed with issues", full_msg)
         else:
-            QtWidgets.QMessageBox.information(self, op, f"{op} {total} files in {elapsed:.2f} seconds.")
-        self.progress_dlg.close()
+            QtWidgets.QMessageBox.information(self, op, full_msg)
+
+        # After user closed the message box, copy progress logs to main window logs panel
+        try:
+            logs_text = self.progress_dlg.logs.toPlainText() if self.progress_dlg else ""
+            main_win = None
+            # climb parents
+            p = self.parent()
+            while p is not None:
+                if hasattr(p, 'logs_text'):
+                    main_win = p
+                    break
+                p = p.parent()
+            # fallback: search top-level widgets
+            if main_win is None:
+                for w in QtWidgets.QApplication.topLevelWidgets():
+                    if hasattr(w, 'logs_text'):
+                        main_win = w
+                        break
+
+            if main_win is not None and logs_text:
+                # Prefer appending to a `logs_text` widget if present
+                logs_widget = getattr(main_win, 'logs_text', None)
+                if logs_widget is not None:
+                    try:
+                        logs_widget.append(logs_text)
+                    except Exception:
+                        pass
+                else:
+                    # Fallback to `show_logs` method if available
+                    show_logs_fn = getattr(main_win, 'show_logs', None)
+                    existing = ""
+                    logs_widget2 = getattr(main_win, 'logs_text', None)
+                    if logs_widget2 is not None:
+                        try:
+                            existing = logs_widget2.toPlainText()
+                        except Exception:
+                            existing = ""
+                    if callable(show_logs_fn):
+                        try:
+                            show_logs_fn(existing + "\n" + logs_text)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        self.progress_dlg.close() # type: ignore
         self.accept()
 
 
@@ -329,7 +471,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint) # type: ignore
         self.setWindowTitle("gfgLock")
         self.resize(720, 420)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.ico")))
@@ -339,24 +481,68 @@ class MainWindow(QtWidgets.QMainWindow):
 
         v = QtWidgets.QVBoxLayout(mw_main)
 
-        header = QtWidgets.QLabel("<h2>gfgLock – Encrypt / Decrypt</h2>")
-        v.addWidget(header)
+        # Professional header: icon + title + subtitle
+        header_widget = QtWidgets.QWidget()
+        header_layout = QtWidgets.QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
 
+        try:
+            pix = QtGui.QPixmap(resource_path("assets/icons/gfgLock.png"))
+            if not pix.isNull():
+                icon_lbl = QtWidgets.QLabel()
+                icon_lbl.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
+                icon_lbl.setFixedSize(52, 52)
+                header_layout.addWidget(icon_lbl)
+        except Exception:
+            pass
+
+        title_layout = QtWidgets.QVBoxLayout()
+        title_lbl = QtWidgets.QLabel("<span style='font-size:16pt;font-weight:700;color:#2b2b2b;'>gfgLock</span>")
+        title_lbl.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
+        subtitle_lbl = QtWidgets.QLabel("Secure AES-256 file encryption and decryption — fast, simple, reliable")
+        subtitle_lbl.setStyleSheet("color: #666666; font-size:9pt;")
+
+        title_layout.addWidget(title_lbl)
+        title_layout.addWidget(subtitle_lbl)
+        header_layout.addLayout(title_layout)
+        header_layout.addStretch()
+
+        v.addWidget(header_widget)
+
+        # Main action buttons — emphasize primary actions
         h = QtWidgets.QHBoxLayout()
         self.btn_encrypt = QtWidgets.QPushButton("Encryption")
         self.btn_decrypt = QtWidgets.QPushButton("Decryption")
+
+        # Secondary buttons
         self.btn_prefs = QtWidgets.QPushButton("Preferences")
         self.btn_about = QtWidgets.QPushButton("About")
+        self.btn_update = QtWidgets.QPushButton("Check Updates")
+
+        # Use consistent, moderate styling for all buttons
+        button_style = "font-size:9pt; padding:8px 12px;"
+        for b in (self.btn_encrypt, self.btn_decrypt, self.btn_prefs, self.btn_about, self.btn_update):
+            b.setStyleSheet(button_style)
+            b.setMinimumHeight(32)
+
         h.addWidget(self.btn_encrypt)
         h.addWidget(self.btn_decrypt)
+        h.addStretch(1)
+        h.addWidget(self.btn_update)
         h.addWidget(self.btn_prefs)
         h.addWidget(self.btn_about)
         v.addLayout(h)
 
-        self.btn_encrypt.clicked.connect(lambda: EncryptDialog(self, "encrypt").exec_())
-        self.btn_decrypt.clicked.connect(lambda: EncryptDialog(self, "decrypt").exec_())
-        self.btn_prefs.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, "Preferences", "Coming soon."))
-        self.btn_about.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, "About","gfgLock\nDeveloped by Shah Faisal\ngfgroyal.com"))
+        self.btn_encrypt.clicked.connect(lambda: EncryptDialog(self, "encrypt").exec_()) # type: ignore
+        self.btn_decrypt.clicked.connect(lambda: EncryptDialog(self, "decrypt").exec_()) # type: ignore
+        self.btn_prefs.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, "Preferences", "Coming soon.")) # type: ignore
+        self.btn_about.clicked.connect(self.show_about_dialog) # type: ignore
+
+        # Check Updates button opens GitHub releases
+        def _open_updates():
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://github.com/ShahFaisalGfG/gfgLock/releases/tag/gfgLock"))
+        self.btn_update.clicked.connect(_open_updates)
+        self.btn_update.setToolTip("Open GitHub releases page to check for latest version")
 
         self.status = QtWidgets.QLabel("Ready")
         v.addWidget(self.status)
@@ -369,6 +555,95 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def show_logs(self, text):
         self.logs_text.setText(text)
+
+    def show_about_dialog(self):
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("About gfgLock")
+        dlg.setWindowModality(Qt.WindowModal)  # type: ignore[attr-defined]
+        dlg.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
+
+        layout = QtWidgets.QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        # Centered header: logo, app name, subtitle
+        header = QtWidgets.QWidget()
+        hl = QtWidgets.QVBoxLayout(header)
+        hl.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
+
+        try:
+            pix = QtGui.QPixmap(resource_path("assets/icons/gfgLock.png"))
+            if not pix.isNull():
+                logo = QtWidgets.QLabel()
+                logo.setPixmap(pix.scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
+                logo.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
+                hl.addWidget(logo)
+        except Exception:
+            pass
+
+        title = QtWidgets.QLabel("<span style='font-size:18pt;font-weight:700;'>gfgLock</span>")
+        title.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
+        title.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
+        hl.addWidget(title)
+
+        subtitle = QtWidgets.QLabel("Secure AES-256 file encryption and decryption")
+        subtitle.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
+        subtitle.setStyleSheet("color: #666666;")
+        hl.addWidget(subtitle)
+
+        layout.addWidget(header)
+
+        # Description
+        desc = QtWidgets.QLabel(
+            "gfgLock provides fast, easy-to-use AES-256 file encryption and decryption.\n"
+            "Supports multi-threaded processing, chunked file I/O and optional filename encryption.\n"
+            "Designed for simplicity and reliability for both casual and power users."
+        )
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # Company / Author
+        info = QtWidgets.QWidget()
+        info_l = QtWidgets.QFormLayout(info)
+        info_l.setLabelAlignment(Qt.AlignRight)  # type: ignore[attr-defined]
+        info_l.addRow("Company:", QtWidgets.QLabel("gfgRoyal"))
+        info_l.addRow("Author:", QtWidgets.QLabel("Shah Faisal"))
+        layout.addWidget(info)
+
+        # Links row
+        links = QtWidgets.QHBoxLayout()
+        links.addStretch()
+
+        email_btn = QtWidgets.QPushButton("Contact: shahfaisalgfg@outlook.com")
+        email_btn.setCursor(QtGui.QCursor(Qt.PointingHandCursor))  # type: ignore[attr-defined]
+        def _open_mail():
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl("mailto:shahfaisalgfg@outlook.com"))
+        email_btn.clicked.connect(_open_mail)
+        links.addWidget(email_btn)
+
+        github_btn = QtWidgets.QPushButton("GitHub Repo")
+        github_btn.setCursor(QtGui.QCursor(Qt.PointingHandCursor))  # type: ignore[attr-defined]
+        def _open_github():
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://github.com/ShahFaisalGfG/gfgLock"))
+        github_btn.clicked.connect(_open_github)
+        links.addWidget(github_btn)
+
+        site_btn = QtWidgets.QPushButton("Website")
+        site_btn.setCursor(QtGui.QCursor(Qt.PointingHandCursor))  # type: ignore[attr-defined]
+        def _open_site():
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://shahfaisalgfg.github.io/shahfaisal"))
+        site_btn.clicked.connect(_open_site)
+        links.addWidget(site_btn)
+
+        links.addStretch()
+        layout.addLayout(links)
+
+        # Close button
+        btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+        btns.accepted.connect(dlg.accept)
+        layout.addWidget(btns)
+
+        dlg.exec_()
 
 
 def main():
