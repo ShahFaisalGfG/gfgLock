@@ -156,13 +156,15 @@ class EncryptDialog(QtWidgets.QDialog):
             ("1 MB", 1*1024*1024),
             ("8 MB (default)", 8*1024*1024),
             ("16 MB (fast)", 16*1024*1024),
-            ("18 MB (fast)", 18*1024*1024),
+            # ("18 MB (fast)", 18*1024*1024),
             ("32 MB", 32*1024*1024),
         ]
+
         for label, val in chunks:
             self.chunk_combo.addItem(label, val)
         self.chunk_combo.setFixedWidth(150)
-        self.chunk_combo.setCurrentText("18 MB (fast)")
+        self.chunk_combo.setCurrentText("8 MB (default)")
+        # self.chunk_combo.setCurrentText("18 MB (fast)")
 
         row.addWidget(QtWidgets.QLabel("CPU Threads:"))
         row.addWidget(self.threads_combo)
