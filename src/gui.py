@@ -1,15 +1,18 @@
 import os
 import sys
-import ctypes
-import shlex   # ← Add this line near other imports
 
 from PyQt5.QtCore import Qt
 from PyQt5 import QtWidgets, QtCore, QtGui
 from worker import EncryptDecryptWorker
+
+import ctypes
 from ctypes import wintypes
+import shlex
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    import ctypes
+    from ctypes import wintypes
     try:
         GetCommandLineW = ctypes.windll.kernel32.GetCommandLineW
         GetCommandLineW.argtypes = []
@@ -54,7 +57,7 @@ class ProgressDialog(QtWidgets.QDialog):
         ))
         self.addAction(help_action)
         self.setWindowTitle("Progress")
-        self.resize(520, 160)
+        self.resize(520, 300)  # Made taller for logs
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
 
         self.setModal(True)
@@ -71,6 +74,10 @@ class ProgressDialog(QtWidgets.QDialog):
         self.detail = QtWidgets.QLabel(f"0/{total}")
         layout.addWidget(self.detail)
 
+        self.logs = QtWidgets.QPlainTextEdit()
+        self.logs.setReadOnly(True)
+        layout.addWidget(self.logs)
+
         h = QtWidgets.QHBoxLayout()
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
         h.addStretch()
@@ -82,6 +89,8 @@ class EncryptDialog(QtWidgets.QDialog):
     def __init__(self, parent=None, mode="encrypt"):
         super().__init__(parent)
         self.mode = mode
+        self.errors = []
+        self.current_file = ""
 
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setWindowTitle("Encryption" if mode == "encrypt" else "Decryption")
@@ -119,7 +128,6 @@ class EncryptDialog(QtWidgets.QDialog):
         if self.mode == "encrypt":
             self.confirm_pass_input = QtWidgets.QLineEdit()
             self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
-            self.pass_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # helps with auto-focus
             pw_layout.addWidget(QtWidgets.QLabel("Confirm:"))
             pw_layout.addWidget(self.confirm_pass_input)
 
@@ -199,10 +207,12 @@ class EncryptDialog(QtWidgets.QDialog):
     def toggle_password(self):
         if self.show_pass_cb.isChecked():
             self.pass_input.setEchoMode(QtWidgets.QLineEdit.Normal)
-            self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Normal)
+            if self.mode == "encrypt":
+                self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Normal)
         else:
             self.pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
-            self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
+            if self.mode == "encrypt":
+                self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
 
     def add_files(self):
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files")
@@ -248,6 +258,9 @@ class EncryptDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Password mismatch", "Password and Confirm Password must match.")
                 return
 
+        self.errors = []
+        self.current_file = ""
+
         threads = int(self.threads_combo.currentText())
         chunk_size = self.chunk_combo.currentData()
         encrypt_name = self.encrypt_name_cb.isChecked() if self.mode == "encrypt" else False
@@ -281,20 +294,35 @@ class EncryptDialog(QtWidgets.QDialog):
         self.progress_dlg.detail.setText(f"{done}/{total}")
 
     def on_current_file(self, text):
+        if self.current_file:
+            self.progress_dlg.logs.appendPlainText(f"Completed {self.mode}: {self.current_file}")
+        self.current_file = text
         self.progress_dlg.label_current.setText("Current: " + text)
+        self.progress_dlg.logs.appendPlainText(f"Starting {self.mode}: {text}")
 
     def on_status(self, msg):
-        self.progress_dlg.detail.setText(msg)
+        self.progress_dlg.logs.appendPlainText(msg)
 
     def on_error(self, msg):
-        QtWidgets.QMessageBox.critical(self, "Error", msg)
+        error_msg = f"Critical error while {self.mode}ing {self.current_file}: {msg}"
+        self.progress_dlg.logs.appendPlainText(error_msg)
+        self.errors.append(error_msg)
 
     def on_finished(self, elapsed, total):
+        if self.current_file:
+            self.progress_dlg.logs.appendPlainText(f"Completed {self.mode}: {self.current_file}")
         op = "Encrypted" if self.mode == "encrypt" else "Decrypted"
-        QtWidgets.QMessageBox.information(self,f"{op}",f"{op} {total} files in {elapsed:.2f} seconds."
-        )
+        successful = total - len(self.errors)
+        if self.errors:
+            msg = f"{op} with errors. Successfully {op.lower()} {successful}/{total} files in {elapsed:.2f} seconds.\nSee logs for details."
+            if self.mode == "decrypt":
+                msg += "\nPossible reasons: wrong password, insufficient permissions, or file corruption."
+            QtWidgets.QMessageBox.warning(self, f"{op} with Errors", msg)
+        else:
+            QtWidgets.QMessageBox.information(self, op, f"{op} {total} files in {elapsed:.2f} seconds.")
         self.progress_dlg.close()
         self.accept()
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -333,58 +361,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status = QtWidgets.QLabel("Ready")
         v.addWidget(self.status)
 
-        # Dev-only logs panel
+        # Dev-only logs panel - Remove after testing
         self.logs_text = QtWidgets.QTextEdit()
         self.logs_text.setReadOnly(True)
-        self.logs_text.setPlaceholderText("Debug logs will appear here...")
+        self.logs_text.setPlaceholderText("Debug logs...")
         v.addWidget(self.logs_text)
 
     def show_logs(self, text):
         self.logs_text.setText(text)
-
-
-# ---- Utilities used by main() to expand arguments into file lists ----
-
-def _normalize_and_expand_paths(raw_paths, debug_logs):
-    seen = set()
-    out = []
-
-    debug_logs.append(f"Entering _normalize_and_expand_paths with raw_paths: {raw_paths}")
-
-    for rp in raw_paths:
-        if not rp:
-            debug_logs.append(f"Skipping empty path: {rp}")
-            continue
-        # Remove surrounding quotes
-        p = rp.strip('"\' ')
-        debug_logs.append(f"Stripped path: {p} (from original: {rp})")
-        abs_p = os.path.abspath(p)
-        debug_logs.append(f"Absolute path: {abs_p}")
-
-        try:
-            if os.path.isfile(abs_p):
-                debug_logs.append(f"Path is file: {abs_p}")
-                if abs_p not in seen:
-                    seen.add(abs_p)
-                    out.append(abs_p)
-                    debug_logs.append(f"Added file: {abs_p}")
-            elif os.path.isdir(abs_p):
-                debug_logs.append(f"Path is directory: {abs_p}")
-                for root, _, files in os.walk(abs_p):
-                    for f in files:
-                        fp = os.path.join(root, f)
-                        if fp not in seen:
-                            seen.add(fp)
-                            out.append(fp)
-                            debug_logs.append(f"Added file from dir: {fp}")
-        except PermissionError:
-            debug_logs.append(f"PermissionError for {abs_p}, adding anyway")
-            if abs_p not in seen:
-                seen.add(abs_p)
-                out.append(abs_p)
-
-    debug_logs.append(f"Exiting _normalize_and_expand_paths with out: {out}")
-    return out
 
 
 def main():
@@ -489,6 +473,7 @@ def main():
 
     dlg.exec_()
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
