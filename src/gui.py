@@ -1,20 +1,40 @@
-# gui.py — updated for improved context-menu handling and main() behavior
-# - Accepts command-line invocation like: gfgLock.exe encrypt <paths...>
-# - When launched with encrypt/decrypt + multiple paths, opens exactly one
-#   Encryption/Decryption dialog containing all files (folders are expanded).
-# - Deduplicates paths and resolves directories into file lists.
-# - Robust handling of quoted paths and very large selection lists.
-# - Keep default behavior for double-clicking .gfglock files (auto-decrypt).
-
 import os
 import sys
 
 from PyQt5.QtCore import Qt
-
-os.environ["QT_QPA_PLATFORM"] = "windows"
-
 from PyQt5 import QtWidgets, QtCore, QtGui
 from worker import EncryptDecryptWorker
+
+import ctypes
+from ctypes import wintypes
+
+# === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    import ctypes
+    from ctypes import wintypes
+    try:
+        GetCommandLineW = ctypes.windll.kernel32.GetCommandLineW
+        GetCommandLineW.argtypes = []
+        GetCommandLineW.restype = wintypes.LPCWSTR
+
+        CommandLineToArgvW = ctypes.windll.shell32.CommandLineToArgvW
+        CommandLineToArgvW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_int)]
+        CommandLineToArgvW.restype = ctypes.POINTER(wintypes.LPWSTR)
+
+        cmd = GetCommandLineW()
+        argc = ctypes.c_int()
+        argv = CommandLineToArgvW(cmd, ctypes.byref(argc))
+        sys.argv = [argv[i] for i in range(argc.value)]
+        if sys.argv:
+            sys.argv[0] = sys.executable
+    except:
+        pass
+# ========================================================
+
+os.environ["QT_QPA_PLATFORM"] = "windows"
+# ... rest of your code
+
+
 
 
 def resource_path(relative_path):
@@ -318,86 +338,88 @@ class MainWindow(QtWidgets.QMainWindow):
 # ---- Utilities used by main() to expand arguments into file lists ----
 
 def _normalize_and_expand_paths(raw_paths):
-    """Accept an iterable of raw paths (str). For each path:
-    - If path is a file -> yield absolute path
-    - If path is a directory -> walk recursively and yield files inside
-    - Deduplicate results and preserve order
-    """
     seen = set()
     out = []
 
     for rp in raw_paths:
         if not rp:
             continue
-        p = os.path.abspath(rp)
+        # Remove surrounding quotes
+        p = rp.strip('"\'')
+        abs_p = os.path.abspath(p)
 
-        # Windows may pass a path that points to a file that doesn't exist yet
-        # but in general we only expand existing paths
-        if os.path.isfile(p):
-            if p not in seen:
-                seen.add(p)
-                out.append(p)
-        elif os.path.isdir(p):
-            # Walk directory and add files
-            for root, _, files in os.walk(p):
-                for fn in files:
-                    fp = os.path.join(root, fn)
-                    if fp not in seen:
-                        seen.add(fp)
-                        out.append(fp)
-        else:
-            # Path might be a dragged item like a UNC path or contain quotes — try stripping quotes
-            p2 = p.strip('"')
-            if os.path.exists(p2):
-                if os.path.isfile(p2) and p2 not in seen:
-                    seen.add(p2)
-                    out.append(p2)
-            else:
-                # If path doesn't exist, still append it as-is (useful for some shell invocations)
-                if p not in seen:
-                    seen.add(p)
-                    out.append(p)
+        try:
+            if os.path.isfile(abs_p):
+                if abs_p not in seen:
+                    seen.add(abs_p)
+                    out.append(abs_p)
+            elif os.path.isdir(abs_p):
+                for root, _, files in os.walk(abs_p):
+                    for f in files:
+                        fp = os.path.join(root, f)
+                        if fp not in seen:
+                            seen.add(fp)
+                            out.append(fp)
+        except PermissionError:
+            # Add path anyway so user sees it failed
+            if abs_p not in seen:
+                seen.add(abs_p)
+                out.append(abs_p)
 
     return out
 
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    app.setStyle("Fusion")  # Optional: cleaner look
 
     args = sys.argv[1:]
-    # Accept two invocation styles:
-    # 1) gfgLock.exe encrypt <paths...>
-    # 2) gfgLock.exe decrypt <paths...>
-    # 3) gfgLock.exe <list-of-files> (auto-detect .gfglock -> open decrypt)
 
-    if args:
-        mode = None
-        paths = []
+    if not args:
+        # Normal launch → show main window
+        win = MainWindow()
+        win.show()
+        sys.exit(app.exec_())
 
-        # If first arg is 'encrypt' or 'decrypt', treat as explicit mode
-        if args[0].lower() in ("encrypt", "decrypt"):
-            mode = args[0].lower()
-            paths = args[1:]
+    # --- Context menu or drag-and-drop launch ---
+    mode = None
+    raw_paths = args
 
-        # If mode specified and there are path args -> open single dialog with all
-        if mode and paths:
-            expanded = _normalize_and_expand_paths(paths)
-            dlg = EncryptDialog(None, mode)
-            for p in expanded:
+    # Detect explicit mode: gfgLock.exe encrypt|decrypt [paths...]
+    if args and args[0].lower() in ("encrypt", "decrypt"):
+        mode = args[0].lower()
+        raw_paths = args[1:]
+
+    # Auto-detect: if all files end with .gfglock → decrypt
+    elif all(os.path.isfile(p) and p.lower().endswith('.gfglock') for p in args if os.path.exists(p)):
+        mode = "decrypt"
+        raw_paths = args
+
+    # If we have a mode and some paths → try to process them
+    if mode and raw_paths:
+        expanded_paths = _normalize_and_expand_paths(raw_paths)
+
+        # Critical fix: Even if expanded_paths is empty, still open dialog in correct mode
+        # This prevents falling through to main window
+        dlg = EncryptDialog(None, mode)
+
+        if expanded_paths:
+            for p in expanded_paths:
                 dlg.add_path_to_list(p)
-            dlg.exec_()
-            sys.exit(0)
+        else:
+            # Still add original args (in case of weird quoting or non-existent files)
+            for rp in raw_paths:
+                clean = rp.strip('"\' ')
+                if clean and os.path.exists(clean):
+                    dlg.add_path_to_list(clean)
+                elif clean:
+                    # Add even non-existent paths (user might want to see error)
+                    dlg.list_widget.addItem(clean)
 
-        # If the user double-clicks .gfglock files (Windows will pass them as args)
-        gfglock_files = [a for a in args if os.path.isfile(a) and a.lower().endswith('.gfglock')]
-        if gfglock_files:
-            dlg = EncryptDialog(None, "decrypt")
-            for f in gfglock_files:
-                dlg.add_path_to_list(os.path.abspath(f))
-            dlg.exec_()
-            sys.exit(0)
+        dlg.exec_()
+        sys.exit(0)  # Exit after dialog — don't show main window
 
-    # Default launch → show main window
+    # Fallback: any other case → show main window
     win = MainWindow()
     win.show()
     sys.exit(app.exec_())

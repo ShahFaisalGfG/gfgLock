@@ -80,32 +80,43 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"; Tasks: quicklaunchicon
 
 [Registry]
-; File association for .gfglock files
+; =============================================================================
+; File association for .gfglock files (only if user chooses "Associate" task)
+; =============================================================================
 Root: HKCR; Subkey: ".gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglock"; Flags: uninsdeletevalue; Tasks: associate
 Root: HKCR; Subkey: "gfgLock.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCR; Subkey: "gfgLock.gfglock\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
 Root: HKCR; Subkey: "gfgLock.gfglock\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
 
-; Context menu for all filesystem objects (files + folders, any count)
-Root: HKCR; Subkey: "AllFileSystemObjects\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\\shell\\gfgLockEncrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" encrypt %*"; Flags: uninsdeletekey
+; =============================================================================
+; Context menu: Encrypt with gfgLock (works on files + folders, any number)
+; =============================================================================
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt with gfgLock"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MUIVerb"; ValueData: "Encrypt with gfgLock"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt %*"; Flags: uninsdeletekey
 
-Root: HKCR; Subkey: "AllFileSystemObjects\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\\shell\\gfgLockDecrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
+; =============================================================================
+; Context menu: Decrypt with gfgLock
+; =============================================================================
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt with gfgLock"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MUIVerb"; ValueData: "Decrypt with gfgLock"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
 
 
-
-
-
-
-
-; Application path info (optional)
+; =============================================================================
+; Optional: Store installation info (useful for future updates/uninstallers)
+; =============================================================================
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "ExePath"; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
+
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
@@ -125,12 +136,13 @@ begin
     'It is recommended that you close all other applications before continuing.';
 end;
 
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-begin
-  if CurUninstallStep = usUninstall then
-  begin
-    if MsgBox('Are you sure you want to completely remove {#MyAppName} and all of its components?',
-      mbConfirmation, MB_YESNO) = IDNO then
-      Abort;
-  end;
-end;
+
+// procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+// begin
+  // if CurUninstallStep = usUninstall then
+  // begin
+    // if MsgBox('Are you sure you want to completely remove {#MyAppName} and all of its components?',
+      // mbConfirmation, MB_YESNO) = IDNO then
+      // Abort;
+  // end;
+// end;
