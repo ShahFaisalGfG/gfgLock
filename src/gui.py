@@ -70,12 +70,12 @@ class EncryptDialog(QtWidgets.QDialog):
         self.resize(700, 480)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
 
-        main = QtWidgets.QVBoxLayout(self)
+        enc_main = QtWidgets.QVBoxLayout(self)
 
         # File list
         self.list_widget = QtWidgets.QListWidget()
         self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        main.addWidget(self.list_widget)
+        enc_main.addWidget(self.list_widget)
 
         # Add files/folders
         h = QtWidgets.QHBoxLayout()
@@ -85,7 +85,7 @@ class EncryptDialog(QtWidgets.QDialog):
         h.addWidget(self.btn_add_files)
         h.addWidget(self.btn_add_folders)
         h.addWidget(self.btn_remove)
-        main.addLayout(h)
+        enc_main.addLayout(h)
 
         # OPTIONS AREA
         form = QtWidgets.QFormLayout()
@@ -153,7 +153,7 @@ class EncryptDialog(QtWidgets.QDialog):
             bottom_row.addStretch()
             form.addRow(bottom_row)
 
-        main.addLayout(form)
+        enc_main.addLayout(form)
 
         # Bottom Start/Cancel buttons
         bottom = QtWidgets.QHBoxLayout()
@@ -164,7 +164,7 @@ class EncryptDialog(QtWidgets.QDialog):
         bottom.addStretch()
         bottom.addWidget(self.btn_cancel)
         bottom.addWidget(self.btn_start)
-        main.addLayout(bottom)
+        enc_main.addLayout(bottom)
 
         # Connect signals
         self.btn_add_files.clicked.connect(self.add_files)
@@ -188,20 +188,20 @@ class EncryptDialog(QtWidgets.QDialog):
     def add_files(self):
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files")
         for f in files:
-            self._add_path_to_list(f)
+            self.add_path_to_list(f)
 
     def add_folders(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder")
         if folder:
             for root, _, files in os.walk(folder):
                 for fn in files:
-                    self._add_path_to_list(os.path.join(root, fn))
+                    self.add_path_to_list(os.path.join(root, fn))
 
     def remove_selected(self):
         for item in self.list_widget.selectedItems():
             self.list_widget.takeItem(self.list_widget.row(item))
 
-    def _add_path_to_list(self, path):
+    def add_path_to_list(self, path):
         # Add only unique absolute normalized paths
         p = os.path.abspath(path)
         items = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
@@ -247,11 +247,11 @@ class EncryptDialog(QtWidgets.QDialog):
             chunk_size=chunk_size
         )
 
-        self.worker.signals.progress.connect(self.on_progress, QtCore.Qt.QueuedConnection)
-        self.worker.signals.file_changed.connect(self.on_current_file, QtCore.Qt.QueuedConnection)
-        self.worker.signals.status.connect(self.on_status, QtCore.Qt.QueuedConnection)
-        self.worker.signals.error.connect(self.on_error, QtCore.Qt.QueuedConnection)
-        self.worker.signals.finished.connect(self.on_finished, QtCore.Qt.QueuedConnection)
+        self.worker.signals.progress.connect(self.on_progress, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.worker.signals.file_changed.connect(self.on_current_file, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.worker.signals.status.connect(self.on_status, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.worker.signals.error.connect(self.on_error, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.worker.signals.finished.connect(self.on_finished, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self.progress_dlg.btn_cancel.clicked.connect(self.worker.cancel)
 
@@ -287,10 +287,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(720, 420)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.ico")))
 
-        main = QtWidgets.QWidget()
-        self.setCentralWidget(main)
+        mw_main = QtWidgets.QWidget()
+        self.setCentralWidget(mw_main)
 
-        v = QtWidgets.QVBoxLayout(main)
+        v = QtWidgets.QVBoxLayout(mw_main)
 
         header = QtWidgets.QLabel("<h2>gfgLock – Encrypt / Decrypt</h2>")
         v.addWidget(header)
@@ -384,7 +384,7 @@ def main():
             expanded = _normalize_and_expand_paths(paths)
             dlg = EncryptDialog(None, mode)
             for p in expanded:
-                dlg._add_path_to_list(p)
+                dlg.add_path_to_list(p)
             dlg.exec_()
             sys.exit(0)
 
@@ -393,7 +393,7 @@ def main():
         if gfglock_files:
             dlg = EncryptDialog(None, "decrypt")
             for f in gfglock_files:
-                dlg._add_path_to_list(os.path.abspath(f))
+                dlg.add_path_to_list(os.path.abspath(f))
             dlg.exec_()
             sys.exit(0)
 
