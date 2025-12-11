@@ -1,17 +1,15 @@
 import os
 import sys
+import ctypes
+import shlex   # ← Add this line near other imports
 
 from PyQt5.QtCore import Qt
 from PyQt5 import QtWidgets, QtCore, QtGui
 from worker import EncryptDecryptWorker
-
-import ctypes
 from ctypes import wintypes
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-    import ctypes
-    from ctypes import wintypes
     try:
         GetCommandLineW = ctypes.windll.kernel32.GetCommandLineW
         GetCommandLineW.argtypes = []
@@ -334,96 +332,155 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status = QtWidgets.QLabel("Ready")
         v.addWidget(self.status)
 
+        # Dev-only logs panel
+        self.logs_text = QtWidgets.QTextEdit()
+        self.logs_text.setReadOnly(True)
+        self.logs_text.setPlaceholderText("Debug logs will appear here...")
+        v.addWidget(self.logs_text)
+
+    def show_logs(self, text):
+        self.logs_text.setText(text)
+
 
 # ---- Utilities used by main() to expand arguments into file lists ----
 
-def _normalize_and_expand_paths(raw_paths):
+def _normalize_and_expand_paths(raw_paths, debug_logs):
     seen = set()
     out = []
 
+    debug_logs.append(f"Entering _normalize_and_expand_paths with raw_paths: {raw_paths}")
+
     for rp in raw_paths:
         if not rp:
+            debug_logs.append(f"Skipping empty path: {rp}")
             continue
         # Remove surrounding quotes
-        p = rp.strip('"\'')
+        p = rp.strip('"\' ')
+        debug_logs.append(f"Stripped path: {p} (from original: {rp})")
         abs_p = os.path.abspath(p)
+        debug_logs.append(f"Absolute path: {abs_p}")
 
         try:
             if os.path.isfile(abs_p):
+                debug_logs.append(f"Path is file: {abs_p}")
                 if abs_p not in seen:
                     seen.add(abs_p)
                     out.append(abs_p)
+                    debug_logs.append(f"Added file: {abs_p}")
             elif os.path.isdir(abs_p):
+                debug_logs.append(f"Path is directory: {abs_p}")
                 for root, _, files in os.walk(abs_p):
                     for f in files:
                         fp = os.path.join(root, f)
                         if fp not in seen:
                             seen.add(fp)
                             out.append(fp)
+                            debug_logs.append(f"Added file from dir: {fp}")
         except PermissionError:
-            # Add path anyway so user sees it failed
+            debug_logs.append(f"PermissionError for {abs_p}, adding anyway")
             if abs_p not in seen:
                 seen.add(abs_p)
                 out.append(abs_p)
 
+    debug_logs.append(f"Exiting _normalize_and_expand_paths with out: {out}")
     return out
 
 
 def main():
+    debug_logs = ["=== Debug Start ==="]
+
     app = QtWidgets.QApplication(sys.argv)
-    app.setStyle("Fusion")  # Optional: cleaner look
+    app.setStyle("Fusion")
 
     args = sys.argv[1:]
+    debug_logs.append(f"Raw args: {args}")
 
     if not args:
-        # Normal launch → show main window
+        debug_logs.append("No args - Opening main window")
         win = MainWindow()
+        win.show_logs("\n".join(debug_logs))
         win.show()
         sys.exit(app.exec_())
 
-    # --- Context menu or drag-and-drop launch ---
+    # Step 1: Detect mode
     mode = None
-    raw_paths = args
-
-    # Detect explicit mode: gfgLock.exe encrypt|decrypt [paths...]
+    path_args = args
     if args and args[0].lower() in ("encrypt", "decrypt"):
         mode = args[0].lower()
-        raw_paths = args[1:]
-
-    # Auto-detect: if all files end with .gfglock → decrypt
-    elif all(os.path.isfile(p) and p.lower().endswith('.gfglock') for p in args if os.path.exists(p)):
+        path_args = args[1:]
+        debug_logs.append(f"Mode: {mode}, path_args: {path_args}")
+    elif all(os.path.exists(p) and os.path.isfile(p) and p.lower().endswith('.gfglock') for p in args):
         mode = "decrypt"
-        raw_paths = args
+        debug_logs.append("Auto decrypt mode")
 
-    # If we have a mode and some paths → try to process them
-    if mode and raw_paths:
-        expanded_paths = _normalize_and_expand_paths(raw_paths)
+    if not mode:
+        debug_logs.append("No mode - Opening main window")
+        win = MainWindow()
+        win.show_logs("\n".join(debug_logs))
+        win.show()
+        sys.exit(app.exec_())
 
-        # Critical fix: Even if expanded_paths is empty, still open dialog in correct mode
-        # This prevents falling through to main window
-        dlg = EncryptDialog(None, mode)
+    # Step 2: Handle paths - For single item, join if split; for multiple, treat separate
+    raw_paths = []
 
-        if expanded_paths:
-            for p in expanded_paths:
-                dlg.add_path_to_list(p)
+    if path_args:
+        # Try joining all as one path (for single unquoted with spaces)
+        combined = ' '.join(path_args)
+        debug_logs.append(f"Trying combined: {combined}")
+
+        if os.path.exists(combined):
+            raw_paths = [combined]
+            debug_logs.append("Combined exists - Using as single path")
         else:
-            # Still add original args (in case of weird quoting or non-existent files)
-            for rp in raw_paths:
-                clean = rp.strip('"\' ')
-                if clean and os.path.exists(clean):
-                    dlg.add_path_to_list(clean)
-                elif clean:
-                    # Add even non-existent paths (user might want to see error)
-                    dlg.list_widget.addItem(clean)
+            # Treat as separate paths (for multiple quoted)
+            try:
+                # Use shlex to handle any quotes
+                combined_quoted = ' '.join(path_args)
+                raw_paths = shlex.split(combined_quoted)
+                debug_logs.append(f"shlex split: {raw_paths}")
+            except:
+                raw_paths = path_args
+                debug_logs.append("shlex failed - Using original path_args")
 
-        dlg.exec_()
-        sys.exit(0)  # Exit after dialog — don't show main window
+            # Validate: if all separate exist, good; else fallback to combined
+            if not all(os.path.exists(p.strip('"')) for p in raw_paths):
+                raw_paths = [combined]
+                debug_logs.append("Separate don't all exist - Fallback to combined")
 
-    # Fallback: any other case → show main window
-    win = MainWindow()
-    win.show()
-    sys.exit(app.exec_())
+    # Step 3: Normalize and expand (files or folders)
+    expanded_paths = []
+    for rp in raw_paths:
+        p = rp.strip('"\' ')
+        abs_p = os.path.abspath(p)
+        debug_logs.append(f"Processing: {abs_p}")
 
+        try:
+            if os.path.isfile(abs_p):
+                expanded_paths.append(abs_p)
+            elif os.path.isdir(abs_p):
+                for root, _, files in os.walk(abs_p):
+                    for f in files:
+                        fp = os.path.join(root, f)
+                        expanded_paths.append(fp)
+            else:
+                expanded_paths.append(abs_p)  # Add anyway for error
+        except Exception as e:
+            debug_logs.append(f"Error processing {abs_p}: {e}")
+            expanded_paths.append(abs_p)
+
+    # Remove duplicates
+    expanded_paths = list(dict.fromkeys(expanded_paths))
+
+    debug_logs.append(f"Final expanded: {expanded_paths}")
+
+    # Step 4: Open dialog
+    dlg = EncryptDialog(None, mode)
+    for p in expanded_paths:
+        dlg.add_path_to_list(p)
+
+    dlg.pass_input.setFocus()
+    dlg.exec_()
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

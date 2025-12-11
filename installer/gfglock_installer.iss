@@ -97,7 +97,7 @@ Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: stri
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt %*"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt %1"; Flags: uninsdeletekey
 
 ; =============================================================================
 ; Context menu: Decrypt with gfgLock
@@ -135,7 +135,6 @@ begin
     'gfgLock is a secure file encryption tool with AES-256 cryptography and a modern GUI interface.'#13#13 +
     'It is recommended that you close all other applications before continuing.';
 end;
-
 
 // procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 // begin
