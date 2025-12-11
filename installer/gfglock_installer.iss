@@ -97,7 +97,10 @@ Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: stri
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt %1"; Flags: uninsdeletekey
+; Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt %1"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt ""%1"""; Flags: uninsdeletekey
+
+
 
 ; =============================================================================
 ; Context menu: Decrypt with gfgLock
@@ -107,7 +110,8 @@ Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: stri
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
+; Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt ""%1"""; Flags: uninsdeletekey
 
 
 ; =============================================================================

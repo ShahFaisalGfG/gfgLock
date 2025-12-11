@@ -119,6 +119,7 @@ class EncryptDialog(QtWidgets.QDialog):
         if self.mode == "encrypt":
             self.confirm_pass_input = QtWidgets.QLineEdit()
             self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
+            self.pass_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # helps with auto-focus
             pw_layout.addWidget(QtWidgets.QLabel("Confirm:"))
             pw_layout.addWidget(self.confirm_pass_input)
 
@@ -387,98 +388,105 @@ def _normalize_and_expand_paths(raw_paths, debug_logs):
 
 
 def main():
-    debug_logs = ["=== Debug Start ==="]
-
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("Fusion")
 
     args = sys.argv[1:]
-    debug_logs.append(f"Raw args: {args}")
+    debug_logs = [f"Raw args received: {args}"]
 
+    # No args → normal launch
     if not args:
-        debug_logs.append("No args - Opening main window")
         win = MainWindow()
-        win.show_logs("\n".join(debug_logs))
         win.show()
         sys.exit(app.exec_())
 
-    # Step 1: Detect mode
+    # === Detect operation mode ===
     mode = None
     path_args = args
+
     if args and args[0].lower() in ("encrypt", "decrypt"):
         mode = args[0].lower()
         path_args = args[1:]
-        debug_logs.append(f"Mode: {mode}, path_args: {path_args}")
-    elif all(os.path.exists(p) and os.path.isfile(p) and p.lower().endswith('.gfglock') for p in args):
-        mode = "decrypt"
-        debug_logs.append("Auto decrypt mode")
+        debug_logs.append(f"Explicit mode: {mode}")
+    else:
+        # Auto-detect: if any .gfglock file exists in args → decrypt
+        gfglock_files = [p for p in args if os.path.exists(p) and p.lower().endswith('.gfglock')]
+        if gfglock_files:
+            mode = "decrypt"
+            debug_logs.append("Auto-detected decrypt mode (.gfglock files found)")
 
+    # If no valid mode → open main window
     if not mode:
-        debug_logs.append("No mode - Opening main window")
+        debug_logs.append("No valid mode → opening main window")
         win = MainWindow()
         win.show_logs("\n".join(debug_logs))
         win.show()
         sys.exit(app.exec_())
 
-    # Step 2: Handle paths - For single item, join if split; for multiple, treat separate
+    # === Reconstruct paths correctly (Windows Explorer breaks paths with spaces) ===
     raw_paths = []
 
     if path_args:
-        # Try joining all as one path (for single unquoted with spaces)
-        combined = ' '.join(path_args)
-        debug_logs.append(f"Trying combined: {combined}")
+        combined = " ".join(path_args)
+        debug_logs.append(f"Combined path string: {combined}")
 
+        # First: try if the combined string is a real path
         if os.path.exists(combined):
             raw_paths = [combined]
-            debug_logs.append("Combined exists - Using as single path")
+            debug_logs.append("Combined path exists → using as single item")
         else:
-            # Treat as separate paths (for multiple quoted)
+            # Second: try shlex (handles quoted paths like "C:\My Folder\file.gfglock")
             try:
-                # Use shlex to handle any quotes
-                combined_quoted = ' '.join(path_args)
-                raw_paths = shlex.split(combined_quoted)
-                debug_logs.append(f"shlex split: {raw_paths}")
+                raw_paths = shlex.split(combined)
+                debug_logs.append(f"shlex parsed: {raw_paths}")
             except:
-                raw_paths = path_args
-                debug_logs.append("shlex failed - Using original path_args")
+                raw_paths = path_args  # fallback
 
-            # Validate: if all separate exist, good; else fallback to combined
-            if not all(os.path.exists(p.strip('"')) for p in raw_paths):
+            # Final fallback: if nothing works, treat as one broken path
+            if not any(os.path.exists(p.strip('"')) for p in raw_paths):
                 raw_paths = [combined]
-                debug_logs.append("Separate don't all exist - Fallback to combined")
+                debug_logs.append("Fallback: treating all args as one broken path")
 
-    # Step 3: Normalize and expand (files or folders)
-    expanded_paths = []
-    for rp in raw_paths:
-        p = rp.strip('"\' ')
+    # === Expand folders and collect only real files (especially .gfglock for decrypt) ===
+    final_paths = []
+
+    for path in raw_paths:
+        p = path.strip('"\'')
         abs_p = os.path.abspath(p)
-        debug_logs.append(f"Processing: {abs_p}")
 
-        try:
-            if os.path.isfile(abs_p):
-                expanded_paths.append(abs_p)
-            elif os.path.isdir(abs_p):
-                for root, _, files in os.walk(abs_p):
-                    for f in files:
-                        fp = os.path.join(root, f)
-                        expanded_paths.append(fp)
-            else:
-                expanded_paths.append(abs_p)  # Add anyway for error
-        except Exception as e:
-            debug_logs.append(f"Error processing {abs_p}: {e}")
-            expanded_paths.append(abs_p)
+        if not os.path.exists(abs_p):
+            final_paths.append(abs_p)  # keep for error visibility
+            continue
+
+        if os.path.isfile(abs_p):
+            if mode == "decrypt" and not abs_p.lower().endswith('.gfglock'):
+                continue  # skip non-.gfglock files in decrypt mode
+            final_paths.append(abs_p)
+
+        elif os.path.isdir(abs_p):
+            for root, _, files in os.walk(abs_p):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    if mode == "encrypt" or fp.lower().endswith('.gfglock'):
+                        final_paths.append(fp)
 
     # Remove duplicates
-    expanded_paths = list(dict.fromkeys(expanded_paths))
+    seen = set()
+    unique_paths = [p for p in final_paths if not (p in seen or seen.add(p))]
 
-    debug_logs.append(f"Final expanded: {expanded_paths}")
+    debug_logs.append(f"Final files to process: {unique_paths}")
 
-    # Step 4: Open dialog
+    # === Launch dialog ===
     dlg = EncryptDialog(None, mode)
-    for p in expanded_paths:
+
+    for p in unique_paths:
         dlg.add_path_to_list(p)
 
-    dlg.pass_input.setFocus()
+    if unique_paths:
+        dlg.pass_input.setFocus()
+    else:
+        QtWidgets.QMessageBox.warning(None, "No files", f"No valid files found for {mode}ion.")
+
     dlg.exec_()
     sys.exit(0)
 
