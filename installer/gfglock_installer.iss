@@ -85,27 +85,80 @@ Root: HKCR; Subkey: ".gfglock"; ValueType: string; ValueName: ""; ValueData: "gf
 Root: HKCR; Subkey: "gfgLock.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCR; Subkey: "gfgLock.gfglock\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
 Root: HKCR; Subkey: "gfgLock.gfglock\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
-; Context menu for all files
-Root: HKCR; Subkey: "*\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "*\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "*\\shell\\gfgLockEncrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" encrypt %*"; Flags: uninsdeletekey
 
-Root: HKCR; Subkey: "*\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "*\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "*\\shell\\gfgLockDecrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
 
-; Context menu for folders
-Root: HKCR; Subkey: "Directory\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "Directory\\shell\\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "Directory\\shell\\gfgLockEncrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" encrypt %*"; Flags: uninsdeletekey
 
-Root: HKCR; Subkey: "Directory\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "Directory\\shell\\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\icons\\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "Directory\\shell\\gfgLockDecrypt\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
 
-; Context menu entries
-Root: HKCR; Subkey: "gfgLock.gfglock\shell\decrypt"; ValueType: string; ValueName: ""; ValueData: "&Decrypt with gfgLock"; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfglock\shell\decrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" --decrypt ""%1"""; Tasks: associate
+; ==================================================================
+;   SYSTEM-WIDE CONTEXT MENU (requires admin privileges)
+;   These entries appear under "Show more options" on Windows 11
+;   Applies to All Files + Folders (AllFilesystemObjects)
+; ==================================================================
+
+; ---------------------------
+; Encrypt (system-wide)
+; ---------------------------
+Root: HKCR; Subkey: "AllFilesystemObjects\shell\gfgEncrypt"; \
+    ValueType: string; ValueData: "Encrypt"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFilesystemObjects\shell\gfgEncrypt"; \
+    ValueType: string; ValueName: "Icon"; ValueData: "{app}\gfgLock.exe,0"
+Root: HKCR; Subkey: "AllFilesystemObjects\shell\gfgEncrypt\command"; \
+    ValueType: string; ValueData: """{app}\gfgLock.exe"" encrypt %*"
+
+; ---------------------------
+; Decrypt (system-wide)
+; ---------------------------
+Root: HKCR; Subkey: "AllFilesystemObjects\shell\gfgDecrypt"; \
+    ValueType: string; ValueData: "Decrypt"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFilesystemObjects\shell\gfgDecrypt"; \
+    ValueType: string; ValueName: "Icon"; ValueData: "{app}\gfgLock.exe,0"
+Root: HKCR; Subkey: "AllFilesystemObjects\shell\gfgDecrypt\command"; \
+    ValueType: string; ValueData: """{app}\gfgLock.exe"" decrypt %*"
+
+
+; ==================================================================
+;   PER-USER CONTEXT MENU (for non-admin installs)
+;   Mirrors the same structure as HKCR but in HKCU\Software\Classes
+; ==================================================================
+
+; ---------------------------
+; Encrypt (per-user)
+; ---------------------------
+Root: HKCU; Subkey: "Software\Classes\AllFilesystemObjects\shell\gfgEncrypt"; \
+    ValueType: string; ValueData: "Encrypt"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\AllFilesystemObjects\shell\gfgEncrypt"; \
+    ValueType: string; ValueName: "Icon"; ValueData: "{app}\gfgLock.exe,0"
+Root: HKCU; Subkey: "Software\Classes\AllFilesystemObjects\shell\gfgEncrypt\command"; \
+    ValueType: string; ValueData: """{app}\gfgLock.exe"" encrypt %*"
+
+; ---------------------------
+; Decrypt (per-user)
+; ---------------------------
+Root: HKCU; Subkey: "Software\Classes\AllFilesystemObjects\shell\gfgDecrypt"; \
+    ValueType: string; ValueData: "Decrypt"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\AllFilesystemObjects\shell\gfgDecrypt"; \
+    ValueType: string; ValueName: "Icon"; ValueData: "{app}\gfgLock.exe,0"
+Root: HKCU; Subkey: "Software\Classes\AllFilesystemObjects\shell\gfgDecrypt\command"; \
+    ValueType: string; ValueData: """{app}\gfgLock.exe"" decrypt %*"
+
+
+; ==================================================================
+;   ALLOW CONTEXT MENU FOR LARGE MULTI-SELECTION (100+ files)
+;   Prevents Windows 11 from hiding shell verbs when many items selected
+;   Writes under current user only
+; ==================================================================
+
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer"; \
+    ValueName: "MultipleInvokePromptMinimum"; ValueType: dword; ValueData: "$000001F4"
+
+
+
+
+
+
+
+
+
 
 ; Application path info (optional)
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey

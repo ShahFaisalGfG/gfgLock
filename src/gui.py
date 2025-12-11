@@ -1,6 +1,13 @@
-# gui.py
-import sys
+# gui.py — updated for improved context-menu handling and main() behavior
+# - Accepts command-line invocation like: gfgLock.exe encrypt <paths...>
+# - When launched with encrypt/decrypt + multiple paths, opens exactly one
+#   Encryption/Decryption dialog containing all files (folders are expanded).
+# - Deduplicates paths and resolves directories into file lists.
+# - Robust handling of quoted paths and very large selection lists.
+# - Keep default behavior for double-clicking .gfglock files (auto-decrypt).
+
 import os
+import sys
 
 from PyQt5.QtCore import Qt
 
@@ -8,7 +15,7 @@ os.environ["QT_QPA_PLATFORM"] = "windows"
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from worker import EncryptDecryptWorker
-import gfglock_fast_aes256_cryptography as core
+
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and PyInstaller."""
@@ -40,7 +47,7 @@ class ProgressDialog(QtWidgets.QDialog):
         layout.addWidget(self.label_current)
 
         self.progress_bar = QtWidgets.QProgressBar()
-        self.progress_bar.setRange(0, total)
+        self.progress_bar.setRange(0, max(1, total))
         layout.addWidget(self.progress_bar)
 
         self.detail = QtWidgets.QLabel(f"0/{total}")
@@ -98,8 +105,6 @@ class EncryptDialog(QtWidgets.QDialog):
             pw_layout.addWidget(self.confirm_pass_input)
 
         form.addRow(pw_layout)
-
-
 
         # CPU Threads + Chunk Size on same row
         row = QtWidgets.QHBoxLayout()
@@ -183,19 +188,25 @@ class EncryptDialog(QtWidgets.QDialog):
     def add_files(self):
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files")
         for f in files:
-            self.list_widget.addItem(f)
+            self._add_path_to_list(f)
 
     def add_folders(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder")
         if folder:
-            import os
             for root, _, files in os.walk(folder):
                 for fn in files:
-                    self.list_widget.addItem(os.path.join(root, fn))
+                    self._add_path_to_list(os.path.join(root, fn))
 
     def remove_selected(self):
         for item in self.list_widget.selectedItems():
             self.list_widget.takeItem(self.list_widget.row(item))
+
+    def _add_path_to_list(self, path):
+        # Add only unique absolute normalized paths
+        p = os.path.abspath(path)
+        items = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
+        if p not in items:
+            self.list_widget.addItem(p)
 
     def start_op(self):
         paths = [self.list_widget.item(i).text() for i in range(self.list_widget.count())]
@@ -217,10 +228,6 @@ class EncryptDialog(QtWidgets.QDialog):
             if password != confirm_password:
                 QtWidgets.QMessageBox.warning(self, "Password mismatch", "Password and Confirm Password must match.")
                 return
-
-        threads = int(self.threads_combo.currentText())
-        chunk_size = self.chunk_combo.currentData()
-        encrypt_name = self.encrypt_name_cb.isChecked() if self.mode == "encrypt" else False
 
         threads = int(self.threads_combo.currentText())
         chunk_size = self.chunk_combo.currentData()
@@ -265,10 +272,7 @@ class EncryptDialog(QtWidgets.QDialog):
 
     def on_finished(self, elapsed, total):
         op = "Encrypted" if self.mode == "encrypt" else "Decrypted"
-        QtWidgets.QMessageBox.information(
-            self,
-            f"{op} Completed",
-            f"{op} Completed\n\n{op} {total} files in {elapsed:.2f} seconds."
+        QtWidgets.QMessageBox.information(self,f"{op}",f"{op} {total} files in {elapsed:.2f} seconds."
         )
         self.progress_dlg.close()
         self.accept()
@@ -305,47 +309,91 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_encrypt.clicked.connect(lambda: EncryptDialog(self, "encrypt").exec_())
         self.btn_decrypt.clicked.connect(lambda: EncryptDialog(self, "decrypt").exec_())
         self.btn_prefs.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, "Preferences", "Coming soon."))
-        self.btn_about.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, "About",
-            "gfgLock\nDeveloped by Shah Faisal\ngfgroyal.com"))
+        self.btn_about.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, "About","gfgLock\nDeveloped by Shah Faisal\ngfgroyal.com"))
 
         self.status = QtWidgets.QLabel("Ready")
         v.addWidget(self.status)
+
+
+# ---- Utilities used by main() to expand arguments into file lists ----
+
+def _normalize_and_expand_paths(raw_paths):
+    """Accept an iterable of raw paths (str). For each path:
+    - If path is a file -> yield absolute path
+    - If path is a directory -> walk recursively and yield files inside
+    - Deduplicate results and preserve order
+    """
+    seen = set()
+    out = []
+
+    for rp in raw_paths:
+        if not rp:
+            continue
+        p = os.path.abspath(rp)
+
+        # Windows may pass a path that points to a file that doesn't exist yet
+        # but in general we only expand existing paths
+        if os.path.isfile(p):
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+        elif os.path.isdir(p):
+            # Walk directory and add files
+            for root, _, files in os.walk(p):
+                for fn in files:
+                    fp = os.path.join(root, fn)
+                    if fp not in seen:
+                        seen.add(fp)
+                        out.append(fp)
+        else:
+            # Path might be a dragged item like a UNC path or contain quotes — try stripping quotes
+            p2 = p.strip('"')
+            if os.path.exists(p2):
+                if os.path.isfile(p2) and p2 not in seen:
+                    seen.add(p2)
+                    out.append(p2)
+            else:
+                # If path doesn't exist, still append it as-is (useful for some shell invocations)
+                if p not in seen:
+                    seen.add(p)
+                    out.append(p)
+
+    return out
 
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
 
     args = sys.argv[1:]
+    # Accept two invocation styles:
+    # 1) gfgLock.exe encrypt <paths...>
+    # 2) gfgLock.exe decrypt <paths...>
+    # 3) gfgLock.exe <list-of-files> (auto-detect .gfglock -> open decrypt)
+
     if args:
         mode = None
         paths = []
 
-        # First argument is explicit mode from registry
-        if args[0].lower() == "encrypt":
-            mode = "encrypt"
-            paths = args[1:]
-        elif args[0].lower() == "decrypt":
-            mode = "decrypt"
+        # If first arg is 'encrypt' or 'decrypt', treat as explicit mode
+        if args[0].lower() in ("encrypt", "decrypt"):
+            mode = args[0].lower()
             paths = args[1:]
 
+        # If mode specified and there are path args -> open single dialog with all
         if mode and paths:
+            expanded = _normalize_and_expand_paths(paths)
             dlg = EncryptDialog(None, mode)
-            for p in paths:
-                if os.path.isfile(p):
-                    dlg.list_widget.addItem(p)
-                elif os.path.isdir(p):
-                    for root, _, files in os.walk(p):
-                        for fn in files:
-                            dlg.list_widget.addItem(os.path.join(root, fn))
+            for p in expanded:
+                dlg._add_path_to_list(p)
             dlg.exec_()
             sys.exit(0)
 
-        # Auto-detect double-clicked .gfglock file
-        gfglock_files = [a for a in args if os.path.isfile(a) and a.endswith(".gfglock")]
+        # If the user double-clicks .gfglock files (Windows will pass them as args)
+        gfglock_files = [a for a in args if os.path.isfile(a) and a.lower().endswith('.gfglock')]
         if gfglock_files:
             dlg = EncryptDialog(None, "decrypt")
             for f in gfglock_files:
-                dlg.list_widget.addItem(f)
+                dlg._add_path_to_list(os.path.abspath(f))
             dlg.exec_()
             sys.exit(0)
 
