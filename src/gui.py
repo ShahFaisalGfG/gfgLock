@@ -1,13 +1,11 @@
 import os
+import shlex
 import sys
 
-from PyQt5.QtCore import Qt
 from PyQt5 import QtWidgets, QtCore, QtGui
-from worker import EncryptDecryptWorker
+from PyQt5.QtCore import Qt
 
-import ctypes
-from ctypes import wintypes
-import shlex
+from worker import EncryptDecryptWorker
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
