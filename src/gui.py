@@ -58,6 +58,13 @@ class ProgressDialog(QtWidgets.QDialog):
         self.addAction(help_action)
         self.setWindowTitle("Progress")
         self.resize(520, 300)  # Made taller for logs
+        # Lock dialog width so long log lines cannot expand the window horizontally
+        try:
+            self.setFixedWidth(520)
+            # Set size policy on the dialog itself to prevent resizing due to content
+            self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
+        except Exception:
+            pass
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
 
         self.setModal(True)
@@ -76,6 +83,12 @@ class ProgressDialog(QtWidgets.QDialog):
 
         self.logs = QtWidgets.QPlainTextEdit()
         self.logs.setReadOnly(True)
+        # Prefer horizontal scrolling for long lines
+        try:
+            self.logs.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+            self.logs.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
+        except Exception:
+            pass
         layout.addWidget(self.logs)
 
         h = QtWidgets.QHBoxLayout()
@@ -171,16 +184,17 @@ class EncryptDialog(QtWidgets.QDialog):
         row.addWidget(QtWidgets.QLabel("Chunk Size:"))
         row.addWidget(self.chunk_combo)
         row.addStretch()
+        # Show password checkbox (right aligned). Visible for both modes.
+        self.show_pass_cb = QtWidgets.QCheckBox("Show Password")
+        self.show_pass_cb.stateChanged.connect(self.toggle_password)
+        row.addWidget(self.show_pass_cb)
         form.addRow(row)
 
-        # Encrypt filenames + Show Password
+        # Encrypt filenames (kept in options area for encrypt mode)
         if self.mode == "encrypt":
             bottom_row = QtWidgets.QHBoxLayout()
             self.encrypt_name_cb = QtWidgets.QCheckBox("Encrypt filenames")
-            self.show_pass_cb = QtWidgets.QCheckBox("Show Password")
-            self.show_pass_cb.stateChanged.connect(self.toggle_password)
             bottom_row.addWidget(self.encrypt_name_cb)
-            bottom_row.addWidget(self.show_pass_cb)
             bottom_row.addStretch()
             form.addRow(bottom_row)
 
@@ -553,6 +567,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.logs_text = QtWidgets.QTextEdit()
         self.logs_text.setReadOnly(True)
         self.logs_text.setPlaceholderText("Debug logs...")
+        # Prefer horizontal scrolling for long lines
+        try:
+            self.logs_text.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+            self.logs_text.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
+        except Exception:
+            pass
         v.addWidget(self.logs_text)
 
     def show_logs(self, text):
