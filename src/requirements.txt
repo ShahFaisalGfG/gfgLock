@@ -1,0 +1,3 @@
+cryptography>=46.0.3
+PyQt5>=5.15
+pyinstaller>=6.17
