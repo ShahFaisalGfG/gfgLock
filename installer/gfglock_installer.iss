@@ -36,9 +36,8 @@ SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=110,120
 
-; Privileges
+; Privileges — require admin (force system-wide install)
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
 
 ; Architectures
 ArchitecturesInstallIn64BitMode=x64
