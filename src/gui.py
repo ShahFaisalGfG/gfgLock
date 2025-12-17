@@ -6,6 +6,9 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt
 
 from worker import EncryptDecryptWorker
+from preferences import PreferencesWindow
+from theme_manager import apply_theme
+from gfg_helpers import load_settings
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -46,29 +49,13 @@ class ProgressDialog(QtWidgets.QDialog):
     def __init__(self, total, parent=None):
         super().__init__(parent)
 
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint) # type: ignore
-        help_action = QtWidgets.QAction("Help", self)
-        help_action.triggered.connect(lambda: QtWidgets.QMessageBox.information(
-            self,
-            "Usage Guide",
-            "See README.md for full usage instructions:\nhttps://github.com/shahfaisalgfg/gfgLock"
-        )) # type: ignore
-        self.addAction(help_action)
         self.setWindowTitle("Progress")
         self.resize(520, 300)  # Made taller for logs
-        # Lock dialog width so long log lines cannot expand the window horizontally
-        try:
-            self.setFixedWidth(520)
-            # Set size policy on the dialog itself to prevent resizing due to content
-            self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
-        except Exception:
-            pass
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
-
         self.setModal(True)
-
+        
         layout = QtWidgets.QVBoxLayout(self)
-
+        
         self.label_current = QtWidgets.QLabel("Current file:")
         layout.addWidget(self.label_current)
 
@@ -102,13 +89,15 @@ class EncryptDialog(QtWidgets.QDialog):
         self.mode = mode
         self.errors = []
         self.current_file = ""
+        self.settings = load_settings()
 
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint) # type: ignore
         self.setWindowTitle("Encryption" if mode == "encrypt" else "Decryption")
         self.resize(700, 480)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
 
         enc_main = QtWidgets.QVBoxLayout(self)
+        
+        # Use standard window title bar instead of custom title bar
 
         # File list
         self.list_widget = QtWidgets.QListWidget()
@@ -149,17 +138,26 @@ class EncryptDialog(QtWidgets.QDialog):
         # CPU Threads + Chunk Size on same row
         row = QtWidgets.QHBoxLayout()
 
-        # CPU threads
+        # CPU threads - load from settings
         total_threads = os.cpu_count() or 1
         max_safe = max(total_threads - 1, 1)
+        
+        if self.mode == "encrypt":
+            default_threads = self.settings.get("encryption", {}).get("cpu_threads", max(1, total_threads // 2))
+            default_chunk = self.settings.get("encryption", {}).get("chunk_size", 8*1024*1024)
+            default_encrypt_name = self.settings.get("encryption", {}).get("encrypt_filenames", False)
+        else:
+            default_threads = self.settings.get("decryption", {}).get("cpu_threads", max(1, total_threads // 2))
+            default_chunk = self.settings.get("decryption", {}).get("chunk_size", 8*1024*1024)
+            default_encrypt_name = False  # Not used in decrypt
+        
         self.threads_combo = QtWidgets.QComboBox()
         for i in range(1, max_safe + 1):
             self.threads_combo.addItem(str(i))
         self.threads_combo.setFixedWidth(120)
 
-        default_thr = max(1, total_threads // 2)
-        if str(default_thr) in [str(i) for i in range(1, max_safe + 1)]:
-            self.threads_combo.setCurrentText(str(default_thr))
+        if str(default_threads) in [str(i) for i in range(1, max_safe + 1)]:
+            self.threads_combo.setCurrentText(str(default_threads))
 
         # chunk size
         self.chunk_combo = QtWidgets.QComboBox()
@@ -174,8 +172,13 @@ class EncryptDialog(QtWidgets.QDialog):
         for label, val in chunks:
             self.chunk_combo.addItem(label, val)
         self.chunk_combo.setFixedWidth(150)
-        self.chunk_combo.setCurrentText("8 MB (default)")
-        # self.chunk_combo.setCurrentText("18 MB (fast)")
+        
+        # Set chunk size from settings
+        chunk_index = self.chunk_combo.findData(default_chunk)
+        if chunk_index >= 0:
+            self.chunk_combo.setCurrentIndex(chunk_index)
+        else:
+            self.chunk_combo.setCurrentText("8 MB (default)")
 
         row.addWidget(QtWidgets.QLabel("CPU Threads:"))
         row.addWidget(self.threads_combo)
@@ -192,6 +195,7 @@ class EncryptDialog(QtWidgets.QDialog):
         if self.mode == "encrypt":
             bottom_row = QtWidgets.QHBoxLayout()
             self.encrypt_name_cb = QtWidgets.QCheckBox("Encrypt filenames")
+            self.encrypt_name_cb.setChecked(default_encrypt_name)
             bottom_row.addWidget(self.encrypt_name_cb)
             bottom_row.addStretch()
             form.addRow(bottom_row)
@@ -481,11 +485,14 @@ class EncryptDialog(QtWidgets.QDialog):
 
 
 
+
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
+        self.settings = load_settings()
 
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint) # type: ignore
         self.setWindowTitle("gfgLock")
         self.resize(720, 420)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.ico")))
@@ -494,9 +501,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(mw_main)
 
         v = QtWidgets.QVBoxLayout(mw_main)
+        
+        # Use standard window title bar instead of custom title bar
 
         # Professional header: icon + title + subtitle
         header_widget = QtWidgets.QWidget()
+        header_widget.setObjectName("header_widget")
         header_layout = QtWidgets.QHBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -511,10 +521,12 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
         title_layout = QtWidgets.QVBoxLayout()
-        title_lbl = QtWidgets.QLabel("<span style='font-size:16pt;font-weight:700;color:#2b2b2b;'>gfgLock</span>")
+        title_lbl = QtWidgets.QLabel("<span style='font-size:16pt;font-weight:700;'>gfgLock</span>")
+        title_lbl.setObjectName("title_label")
         title_lbl.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
         subtitle_lbl = QtWidgets.QLabel("Secure AES-256 file encryption and decryption — fast, simple, reliable")
-        subtitle_lbl.setStyleSheet("color: #666666; font-size:9pt;")
+        subtitle_lbl.setObjectName("subtitle_label")
+        subtitle_lbl.setStyleSheet("font-size:9pt;")
 
         title_layout.addWidget(title_lbl)
         title_layout.addWidget(subtitle_lbl)
@@ -549,7 +561,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.btn_encrypt.clicked.connect(lambda: EncryptDialog(self, "encrypt").exec_()) # type: ignore
         self.btn_decrypt.clicked.connect(lambda: EncryptDialog(self, "decrypt").exec_()) # type: ignore
-        self.btn_prefs.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, "Preferences", "Coming soon.")) # type: ignore
+        self.btn_prefs.clicked.connect(self.open_preferences) # type: ignore
         self.btn_about.clicked.connect(self.show_about_dialog) # type: ignore
 
         # Check Updates button opens GitHub releases
@@ -576,13 +588,27 @@ class MainWindow(QtWidgets.QMainWindow):
     def show_logs(self, text):
         self.logs_text.setText(text)
 
+    def open_preferences(self):
+        """Open the preferences window."""
+        prefs_window = PreferencesWindow(self)
+        prefs_window.settings_changed.connect(self.on_settings_changed)
+        prefs_window.exec_()
+
+    def on_settings_changed(self, settings):
+        """Handle settings changed signal."""
+        self.settings = settings
+        # Reapply theme if changed
+        apply_theme(None, settings.get("theme", "system"))
+
     def show_about_dialog(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle("About gfgLock")
-        dlg.setWindowModality(Qt.WindowModal)  # type: ignore[attr-defined]
         dlg.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
-
+        
         layout = QtWidgets.QVBoxLayout(dlg)
+        
+        # Use standard window title bar instead of custom title bar
+        
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
@@ -669,6 +695,9 @@ class MainWindow(QtWidgets.QMainWindow):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("Fusion")
+    
+    # Apply theme
+    apply_theme(app)
 
     args = sys.argv[1:]
     debug_logs = [f"Raw args received: {args}"]
