@@ -68,10 +68,18 @@ class ProgressDialog(QtWidgets.QDialog):
 
         self.logs = QtWidgets.QPlainTextEdit()
         self.logs.setReadOnly(True)
-        # Prefer horizontal scrolling for long lines
+        # Prefer horizontal scrolling for long lines, but constrain width
         try:
             self.logs.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
             self.logs.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        # Prevent the logs widget from growing the dialog based on content length.
+        # Ignore content-based size adjustments and allow the widget to expand
+        # only when the user resizes the dialog.
+        try:
+            self.logs.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustIgnored)
+            self.logs.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
         except Exception:
             pass
         layout.addWidget(self.logs)
@@ -420,8 +428,11 @@ class EncryptDialog(QtWidgets.QDialog):
 
         # Compose a single combined message including details
         lines = [f"{op} {succeeded} files in {elapsed:.2f} seconds."]
-        if skipped > 0 and self.mode == "encrypt":
-            lines.append(f"{skipped} files were already encrypted.")
+        if skipped > 0:
+            if self.mode == "encrypt":
+                lines.append(f"{skipped} files were already encrypted.")
+            else:
+                lines.append(f"{skipped} files were already decrypted.")
         if failed > 0:
             if self.mode == "decrypt":
                 lines.append(f"{failed} files decryption failed.")

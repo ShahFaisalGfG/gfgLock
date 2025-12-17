@@ -86,15 +86,20 @@ class EncryptDecryptWorker(QtCore.QRunnable):
                         if success:
                             succeeded += 1
                         else:
-                            # Check if this was an expected 'already encrypted' skip
-                            is_already_encrypted = False
+                            # Check if this was a skip (already encrypted/decrypted)
+                            is_skipped = False
                             if self.mode == 'encrypt':
                                 if msg and 'already encrypted' in msg.lower():
-                                    is_already_encrypted = True
+                                    is_skipped = True
                                 elif p and p.lower().endswith('.gfglock'):
-                                    is_already_encrypted = True
+                                    is_skipped = True
+                            elif self.mode == 'decrypt':
+                                if msg and 'already decrypted' in msg.lower():
+                                    is_skipped = True
+                                elif p and not p.lower().endswith('.gfglock'):
+                                    is_skipped = True
 
-                            if is_already_encrypted:
+                            if is_skipped:
                                 skipped_already_encrypted += 1
                             else:
                                 failed += 1
