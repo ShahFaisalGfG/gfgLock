@@ -1,5 +1,4 @@
-cryptography>=46.0.3
-pycryptodome>=3.23.0
+cryptography>=46.0
+pycryptodome>=3.23
 PyQt5>=5.15
 pyinstaller>=6.17
-

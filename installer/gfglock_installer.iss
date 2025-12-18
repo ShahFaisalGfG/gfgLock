@@ -8,13 +8,13 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "gfgRoyal"
 #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
-#define MyAppExeName "gfgLock_gui.exe"
-#define SourceDir "..\src\dist\gfgLock_gui"
-#define IconsDir "..\src\assets\icons"
+#define MyAppExeName "gfgLock.exe"
+#define SourceDir "..\src\dist\gfgLock"
+#define IconsDir "..\src\my_app\assets\icons"
 
 [Setup]
 ; App identification
-AppId={{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}
+AppId={{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName}
