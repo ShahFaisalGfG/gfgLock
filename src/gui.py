@@ -4,6 +4,7 @@ import sys
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QTextOption
 
 from worker import EncryptDecryptWorker
 from preferences import PreferencesWindow
@@ -415,30 +416,39 @@ class EncryptDialog(QtWidgets.QDialog):
             return
 
         label = self.progress_dlg.label_current
+
+        # Show only the filename (not the full path) in the label to avoid
+        # making the dialog grow. Keep the full path available as a tooltip.
         if text:
-            display = "Current: " + text
+            try:
+                fname = os.path.basename(text)
+            except Exception:
+                fname = text
+            display = "Current: " + (fname or text)
+            try:
+                label.setToolTip(text)
+            except Exception:
+                pass
         else:
             display = "Current:"
+            try:
+                label.setToolTip("")
+            except Exception:
+                pass
 
         # Elide long filenames to avoid resizing the dialog. Prefer to elide
-        # in the middle so both ends of the path remain visible.
+        # in the middle so both ends remain visible.
         try:
             fm = label.fontMetrics()
-            # Determine a reasonable target width: use the label's current
-            # width if available, otherwise fall back to dialog width minus margins.
-            avail = label.width() - 20
+            avail = max(50, label.width() - 20)
             if avail <= 50:
                 try:
                     avail = max(100, self.progress_dlg.width() - 120)
                 except Exception:
                     avail = 300
-            elided = fm.elidedText(display, Qt.ElideMiddle, max(50, avail))
+            elided = fm.elidedText(display, QTextOption.ElideMiddle, avail)
         except Exception:
-            # Fallback to truncation
-            if len(display) > 200:
-                elided = display[:200] + "..."
-            else:
-                elided = display
+            elided = display if len(display) <= 200 else display[:200] + "..."
 
         label.setText(elided) # type: ignore
 
