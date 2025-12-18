@@ -10,6 +10,7 @@ from worker import EncryptDecryptWorker
 from preferences import PreferencesWindow
 from theme_manager import apply_theme
 from gfg_helpers import load_settings
+from custom_title_bar import CustomTitleBar
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -50,19 +51,31 @@ class ProgressDialog(QtWidgets.QDialog):
     def __init__(self, total, parent=None):
         super().__init__(parent)
 
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
         self.setWindowTitle("Progress")
-        self.resize(520, 300)  # Made taller for logs
+        # Set minimum size and initial size - allow user to resize larger
+        self.setMinimumSize(620, 380)
+        self.resize(620, 380)
+        self.setSizeGripEnabled(False)  # We use QSizeGrip manually, prevent auto-resize
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
         self.setModal(True)
         
         layout = QtWidgets.QVBoxLayout(self)
         
+        # custom title bar
+        try:
+            self.custom_title_bar = CustomTitleBar("Progress", self, show_min_max=False)
+            layout.insertWidget(0, self.custom_title_bar)
+        except Exception:
+            pass
+
         self.label_current = QtWidgets.QLabel("Current file:")
         # Prevent this label from forcing the dialog to grow for long filenames.
         try:
-            self.label_current.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+            self.label_current.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
             self.label_current.setWordWrap(False)
             self.label_current.setMinimumWidth(0)
+            self.label_current.setFixedHeight(20)
         except Exception:
             pass
         layout.addWidget(self.label_current)
@@ -87,16 +100,29 @@ class ProgressDialog(QtWidgets.QDialog):
         # only when the user resizes the dialog.
         try:
             self.logs.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustIgnored)
-            self.logs.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+            self.logs.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+            self.logs.setMinimumHeight(100)  # Set minimum height to prevent large sizeHint
         except Exception:
             pass
-        layout.addWidget(self.logs)
+        layout.addWidget(self.logs, 1)  # Stretch factor of 1 to fill available space
 
         h = QtWidgets.QHBoxLayout()
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
         h.addStretch()
         h.addWidget(self.btn_cancel)
+        # resize grip so user can resize frameless window
+        try:
+            grip = QtWidgets.QSizeGrip(self)
+            h.addWidget(grip)
+        except Exception:
+            pass
         layout.addLayout(h)
+
+    def showEvent(self, a0):
+        """Prevent automatic resizing when dialog is shown."""
+        super().showEvent(a0)
+        # Reset to minimum size after showing to prevent layout-driven expansion
+        self.resize(520, 300)
 
 
 class EncryptDialog(QtWidgets.QDialog):
@@ -107,13 +133,19 @@ class EncryptDialog(QtWidgets.QDialog):
         self.current_file = ""
         self.settings = load_settings()
 
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
         self.setWindowTitle("Encryption" if mode == "encrypt" else "Decryption")
         self.resize(700, 480)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
 
         enc_main = QtWidgets.QVBoxLayout(self)
         
-        # Use standard window title bar instead of custom title bar
+        # custom title bar
+        try:
+            self.custom_title_bar = CustomTitleBar("Encryption" if mode == "encrypt" else "Decryption", self)
+            enc_main.insertWidget(0, self.custom_title_bar)
+        except Exception:
+            pass
 
         # File list
         self.list_widget = QtWidgets.QListWidget()
@@ -230,6 +262,15 @@ class EncryptDialog(QtWidgets.QDialog):
         )
         bottom.addWidget(self.btn_cancel)
         bottom.addWidget(self.btn_start)
+        # add resize grip to allow resizing frameless dialog
+        try:
+            grip_h = QtWidgets.QHBoxLayout()
+            grip_h.addStretch()
+            grip = QtWidgets.QSizeGrip(self)
+            grip_h.addWidget(grip)
+            enc_main.addLayout(grip_h)
+        except Exception:
+            pass
         enc_main.addLayout(bottom)
 
         # Connect signals
@@ -356,21 +397,24 @@ class EncryptDialog(QtWidgets.QDialog):
         paths = [self.list_widget.item(i).text() for i in range(self.list_widget.count())] # type: ignore
 
         if not paths:
-            QtWidgets.QMessageBox.warning(self, "No files", "Add files first.")
+            from custom_title_bar import show_message
+            show_message(self, "No files", "Add files first.", icon="warning")
             return
 
         password = self.pass_input.text().strip()
         if not password:
-            QtWidgets.QMessageBox.warning(self, "Password required", "Enter a password.")
+            from custom_title_bar import show_message
+            show_message(self, "Password required", "Enter a password.", icon="warning")
             return
 
         if self.mode == "encrypt":
+            from custom_title_bar import show_message
             confirm_password = self.confirm_pass_input.text().strip()
             if not confirm_password:
-                QtWidgets.QMessageBox.warning(self, "Confirm required", "Please confirm your password.")
+                show_message(self, "Confirm required", "Please confirm your password.", icon="warning")
                 return
             if password != confirm_password:
-                QtWidgets.QMessageBox.warning(self, "Password mismatch", "Password and Confirm Password must match.")
+                show_message(self, "Password mismatch", "Password and Confirm Password must match.", icon="warning")
                 return
 
         self.errors = []
@@ -485,10 +529,11 @@ class EncryptDialog(QtWidgets.QDialog):
 
         full_msg = "\n".join(lines)
         # Show a single dialog. This call blocks until user clicks OK.
+        from custom_title_bar import show_message
         if failed > 0:
-            QtWidgets.QMessageBox.warning(self, f"{op} completed with issues", full_msg)
+            show_message(self, f"{op} completed with issues", full_msg, icon="warning")
         else:
-            QtWidgets.QMessageBox.information(self, op, full_msg)
+            show_message(self, op, full_msg, icon="info")
 
         # After user closed the message box, copy progress logs to main window logs panel
         try:
@@ -547,6 +592,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.settings = load_settings()
 
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)  # type: ignore[attr-defined]
         self.setWindowTitle("gfgLock")
         self.resize(720, 420)
         self.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.ico")))
@@ -555,8 +601,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(mw_main)
 
         v = QtWidgets.QVBoxLayout(mw_main)
-        
-        # Use standard window title bar instead of custom title bar
+
+        # custom title bar
+        try:
+            self.custom_title_bar = CustomTitleBar("gfgLock", self)
+            v.insertWidget(0, self.custom_title_bar)
+        except Exception:
+            pass
 
         # Professional header: icon + title + subtitle
         header_widget = QtWidgets.QWidget()
@@ -630,7 +681,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Dev-only logs panel - Remove after testing
         self.logs_text = QtWidgets.QTextEdit()
         self.logs_text.setReadOnly(True)
-        self.logs_text.setPlaceholderText("Debug logs...")
+        self.logs_text.setPlaceholderText("Output logs...")
         # Prefer horizontal scrolling for long lines
         try:
             self.logs_text.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
@@ -638,9 +689,31 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
         v.addWidget(self.logs_text)
+        # Clear logs button
+        logs_btn_layout = QtWidgets.QHBoxLayout()
+        logs_btn_layout.addStretch()
+        self.btn_clear_logs = QtWidgets.QPushButton("🧹 Clear")
+        self.btn_clear_logs.setToolTip("Clear all logs")
+        self.btn_clear_logs.setMaximumWidth(100)
+        self.btn_clear_logs.clicked.connect(self.clear_logs_panel)
+        logs_btn_layout.addWidget(self.btn_clear_logs)
+        v.addLayout(logs_btn_layout)
+        # add resize grip for frameless main window
+        try:
+            grip_h = QtWidgets.QHBoxLayout()
+            grip_h.addStretch()
+            grip = QtWidgets.QSizeGrip(self)
+            grip_h.addWidget(grip)
+            v.addLayout(grip_h)
+        except Exception:
+            pass
 
     def show_logs(self, text):
         self.logs_text.setText(text)
+
+    def clear_logs_panel(self):
+        """Clear the logs text area."""
+        self.logs_text.clear()
 
     def open_preferences(self):
         """Open the preferences window."""
@@ -659,10 +732,15 @@ class MainWindow(QtWidgets.QMainWindow):
         dlg.setWindowTitle("About gfgLock")
         dlg.setWindowIcon(QtGui.QIcon(resource_path("assets/icons/gfgLock.png")))
         
+        dlg.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
         layout = QtWidgets.QVBoxLayout(dlg)
-        
-        # Use standard window title bar instead of custom title bar
-        
+        # custom title bar
+        try:
+            title_bar = CustomTitleBar("About gfgLock", dlg)
+            layout.insertWidget(0, title_bar)
+        except Exception:
+            pass
+
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
@@ -847,7 +925,8 @@ def main():
     if unique_paths:
         dlg.pass_input.setFocus()
     else:
-        QtWidgets.QMessageBox.warning(None, "No files", f"No valid files found for {mode}ion.")
+        from custom_title_bar import show_message
+        show_message(None, "No files", f"No valid files found for {mode}ion.", icon="warning")
 
     dlg.exec_()
     sys.exit(0)
