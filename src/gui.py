@@ -57,6 +57,13 @@ class ProgressDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout(self)
         
         self.label_current = QtWidgets.QLabel("Current file:")
+        # Prevent this label from forcing the dialog to grow for long filenames.
+        try:
+            self.label_current.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+            self.label_current.setWordWrap(False)
+            self.label_current.setMinimumWidth(0)
+        except Exception:
+            pass
         layout.addWidget(self.label_current)
 
         self.progress_bar = QtWidgets.QProgressBar()
@@ -404,10 +411,36 @@ class EncryptDialog(QtWidgets.QDialog):
         # Update the current file label only. Actual logs from core are
         # forwarded via the status signal and will be appended to the logs panel.
         self.current_file = text
+        if not self.progress_dlg:
+            return
+
+        label = self.progress_dlg.label_current
         if text:
-            self.progress_dlg.label_current.setText("Current: " + text) # type: ignore
+            display = "Current: " + text
         else:
-            self.progress_dlg.label_current.setText("Current:") # type: ignore
+            display = "Current:"
+
+        # Elide long filenames to avoid resizing the dialog. Prefer to elide
+        # in the middle so both ends of the path remain visible.
+        try:
+            fm = label.fontMetrics()
+            # Determine a reasonable target width: use the label's current
+            # width if available, otherwise fall back to dialog width minus margins.
+            avail = label.width() - 20
+            if avail <= 50:
+                try:
+                    avail = max(100, self.progress_dlg.width() - 120)
+                except Exception:
+                    avail = 300
+            elided = fm.elidedText(display, Qt.ElideMiddle, max(50, avail))
+        except Exception:
+            # Fallback to truncation
+            if len(display) > 200:
+                elided = display[:200] + "..."
+            else:
+                elided = display
+
+        label.setText(elided) # type: ignore
 
     def on_status(self, msg):
         # Append core/log messages to the logs panel exactly as they would
