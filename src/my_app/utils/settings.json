@@ -1,0 +1,18 @@
+{
+  "theme": "light",
+  "encryption": {
+    "cpu_threads": 4,
+    "chunk_size": 8388608,
+    "encrypt_filenames": false
+  },
+  "decryption": {
+    "cpu_threads": 4,
+    "chunk_size": 8388608,
+    "encrypt_filenames": false
+  },
+  "advanced": {
+    "encryption_mode": "aes256_gcm",
+    "enable_logs": false,
+    "log_level": "critical"
+  }
+}

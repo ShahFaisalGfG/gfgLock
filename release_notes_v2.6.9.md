@@ -68,7 +68,7 @@ Real-time, file-based logging with immediate write-on-event:
 
 **Example Log Output:**
 
-```
+```log
 [2025-12-19 14:32:45] Encrypting: document.pdf using AES-256 GCM
 [2025-12-19 14:32:47] Encryption successful: document.pdf.gfglock (2.4 MB)
 [2025-12-19 14:32:48] Critical Error: Failed to encrypt: corrupted_file.bin (Permission denied)
@@ -158,11 +158,11 @@ Unified theme system with proper disabled widget styling:
 
 **Modular Design:**
 
-```
+```log
 src/my_app/
 ├── core/                    # Encryption algorithms
 │   ├── aes256_gcm_cfb.py   # AES-256 GCM/CFB dual implementation
-│   └── xchacha20_poly1305.py# ChaCha20-Poly1305 implementation
+│   └── chacha20_poly1305.py# ChaCha20-Poly1305 implementation
 ├── services/
 │   └── worker.py            # Multi-threaded operations dispatcher
 ├── views/
