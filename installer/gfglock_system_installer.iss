@@ -9,8 +9,8 @@
 #define MyAppPublisher "gfgRoyal"
 #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
 #define MyAppExeName "gfgLock.exe"
-#define SourceDir "..\src\my_app\dist\gfgLock"
-#define IconsDir "..\src\my_app\assets\icons"
+#define SourceDir "..\src\dist\gfgLock"
+#define IconsDir "..\src\assets\icons"
 
 [Setup]
 ; App identification
@@ -68,11 +68,11 @@ Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 ; {#SourceDir} (the application executable and required runtime files).
 ; If you need to include specific developer docs or snippets, add them explicitly here.
 ; Example (commented):
-; Source: "..\src\my_app\docs\developer_notes.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+; Source: "..\src\docs\developer_notes.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 ; NOTE: At runtime the application writes logs and user settings to the user's profile.
 ; - Logs: %APPDATA%\gfgLock\logs\ (per-user). Do not expect writable logs under {app} when installed to Program Files.
-; - Settings: %APPDATA%\gfgLock\ (per-user). Development builds may use src/my_app/logs/ for local testing.
+; - Settings: %APPDATA%\gfgLock\ (per-user). Development builds may use src/logs/ for local testing.
 
 [Icons]
 ; Start Menu

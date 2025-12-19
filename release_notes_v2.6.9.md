@@ -44,7 +44,7 @@ Three distinct encryption algorithms, each with its own file extension:
 
 Real-time, file-based logging with immediate write-on-event:
 
-**Log Location:** `%APPDATA%\gfgLock\logs\` (Windows) or `src/my_app/logs/` (development)
+**Log Location:** `%APPDATA%\gfgLock\logs\` (Windows) or `src/logs/` (development)
 
 **Log Files:**
 
@@ -159,7 +159,7 @@ Unified theme system with proper disabled widget styling:
 **Modular Design:**
 
 ```log
-src/my_app/
+src/
 ├── core/                    # Encryption algorithms
 │   ├── aes256_gcm_cfb.py   # AES-256 GCM/CFB dual implementation
 │   └── chacha20_poly1305.py# ChaCha20-Poly1305 implementation

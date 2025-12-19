@@ -143,7 +143,7 @@ The Preferences window provides control over:
 
 ## Logging
 
-Logs are stored in `%APPDATA%\gfgLock\logs\` (or `src/my_app/logs/` in development mode):
+Logs are stored in `%APPDATA%\gfgLock\logs\` (or `src/logs/` in development mode):
 
 - **general.log** — All status messages and operations
 - **critical.log** — Errors and critical issues only
@@ -218,7 +218,7 @@ Example:
 
 ```log
 gfgLock/
-├── src/my_app/
+├── src/
 │   ├── gui.py                      # Main GUI and dialogs
 │   ├── core/
 │   │   ├── aes256_gcm_cfb.py       # AES-256 GCM/CFB encryption
