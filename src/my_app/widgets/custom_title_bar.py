@@ -1,5 +1,6 @@
 from typing import Optional, cast
 import os
+import sys
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt
@@ -35,8 +36,9 @@ class CustomTitleBar(QtWidgets.QWidget):
             if win is not None:
                 icon = win.windowIcon()
             if icon is None or icon.isNull():
-                # fallback to bundled icon path relative to this file
-                bundled = os.path.join(os.path.dirname(__file__), "assets", "icons", "gfgLock.png")
+                # fallback to bundled icon path: prefer PyInstaller extraction dir (sys._MEIPASS)
+                base = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
+                bundled = os.path.join(base, "assets", "icons", "gfgLock.png")
                 if os.path.exists(bundled):
                     icon = QtGui.QIcon(bundled)
             if icon and not icon.isNull():
