@@ -1,3 +1,8 @@
+; =======================================================
+; gfgLock Windows Installer
+; Inno Setup Script
+; Version: 2.6.9
+; =======================================================
 ; gfgLock per-user installer (non-admin)
 ; Use this script to create a per-user installer that does not require elevated privileges
 
@@ -6,7 +11,7 @@
 #define MyAppPublisher "gfgRoyal"
 #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
 #define MyAppExeName "gfgLock.exe"
-#define SourceDir "..\src\dist\gfgLock"
+#define SourceDir "..\src\my_app\dist\gfgLock"
 #define IconsDir "..\src\my_app\assets\icons"
 
 [Setup]
@@ -22,12 +27,12 @@ AppUpdatesURL={#MyAppURL}
 ; Install per-user (no admin privileges required)
 PrivilegesRequired=lowest
 
-; Install to local app data for current user
-DefaultDirName={userlocalappdata}\{#MyAppName}
+; Install to per-user AppData (Roaming) for current user
+DefaultDirName={userappdata}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\build\installer
-OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersion}_user
+OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersion}_user_installer
 SetupIconFile={#IconsDir}\gfgLock.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
@@ -36,19 +41,18 @@ WizardStyle=modern
 WizardSizePercent=110,120
 
 ; Architectures
-ArchitecturesInstallIn64BitMode=x64
-ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-english.AssociateGfglockFiles=Associate gfgLock file types for current user
+english.AssociateGfglockFiles=Associate .gfglock, .gfglck, .gfgcha files with gfgLock
 english.FileAssociations=File associations:
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 6.01
 Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: "{cm:FileAssociations}"
 
 [Files]
@@ -56,7 +60,12 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
-Source: "..\src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs createallsubdirs; Attribs: hidden
+; Do NOT include the full source tree in the production installer.
+; Shipping source exposes internal code. We only bundle the PyInstaller output in
+; {#SourceDir} (the application executable and required runtime files).
+; If you need to include specific developer docs or snippets, add them explicitly here.
+; Example (commented):
+; Source: "..\src\my_app\docs\developer_notes.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 ; NOTE: Runtime locations for logs and settings (per-user installer):
 ; - Logs: %APPDATA%\gfgLock\logs\ (per-user). The app writes logs to the current user's profile.
@@ -73,17 +82,17 @@ Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 Root: HKCU; Subkey: "Software\Classes\.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglock"; Flags: uninsdeletevalue; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglock\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglock\shell\open\command"; ValueType: string; ValueName: ""; ValueData: '"{app}\{#MyAppExeName}" "%1"'; Tasks: associate
+Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglock\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
 Root: HKCU; Subkey: "Software\Classes\.gfglck"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglck"; Flags: uninsdeletevalue; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglck"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File (CFB)"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglck\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglck\shell\open\command"; ValueType: string; ValueName: ""; ValueData: '"{app}\{#MyAppExeName}" "%1"'; Tasks: associate
+Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglck\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
 Root: HKCU; Subkey: "Software\Classes\.gfgcha"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfgcha"; Flags: uninsdeletevalue; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File (ChaCha20)"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha\shell\open\command"; ValueType: string; ValueName: ""; ValueData: '"{app}\{#MyAppExeName}" "%1"'; Tasks: associate
+Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
 ; Context menu entries per-user
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt with gfgLock"; Flags: uninsdeletekey
@@ -91,14 +100,14 @@ Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt"
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: '"{app}\{#MyAppExeName}" encrypt "%1"'; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt ""%1"""; Flags: uninsdeletekey
 
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt with gfgLock"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MUIVerb"; ValueData: "Decrypt with gfgLock"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: '"{app}\{#MyAppExeName}" decrypt "%1"'; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt ""%1"""; Flags: uninsdeletekey
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
@@ -108,6 +117,11 @@ Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\temp"
 Type: files; Name: "{app}\*.log"
 Type: files; Name: "{app}\*.tmp"
+
+; Remove per-user settings and logs for the user running the uninstaller
+; Note: this deletes the current user's AppData entries only (not other users).
+Type: files; Name: "{userappdata}\{#MyAppName}\settings.json"
+Type: filesandordirs; Name: "{userappdata}\{#MyAppName}\logs"
 
 [Code]
 procedure InitializeWizard();

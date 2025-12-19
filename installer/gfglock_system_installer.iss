@@ -1,7 +1,7 @@
 ; =======================================================
 ; gfgLock Windows Installer
 ; Inno Setup Script
-; Version: 1.0.0
+; Version: 2.6.9
 ; =======================================================
 
 #define MyAppName "gfgLock"
@@ -9,7 +9,7 @@
 #define MyAppPublisher "gfgRoyal"
 #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
 #define MyAppExeName "gfgLock.exe"
-#define SourceDir "..\src\dist\gfgLock"
+#define SourceDir "..\src\my_app\dist\gfgLock"
 #define IconsDir "..\src\my_app\assets\icons"
 
 [Setup]
@@ -28,7 +28,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\build\installer
-OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersion}
+OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersion}_system_installer
 SetupIconFile={#IconsDir}\gfgLock.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
@@ -40,19 +40,19 @@ WizardSizePercent=110,120
 PrivilegesRequired=admin
 
 ; Architectures
-ArchitecturesInstallIn64BitMode=x64
-ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-english.AssociateGfglockFiles=Associate .gfglock files with gfgLock
+english.AssociateGfglockFiles=Associate .gfglock, .gfglck, .gfgcha files with gfgLock
 english.FileAssociations=File associations:
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 6.01
+Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: "{cm:FileAssociations}"
 
 [Files]
@@ -63,8 +63,12 @@ Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 ; Documentation
 Source: "..\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
-; Optional: Include source code for transparency
-Source: "..\src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs createallsubdirs; Attribs: hidden
+; Do NOT include the full source tree in the production installer.
+; Shipping source exposes internal code. We only bundle the PyInstaller output in
+; {#SourceDir} (the application executable and required runtime files).
+; If you need to include specific developer docs or snippets, add them explicitly here.
+; Example (commented):
+; Source: "..\src\my_app\docs\developer_notes.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 ; NOTE: At runtime the application writes logs and user settings to the user's profile.
 ; - Logs: %APPDATA%\gfgLock\logs\ (per-user). Do not expect writable logs under {app} when installed to Program Files.
@@ -79,8 +83,12 @@ Name: "{group}\Documentation"; Filename: "{app}\docs\README.md"
 ; Desktop
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"; Tasks: desktopicon
 
-; Quick Launch (legacy)
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"; Tasks: quicklaunchicon
+; Quick Launch (legacy) - skipped for system installer to avoid per-user area usage
+; Historically Quick Launch shortcuts were created under the current user's
+; AppData. Creating per-user items from an elevated/system installer can be
+; unsafe and triggers Inno Setup warnings, so we do not create Quick Launch
+; entries here. The per-user installer (`gfglock_installer_non_admin.iss`)
+; can create a Quick Launch shortcut for the installing user if desired.
 
 [Registry]
 ; =============================================================================
@@ -160,3 +168,53 @@ end;
       // Abort;
   // end;
 // end;
+
+// Attempt to remove per-user AppData (Roaming) data for all users during uninstall.
+// This is best-effort: failures are ignored so uninstall proceeds silently.
+procedure DeletePerUserDataForAllUsers();
+var
+  FindRec: TFindRec;
+  UsersPath, ProfilePath: String;
+begin
+  UsersPath := 'C:\Users';
+  if FindFirst(UsersPath + '\*', FindRec) then
+  begin
+    try
+      repeat
+        if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        begin
+          // Skip common/system profile folders
+          if (CompareText(FindRec.Name, 'All Users') = 0) or
+             (CompareText(FindRec.Name, 'Default') = 0) or
+             (CompareText(FindRec.Name, 'Default User') = 0) or
+             (CompareText(FindRec.Name, 'Public') = 0) then
+            continue;
+
+          ProfilePath := UsersPath + '\' + FindRec.Name + '\AppData\Roaming\{#MyAppName}';
+          try
+            if DirExists(ProfilePath) then
+            begin
+              DelTree(ProfilePath, True, True, True);
+            end;
+          except
+            // ignore errors and continue
+          end;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    try
+      DeletePerUserDataForAllUsers();
+    except
+      // ignore any unexpected errors
+    end;
+  end;
+end;

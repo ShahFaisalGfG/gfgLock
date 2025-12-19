@@ -89,7 +89,7 @@ source venv/Scripts/activate  # Windows
 pip install -r requirements.txt
 
 # Run application
-python -m src.my_app.gui
+python -m gui
 ```
 
 ---
@@ -150,13 +150,13 @@ Logs are stored in `%APPDATA%\gfgLock\logs\` (or `src/my_app/logs/` in developme
 
 ### Log Format
 
-```
+```log
 [YYYY-MM-DD HH:MM:SS] [Operation] Message
 ```
 
 Example:
 
-```
+```log
 [2025-12-19 14:32:45] Encrypting: document.pdf → document.pdf.gfglock
 [2025-12-19 14:32:47] Encryption successful: document.pdf.gfglock (1.2 MB)
 [2025-12-19 14:32:48] Critical Error: Failed to encrypt: corrupted_file.bin (Permission denied)
@@ -216,13 +216,13 @@ Example:
 
 ## Project Structure
 
-```
+```log
 gfgLock/
 ├── src/my_app/
 │   ├── gui.py                      # Main GUI and dialogs
 │   ├── core/
 │   │   ├── aes256_gcm_cfb.py       # AES-256 GCM/CFB encryption
-│   │   └── xchacha20_poly1305.py   # ChaCha20-Poly1305 encryption
+│   │   └── chacha20_poly1305.py   # ChaCha20-Poly1305 encryption
 │   ├── services/
 │   │   └── worker.py               # Multi-threaded encryption/decryption
 │   ├── views/
@@ -270,7 +270,7 @@ source venv/Scripts/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Run application
-python -m src.my_app.gui
+python -m gui
 ```
 
 ### Building the Installer
@@ -293,7 +293,7 @@ For command-line encryption/decryption without the GUI:
 
 ```bash
 python -c "
-from src.my_app.core.aes256_gcm_cfb import encrypt_file, decrypt_file
+from core.aes256_gcm_cfb import encrypt_file, decrypt_file
 encrypt_file('document.pdf', 'password')  # Creates document.pdf.gfglock
 decrypt_file('document.pdf.gfglock', 'password')  # Restores document.pdf
 "
