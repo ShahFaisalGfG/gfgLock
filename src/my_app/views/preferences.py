@@ -32,7 +32,7 @@ class PreferencesWindow(QtWidgets.QDialog):
         """Initialize the UI."""
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
         self.setWindowTitle("Preferences")
-        self.setWindowIcon(QtGui.QIcon(resource_path(".././assets/icons/gfgLock.png")))
+        self.setWindowIcon(QtGui.QIcon(resource_path("../assets/icons/gfgLock.png")))
         self.setModal(True)
         self.resize(600, 700)
         
