@@ -1,232 +1,345 @@
-# gfgLock 🔐
+# gfgLock
 
-**A powerful, user-friendly AES‑256 file and folder encryption tool for Windows.**
+A modern, secure file encryption utility with a sleek PyQt5 GUI, supporting multiple encryption algorithms (AES-256 GCM, AES-256 CFB, ChaCha20-Poly1305) with batch processing, real-time progress tracking, and comprehensive logging.
 
-High‑performance encryption with a modern graphical interface, or choose from command‑line Python and Batch implementations. All variants use **AES‑256‑CFB** mode with secure key derivation for military‑grade security.
-
----
-
-## 📂 Repository Contents
-
-### 1. **`gfgLock` (Windows GUI Application)** ⭐ Recommended for End-Users
-
-**Download and install the standalone Windows application:**
-
-- **Release Page:** [GitHub Releases - gfgLock](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/gfgLock)
-- **Backend:** `gfglock_fast_aes256_cryptography.py` (super-fast OpenSSL-powered encryption)
-- **Distribution:** Packaged as a Windows installer (Inno Setup) — no Python installation needed
-- **File Extension:** `.gfglock`
-
-**Key Features:**
-
-- ✅ **Drag & drop** support for files and folders
-- ✅ **Progress tracking** with live logs (same output as CLI)
-- ✅ **Batch operations** — encrypt/decrypt multiple files at once
-- ✅ **Detailed reporting** — shows succeeded, failed, and skipped file counts
-- ✅ **Optional filename randomization** for encrypted files
-- ✅ **Context menu integration** (adds "Encrypt/Decrypt with gfgLock" to Explorer)
-- ✅ **Optional file association** for `.gfglock` files
-- ✅ **Professional UI** with password confirmation, tab order, and keyboard shortcuts
-
-**Screenshot:**
-
-![gfgLock Main Window](screenshots/main_window.png)
-
-![gfgLock Encryption Window](screenshots/encryption_window.png)
-
-![gfgLock Progress Window](screenshots/progress_window.png)
-
-![gfgLock About Dialog](screenshots/about_window.png)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://github.com/ShahFaisalGfG/gfgLock/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/ShahFaisalGfG/gfgLock)](https://github.com/ShahFaisalGfG/gfgLock/releases)
 
 ---
 
-### 2. **`gfglock_fast_aes256_cryptography.py`** (Python CLI - Fastest)
+## Features
 
-- **Backend:** [Cryptography](https://cryptography.io/) (OpenSSL-powered)
-- **Features:** Chunk‑based streaming, optimized C backend, multiprocessing support
-- **Speed:** Excellent (recommended for developers)
-- **Best for:** Developers and power users who prefer command-line tools
-- **File Extension:** `.gfglock`
+### 🔐 Multi-Algorithm Encryption
 
----
+- **AES-256 GCM** (`.gfglock`) — Authenticated encryption with associated data
+- **AES-256 CFB** (`.gfglck`) — Cipher Feedback mode, compatible with OpenSSL
+- **ChaCha20-Poly1305** (`.gfgcha`) — Modern AEAD stream cipher, resistant to side-channel attacks
 
-### 3. **`gfglock_aes256_pycryptodome.py`** (Python CLI - Cross-Platform)
+### 🖥️ User-Friendly GUI
 
-- **Backend:** [PyCryptodome](https://pycryptodome.readthedocs.io/)
-- **Features:** Pure Python, chunk‑based streaming, multiprocessing support
-- **Speed:** Good (slower than Cryptography backend)
-- **Best for:** Developers who prefer PyCryptodome or need cross-platform support
-- **File Extension:** `.gfgpcd`
+- Drag & drop support for files and folders
+- Batch processing — enqueue multiple items and process them in one run
+- Real-time progress dialog with live per-file logs
+- Summary statistics (succeeded, failed, skipped items)
+- Algorithm selection dropdown (encrypt mode)
+- File filtering based on operation mode (encrypt/decrypt)
 
----
+### ⚙️ Advanced Settings
 
-### 4. **`gfglock_aes256_openssl_cli.bat`** (Windows Batch Script)
+- **CPU Thread Control** — Optimize performance by adjusting thread count per operation
+- **Chunk Size Configuration** — Fine-tune memory usage and processing speed
+- **Filename Encryption** — Option to encrypt filenames for maximum privacy
+- **Theme Support** — System, Light, and Dark modes with proper disabled state styling
+- **Comprehensive Logging** — File-based logs with timestamped entries and critical/general level separation
 
-- **Backend:** Native [OpenSSL CLI](https://www.openssl.org/)
-- **Features:** Windows batch script, recursive folder/file encryption
-- **Speed:** Very fast (native OpenSSL performance)
-- **Best for:** Windows users who want a simple `.bat` script without Python
-- **File Extension:** `.gfgssl`
+### 🔧 Developer-Friendly
 
----
-
-## 🔑 Encryption Level
-
-All three scripts use **AES‑256 (Advanced Encryption Standard, 256‑bit key)** in **CFB mode**:
-
-- AES‑256 is considered military‑grade encryption, approved by NIST.
-- Resistant to brute‑force attacks.
-- Secure for sensitive data storage and transfer.
+- Clean, modular Python codebase with separate core encryption modules
+- Thread-based architecture using `ThreadPoolExecutor` for responsive UI
+- Extensible settings system (JSON-based configuration)
+- Standalone Windows installer (no separate Python install required)
 
 ---
 
-## ⚡ Installation
+## Quick Start
 
-### Option 1: Windows GUI (⭐ Recommended for Most Users)
+### Installation
 
-1. Visit the [GitHub Releases page](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/gfgLock)
-2. Download the latest `gfgLock_Setup_*.exe` installer
-3. Run the installer and follow the setup wizard
-4. After installation, launch `gfgLock` from the Start Menu or desktop shortcut
+1. Download the latest installer from [GitHub Releases](https://github.com/ShahFaisalGfG/gfgLock/releases)
+2. Run `gfgLock_Setup_x.x.x.exe` and follow the setup wizard
+3. Optionally associate file extensions and enable context menu integration during installation
+4. Launch gfgLock from the Start Menu or desktop shortcut
 
-**Note:** The GUI is a standalone Windows installer — you do **not** need Python or any additional libraries installed.
+### Basic Usage
 
-### Option 2: Python Scripts (Command-Line)
-
-1. Install Python 3.9+
-2. Clone the repository:
-
-   ```bash
-   git clone https://github.com/shahfaisalgfg/gfgLock.git
-   cd gfgLock
-   ```
-
-3. Install dependencies:
-
-   ```bash
-   pip install cryptography pycryptodome
-   ```
-
-### Option 3: Batch Script (Windows Only)
-
-- Requires OpenSSL installed on Windows
-- If not found, the script will attempt automatic installation via winget
-
-## 🚀 Usage
-
-### Windows GUI (`gfgLock`)
-
-**Simple workflow:**
-
-1. Launch the `gfgLock` app
-2. Drag & drop files/folders or use "Add Files" / "Add Folders"
-3. Enter a strong password (and confirm it when encrypting)
-4. Choose thread/chunk options if needed (defaults are sensible)
-5. Click "Start Encryption" or "Start Decryption"
-6. Review the progress dialog with per-file messages, counts, and detailed logs
-
-**Installer extras:**
-
-- Context menu integration: Right-click files/folders to "Encrypt/Decrypt with gfgLock"
-- File association for `.gfglock` files (optional, during installation)
-- "About" dialog and "Check Updates" button link to the releases page
-
-**Pro tip:** Already-encrypted files are reported as "skipped," not as failures.
+1. **Launch** the application
+2. **Add files/folders** using drag & drop or "Add Files"/"Add Folders" buttons
+3. **Select operation**:
+   - For **Encryption**: Choose algorithm (AES-256 GCM, AES-256 CFB, or ChaCha20-Poly1305)
+   - For **Decryption**: Extension is auto-detected
+4. **Enter password** (confirm for encryption)
+5. **Adjust settings** (threads, chunk size, filename encryption) if desired
+6. **Click "Start"** and monitor progress in real-time
+7. Review logs and summary in the progress dialog
 
 ---
 
-### Python CLI (Cryptography Backend - Fastest)
+## Installation Methods
 
-```python
-from gfglock_fast_aes256_cryptography import encrypt_folder, decrypt_folder
+### Option 1: Windows Installer (Recommended)
 
-# Encrypt folder (super fast)
-encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=4, chunk_size=32*1024*1024)
+- Standalone executable with bundled dependencies
+- One-click installation with modern UI wizard
+- Optional file association and context menu integration
+- Automatic uninstaller
 
-# Decrypt folder
-decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=4, chunk_size=32*1024*1024)
+### Option 2: Command Line (Developer)
+
+```bash
+# Clone repository
+git clone https://github.com/ShahFaisalGfG/gfgLock.git
+cd gfgLock
+
+# Create virtual environment
+python -m venv venv
+source venv/Scripts/activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run application
+python -m src.my_app.gui
 ```
 
 ---
 
-### Python CLI (PyCryptodome Backend - Cross-Platform)
+## Settings & Preferences
 
-```python
-from gfglock_aes256_pycryptodome import encrypt_folder, decrypt_folder
+The Preferences window provides control over:
 
-# Encrypt folder with AES‑256
-encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=4, chunk_size=8*1024*1024)
+### Appearance Tab
 
-# Decrypt folder
-decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=4, chunk_size=8*1024*1024)
+- **Theme Selection** — System (default), Light, or Dark mode
+
+### Encryption Tab
+
+- **CPU Threads** — Number of threads for encryption operations
+- **Chunk Size** — Processing block size (256 KB to 16 MB)
+- **Encrypt Filenames** — Randomize output filenames for privacy
+
+### Decryption Tab
+
+- **CPU Threads** — Number of threads for decryption operations
+- **Chunk Size** — Processing block size (256 KB to 16 MB)
+
+### Advanced Tab
+
+- **Encryption Mode** — Default algorithm for new encryption operations
+- **Enable Logs** — Toggle logging system on/off
+- **Log Level** — All logs or only critical errors
+- **Action Buttons**:
+  - **Clear All Logs** — Remove all log files
+  - **Open Logs Folder** — View logs in file explorer
+
+**Apply vs. Save:**
+
+- **Apply** — Save settings and apply immediately without closing Preferences
+- **Save** — Save settings, apply, and close the Preferences window
+
+---
+
+## File Extensions & Compatibility
+
+| Algorithm         | Extension  | Description                              |
+| ----------------- | ---------- | ---------------------------------------- |
+| AES-256 GCM       | `.gfglock` | Galois/Counter Mode AEAD (primary)       |
+| AES-256 CFB       | `.gfglck`  | Cipher Feedback mode, OpenSSL compatible |
+| ChaCha20-Poly1305 | `.gfgcha`  | Stream cipher AEAD                       |
+
+**Note:** Files encrypted with one algorithm cannot be decrypted with another. Always use the same tool to decrypt.
+
+---
+
+## Logging
+
+Logs are stored in `%APPDATA%\gfgLock\logs\` (or `src/my_app/logs/` in development mode):
+
+- **general.log** — All status messages and operations
+- **critical.log** — Errors and critical issues only
+
+### Log Format
+
+```
+[YYYY-MM-DD HH:MM:SS] [Operation] Message
+```
+
+Example:
+
+```
+[2025-12-19 14:32:45] Encrypting: document.pdf → document.pdf.gfglock
+[2025-12-19 14:32:47] Encryption successful: document.pdf.gfglock (1.2 MB)
+[2025-12-19 14:32:48] Critical Error: Failed to encrypt: corrupted_file.bin (Permission denied)
 ```
 
 ---
 
-### Windows Batch Script (OpenSSL CLI)
+## Security Notes
 
-```cmd
-:: Encrypt single file
-gfglock_aes256_openssl_cli.bat encrypt "C:\path\to\file.ext" "mypassword"
+- **Strong Passwords:** Use passwords of 12+ characters combining uppercase, lowercase, digits, and symbols
+- **Unique Passwords:** Use different passwords for different sets of files
+- **Algorithm Selection:**
+  - **GCM Mode** — Recommended for most use cases (authenticated encryption)
+  - **CFB Mode** — Compatible with legacy OpenSSL tools
+  - **ChaCha20** — Excellent for high-security applications, resistant to hardware side-channels
+- **Verification:** Always verify downloaded files using SHA-256 checksums (provided with releases)
 
-:: Decrypt single file
-gfglock_aes256_openssl_cli.bat decrypt "C:\path\to\file.ext.gfgssl" "mypassword"
+---
 
-:: Encrypt folder recursively
-gfglock_aes256_openssl_cli.bat encrypt "C:\path\to\folder" "mypassword" folder
+## System Requirements
 
-:: Decrypt folder recursively
-gfglock_aes256_openssl_cli.bat decrypt "C:\path\to\folder" "mypassword" folder
+- **OS:** Windows 10 or later (64-bit)
+- **RAM:** 2 GB minimum (4 GB recommended)
+- **Disk Space:** 500 MB for installation
+- **CPU:** Multi-core processor recommended for optimal performance
+
+---
+
+## Troubleshooting
+
+### "Could not parse application stylesheet" warning
+
+- Harmless Qt message; application will continue normally
+- Can occur when switching themes; no data loss or corruption
+
+### Files fail to decrypt
+
+- Verify the file extension (`.gfglock`, `.gfglck`, or `.gfgcha`)
+- Ensure the correct password is used
+- Check file integrity (may be corrupted)
+- Review critical logs for detailed error messages
+
+### Performance issues
+
+- Increase "CPU Threads" in Encryption/Decryption settings
+- Reduce "Chunk Size" for large files
+- Ensure sufficient RAM and disk space available
+- Close other applications to free system resources
+
+### Logs not being created
+
+- Enable logs in Advanced settings
+- Ensure `%APPDATA%\gfgLock\logs\` folder is writable
+- Check Windows firewall/antivirus permissions
+
+---
+
+## Project Structure
+
+```
+gfgLock/
+├── src/my_app/
+│   ├── gui.py                      # Main GUI and dialogs
+│   ├── core/
+│   │   ├── aes256_gcm_cfb.py       # AES-256 GCM/CFB encryption
+│   │   └── xchacha20_poly1305.py   # ChaCha20-Poly1305 encryption
+│   ├── services/
+│   │   └── worker.py               # Multi-threaded encryption/decryption
+│   ├── views/
+│   │   └── preferences.py           # Settings dialog
+│   ├── utils/
+│   │   ├── gfg_helpers.py           # Utilities (logging, settings)
+│   │   ├── theme_manager.py         # Theme system (light/dark/system)
+│   │   └── settings.json            # Default settings
+│   ├── widgets/
+│   │   └── custom_title_bar.py      # Frameless window title bar
+│   └── assets/icons/
+│       └── gfgLock.png              # Application icon
+├── installer/
+│   └── gfglock_installer.iss        # Inno Setup installer config
+├── requirements.txt                 # Python dependencies
+└── README.md                        # This file
 ```
 
 ---
 
-## 📊 File Extensions & Compatibility
+## Dependencies
 
-- **gfgLock (GUI)** → `.gfglock` (must decrypt with GUI or Python Cryptography backend)
-- **Python (Cryptography)** → `.gfglock` (compatible with GUI)
-- **Python (PyCryptodome)** → `.gfgpcd` (must decrypt with same backend)
-- **Windows Batch (OpenSSL)** → `.gfgssl` (must decrypt with OpenSSL CLI)
+- **PyQt5** — GUI framework
+- **cryptography** — AES-256 encryption (OpenSSL backend)
+- **pycryptodome** — ChaCha20-Poly1305 implementation
 
-⚠️ **Important:** Always decrypt files with the **same tool that encrypted them**.
+Full list in [requirements.txt](requirements.txt)
 
 ---
 
-## 📊 Tool Comparison
+## Development
 
-| Feature / Tool     | gfgLock (GUI)        | Python (Cryptography) | Python (PyCryptodome) | Batch Script (OpenSSL) |
-| ------------------ | -------------------- | --------------------- | --------------------- | ---------------------- |
-| **Installation**   | Standalone installer | Requires Python 3.9+  | Requires Python 3.9+  | Requires OpenSSL       |
-| **Performance**    | Excellent            | Excellent             | Good                  | Very fast              |
-| **Platform**       | Windows only         | Cross-platform        | Cross-platform        | Windows only           |
-| **User Interface** | Modern GUI           | Command-line          | Command-line          | Command-line           |
-| **Best For**       | End-users            | Developers            | Developers            | Automation/scripting   |
-| **File Extension** | `.gfglock`           | `.gfglock`            | `.gfgpcd`             | `.gfgssl`              |
+### Setup Development Environment
 
-## 🛡️ Security Notes
+```bash
+# Clone and navigate
+git clone https://github.com/ShahFaisalGfG/gfgLock.git
+cd gfgLock
 
-- Always use strong passwords (12+ chars, mix of letters/numbers/symbols).
-- Encrypted files replace originals only after successful encryption/decryption.
-- AES‑256 is secure, but password strength is critical.
+# Create virtual environment
+python -m venv venv
+source venv/Scripts/activate  # Windows: venv\Scripts\activate
 
-## 👨‍💻 Developer Notes
+# Install dependencies
+pip install -r requirements.txt
 
-- Chunk size can be tuned:
-  - 1–4 MB → gentle, slower
-  - 8–16 MB → balanced (recommended default)
-  - 32–64 MB → faster, heavier load
-- Multiprocessing is supported in Python scripts.
-- Logging can be added for audit trails if needed.
+# Run application
+python -m src.my_app.gui
+```
 
-## 📜 License
+### Building the Installer
 
-MIT License — free to use, modify, and distribute.
+Requires [Inno Setup](https://jrsoftware.org/isinfo.php):
 
-## 🤝 Contributing
+```bash
+# PyInstaller builds the executable
+pyinstaller src/gfgLock_gui.spec
 
-Pull requests are welcome! Please open issues for bugs or feature requests.
+# Inno Setup creates the installer
+iscc installer/gfglock_installer.iss
+```
 
-## ✨ Credits
+---
 
-Developed by Shah Faisal  
-AES‑256 implementations powered by PyCryptodome, Cryptography, and OpenSSL.
+## CLI Usage (Advanced)
+
+For command-line encryption/decryption without the GUI:
+
+```bash
+python -c "
+from src.my_app.core.aes256_gcm_cfb import encrypt_file, decrypt_file
+encrypt_file('document.pdf', 'password')  # Creates document.pdf.gfglock
+decrypt_file('document.pdf.gfglock', 'password')  # Restores document.pdf
+"
+```
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) or [Release Notes](https://github.com/ShahFaisalGfG/gfgLock/releases) for version history.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please feel free to:
+
+- Report bugs via [Issues](https://github.com/ShahFaisalGfG/gfgLock/issues)
+- Submit feature requests
+- Open pull requests with improvements
+
+---
+
+## License
+
+MIT License — See [LICENSE](LICENSE) for details.
+
+---
+
+## Credits
+
+**Developed by:** Shah Faisal (gfgRoyal)
+
+**Repository:** [https://github.com/ShahFaisalGfG/gfgLock](https://github.com/ShahFaisalGfG/gfgLock)
+
+**Portfolio:** [https://shahfaisalgfg.github.io/shahfaisal/](https://shahfaisalgfg.github.io/shahfaisal/)
+
+---
+
+## Support
+
+For questions, issues, or suggestions:
+
+- 📧 Open an issue on [GitHub Issues](https://github.com/ShahFaisalGfG/gfgLock/issues)
+- 🔗 Visit the [project homepage](https://shahfaisalgfg.github.io/shahfaisal/)
+
+---
+
+**Stay Secure. Encrypt Responsibly.** 🔐
