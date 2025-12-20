@@ -3,6 +3,7 @@ build/
 __pycache__/
 dist/
 dist_portable/
+trash/
 
 
 *.log
