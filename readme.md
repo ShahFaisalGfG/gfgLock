@@ -24,7 +24,7 @@ gfgLock v2.6.9 is a focused Windows tool for encrypting files with modern, authe
 
 - Main Window
 
-![Main Window](./screenshots/main_window.png)
+  ![Main Window](./screenshots/main_window.png)
 
 - Encryption Window
 
