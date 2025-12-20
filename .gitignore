@@ -11,6 +11,9 @@ trash/
 *.pyc
 *.exe
 *.bkp
+*.txt
 
+release*.md
+optimization*.md
+benchmark*.md
 
-release*.

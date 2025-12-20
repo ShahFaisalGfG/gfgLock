@@ -18,7 +18,7 @@ class WorkerSignals(QtCore.QObject):
 
 class EncryptDecryptWorker(QtCore.QRunnable):
     def __init__(self, paths, password, mode="encrypt",
-                 encrypt_name=False, threads=1, chunk_size=8*1024*1024,
+                 encrypt_name=False, threads=1, chunk_size=None,
                  show_password=False, enc_algo: str | None = None):
         super().__init__()
         self.paths = list(paths)
@@ -26,7 +26,8 @@ class EncryptDecryptWorker(QtCore.QRunnable):
         self.mode = mode
         self.encrypt_name = encrypt_name
         self.threads = int(threads)
-        self.chunk_size = int(chunk_size)
+        # Accept None to indicate non-chunked processing
+        self.chunk_size = None if chunk_size is None else int(chunk_size)
         self._cancelled = False
         # enc_algo: 'aes256_gcm' | 'aes256_cfb' | 'chacha20_poly1305'
         self.enc_algo = enc_algo
@@ -95,7 +96,7 @@ class EncryptDecryptWorker(QtCore.QRunnable):
                                           self.chunk_size)
                         else:
                             # Unknown extension — create a job that returns a skipped message
-                            def unknown_job(path, password, chunk_size=0):
+                            def unknown_job(path, password, chunk_size=None):
                                 return False, f"Skipping unknown encrypted file format: {path}"
                             job = partial(unknown_job, p, self.password, self.chunk_size)
 

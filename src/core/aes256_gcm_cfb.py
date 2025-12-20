@@ -9,15 +9,17 @@ from multiprocessing import Pool, cpu_count, freeze_support
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from secrets import token_bytes
-from typing import Optional
+from typing import Optional, cast
 from utils.gfg_helpers import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
 
 SALT_SIZE = 16
 NONCE_SIZE = 12
 TAG_SIZE = 16
+BUFFER_SIZE = 64 * 1024  # 64KB buffer for I/O operations (optimized for modern SSDs)
+SMALL_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB threshold: use non-chunked for small files regardless
 
 
-def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024, AEAD=True):
+def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True):
     logs = []
     out_path = None
     try:
@@ -27,6 +29,11 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024, AEA
         if path.endswith(".gfglock"):
             msg = f"{path} is already encrypted"
             logs.append(msg); safe_print(msg); return False, "\n".join(logs)
+
+        # Optimization: for small files, use non-chunked even if chunk_size specified
+        file_size = os.path.getsize(path)
+        if file_size < SMALL_FILE_THRESHOLD:
+            chunk_size = None
 
         # Use distinct extensions for AEAD (GCM) and non-AEAD (CFB)
         if encrypt_name:
@@ -38,7 +45,7 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024, AEA
             out_name = base + (".gfglock" if AEAD else ".gfglck")
         out_path = os.path.join(os.path.dirname(path), out_name)
 
-        with open(path, "rb") as fin, open(out_path, "wb") as fout:
+        with open(path, "rb", buffering=BUFFER_SIZE) as fin, open(out_path, "wb", buffering=BUFFER_SIZE) as fout:
             if AEAD:
                 # GCM mode with AEAD authentication
                 salt = token_bytes(SALT_SIZE)
@@ -53,11 +60,18 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024, AEA
                 name_meta = os.path.basename(path).encode("utf-8") + b"\0"
                 fout.write(encryptor.update(name_meta))
 
-                while True:
-                    chunk = fin.read(chunk_size)
-                    if not chunk:
-                        break
-                    fout.write(encryptor.update(chunk))
+                if chunk_size is None:
+                    # Non-chunked: load entire file into memory
+                    file_data = fin.read()
+                    fout.write(encryptor.update(file_data))
+                else:
+                    # Chunked: process in blocks, using max(chunk_size, BUFFER_SIZE) for optimal I/O
+                    effective_chunk = max(chunk_size, BUFFER_SIZE)
+                    while True:
+                        chunk = fin.read(effective_chunk)
+                        if not chunk:
+                            break
+                        fout.write(encryptor.update(chunk))
 
                 fout.write(encryptor.finalize())
                 fout.write(encryptor.tag)
@@ -73,11 +87,18 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024, AEA
                 name_meta = os.path.basename(path).encode("utf-8") + b"\0"
                 fout.write(encryptor.update(name_meta))
 
-                while True:
-                    chunk = fin.read(chunk_size)
-                    if not chunk:
-                        break
-                    fout.write(encryptor.update(chunk))
+                if chunk_size is None:
+                    # Non-chunked: load entire file into memory
+                    file_data = fin.read()
+                    fout.write(encryptor.update(file_data))
+                else:
+                    # Chunked: process in blocks, using max(chunk_size, BUFFER_SIZE) for optimal I/O
+                    effective_chunk = max(chunk_size, BUFFER_SIZE)
+                    while True:
+                        chunk = fin.read(effective_chunk)
+                        if not chunk:
+                            break
+                        fout.write(encryptor.update(chunk))
 
                 fout.write(encryptor.finalize())
 
@@ -96,7 +117,7 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=8*1024*1024, AEA
             pass
         return False, "\n".join(logs)
 
-def decrypt_file(path, password, chunk_size=8*1024*1024):
+def decrypt_file(path, password, chunk_size=None):
     logs = []
     try:
         if not os.path.exists(path):
@@ -112,7 +133,11 @@ def decrypt_file(path, password, chunk_size=8*1024*1024):
             msg = f"Critical error: {path} is too small or corrupted"
             logs.append(msg); safe_print(msg); return False, "\n".join(logs)
 
-        with open(path, "rb") as fin:
+        # Optimization: for small files, use non-chunked even if chunk_size specified
+        if total_size < SMALL_FILE_THRESHOLD:
+            chunk_size = None
+
+        with open(path, "rb", buffering=BUFFER_SIZE) as fin:
             # Determine format by file extension instead of a mode byte.
             if path.endswith(".gfglock"):
                 # GCM mode (AEAD) - requires full file in memory
@@ -148,11 +173,11 @@ def decrypt_file(path, password, chunk_size=8*1024*1024):
                 out_path = os.path.join(os.path.dirname(path), original_name)
                 file_data = decrypted[idx+1:]
 
-                with open(out_path, "wb") as fout:
+                with open(out_path, "wb", buffering=BUFFER_SIZE) as fout:
                     fout.write(file_data)
 
             elif path.endswith(".gfglck"):
-                # CFB mode (non-AEAD) - streaming decryption
+                # CFB mode (non-AEAD) - streaming or non-chunked decryption
                 expected_min = 16 + 1  # IV + at least 1 byte data
                 if total_size < expected_min:
                     msg = f"Critical error: {path} is too small or corrupted"
@@ -168,44 +193,63 @@ def decrypt_file(path, password, chunk_size=8*1024*1024):
                 out_path = None
                 temp_out: Optional[io.BufferedWriter] = None
 
-                while True:
-                    chunk = fin.read(chunk_size)
-                    if not chunk:
-                        break
-                    dec = decryptor.update(chunk)
+                if chunk_size is None:
+                    # Non-chunked: load all remaining data and decrypt at once
+                    encrypted_data = fin.read()
+                    dec = decryptor.update(encrypted_data) + decryptor.finalize()
                     
-                    if not got_meta:
-                        idx = dec.find(b'\0')
-                        if idx != -1:
-                            meta += dec[:idx]
-                            original_name = meta.decode('utf-8')
-                            out_path = os.path.join(os.path.dirname(path), original_name)
-                            temp_out = open(out_path, 'wb')
-                            rest = dec[idx+1:]
-                            if rest:
-                                temp_out.write(rest)
-                            got_meta = True
-                        else:
-                            meta += dec
+                    idx = dec.find(b'\0')
+                    if idx != -1:
+                        original_name = dec[:idx].decode('utf-8')
+                        out_path = os.path.join(os.path.dirname(path), original_name)
+                        file_data = dec[idx+1:]
+                        with open(out_path, 'wb', buffering=BUFFER_SIZE) as fout:
+                            fout.write(file_data)
+                        got_meta = True
                     else:
+                        msg = f"Critical error while decrypting {path}: metadata not found"
+                        logs.append(msg); safe_print(msg); return False, "\n".join(logs)
+                else:
+                    # Chunked: process in blocks, using max(chunk_size, BUFFER_SIZE) for optimal I/O
+                    effective_chunk = max(chunk_size, BUFFER_SIZE)
+                    while True:
+                        chunk = fin.read(effective_chunk)
+                        if not chunk:
+                            break
+                        dec = decryptor.update(chunk)
+                        
+                        if not got_meta:
+                            idx = dec.find(b'\0')
+                            if idx != -1:
+                                meta += dec[:idx]
+                                original_name = meta.decode('utf-8')
+                                out_path = os.path.join(os.path.dirname(path), original_name)
+                                temp_out = cast(io.BufferedWriter, open(out_path, 'wb', buffering=BUFFER_SIZE))
+                                rest = dec[idx+1:]
+                                if rest:
+                                    temp_out.write(rest)
+                                got_meta = True
+                            else:
+                                meta += dec
+                        else:
+                            if temp_out:
+                                temp_out.write(dec)
+
+                    decryptor.finalize()
+
+                    if not got_meta:
+                        msg = f"Critical error while decrypting {path}: metadata not found"
+                        logs.append(msg); safe_print(msg)
                         if temp_out:
-                            temp_out.write(dec)
+                            try: temp_out.close()
+                            except Exception: pass
+                        return False, "\n".join(logs)
 
-                decryptor.finalize()
-
-                if not got_meta:
-                    msg = f"Critical error while decrypting {path}: metadata not found"
-                    logs.append(msg); safe_print(msg)
                     if temp_out:
-                        try: temp_out.close()
-                        except Exception: pass
-                    return False, "\n".join(logs)
-
-                if temp_out:
-                    try:
-                        temp_out.close()
-                    except Exception:
-                        pass
+                        try:
+                            temp_out.close()
+                        except Exception:
+                            pass
             else:
                 msg = f"Critical error while decrypting {path}: unknown file format"
                 logs.append(msg); safe_print(msg); return False, "\n".join(logs)
@@ -226,7 +270,7 @@ def _enc(args):
 def _dec(args):
     return decrypt_file(*args)
 
-def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=8*1024*1024, AEAD=True):
+def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=None, AEAD=True):
     start = time.time(); count = 0
     files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs]
     threads = clamp_threads(threads)
@@ -253,7 +297,7 @@ def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=8
     safe_print(f"{count} files encrypted successfully.\nTime elapsed: {format_duration(elapsed)}")
 
 
-def decrypt_folder(folder, password, threads=1, chunk_size=8*1024*1024):
+def decrypt_folder(folder, password, threads=1, chunk_size=None):
     start = time.time(); count = 0
     files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs]
     threads = clamp_threads(threads)
@@ -283,10 +327,11 @@ if __name__ == "__main__":
     freeze_support()
 
 # Use chunk Sizes between 1-64mb while on moderns SSDs & NVMes you can use upto 128mb
-    s1_chunk = 1 * 1024 * 1024 # very gentle, but slower
     s8_chunk = 8*1024*1024 # balanced, recommended default
     s16_chunk = 16*1024*1024 # faster
-    s18_chunk = 18*1024*1024 # faster
+    s32_chunk = 32*1024*1024 # faster
+    s64_chunk = 64*1024*1024 # max for most systems
+    s128_chunk = 128*1024*1024 # only for high end systems
 
     total_threads = get_cpu_thread_count()
     # using half of total threads for balanced performance to avoid system overload
@@ -295,9 +340,5 @@ if __name__ == "__main__":
     print(f"total threads: {total_threads}\nUsing: {threads}")
 
     # Example usage multiple threads:
-    encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads, chunk_size=s18_chunk, AEAD=False)
-    decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads, chunk_size=s18_chunk)
-
-    # Example usage single thread & 8mb(default chunk size):
-    # encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True)
-    # decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123")
+    encrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", encrypt_name=True, threads=threads, chunk_size=s32_chunk, AEAD=False)
+    decrypt_folder("C:/Users/shahf/Music/Archives", "mypassword123", threads=threads, chunk_size=s128_chunk)

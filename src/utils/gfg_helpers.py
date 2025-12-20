@@ -5,9 +5,22 @@ import os
 import sys
 import json
 import hashlib
+from cpuinfo import get_cpu_info
 from multiprocessing import cpu_count
 from datetime import datetime
 from typing import Dict, Any, Optional
+
+def check_aes_ni():
+    info = get_cpu_info()
+    flags = info.get('flags', [])
+
+    if 'aes' in flags:
+        print("AES-NI is supported on this PC.")
+    else:
+        print("AES-NI is NOT supported on this PC.")
+
+if __name__ == "__main__":
+    check_aes_ni()
 
 
 def resource_path(relative_path: str) -> str:
@@ -49,6 +62,7 @@ def get_chunk_sizes() -> list:
         list: [(label, size_in_bytes), ...]
     """
     return [
+        ("Off (no chunking)", None),
         ("8 MB (default)", 8 * 1024 * 1024),
         ("16 MB (fast)", 16 * 1024 * 1024),
         ("32 MB", 32 * 1024 * 1024),
