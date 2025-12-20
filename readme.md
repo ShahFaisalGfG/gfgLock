@@ -25,10 +25,10 @@ Main window, dialogs and progress examples:
 - ![Main Window](./screenshots/main_window.png)
 - ![Encryption](./screenshots/encryption_window.png)
 - ![Decryption](./screenshots/decryption_window.png)
-- ![Preferences](./screenshots/prefrences_window.png)
 - ![Progress](./screenshots/progress_window.png)
-- ![Logs](./screenshots/main_window_with_logs.png)
 - ![Finished](./screenshots/operation_finished_window.png)
+- ![Logs](./screenshots/main_window_with_logs.png)
+- ![Preferences](./screenshots/prefrences_window.png)
 - ![About](./screenshots/about_window.png)
 
 ## Quick Start
