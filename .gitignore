@@ -3,7 +3,13 @@ build/
 __pycache__/
 dist/
 dist_portable/
+
+
 *.log
 *.spec
 *.pyc
 *.exe
+*.bkp
+
+
+release*.
