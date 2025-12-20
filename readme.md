@@ -20,16 +20,24 @@ gfgLock v2.6.9 is a focused Windows tool for encrypting files with modern, authe
 
 ## Screenshots
 
-Main window, dialogs and progress examples:
+###### Main window, dialogs and progress examples:
 
-- ![Main Window](./screenshots/main_window.png)
-- ![Encryption](./screenshots/encryption_window.png)
-- ![Decryption](./screenshots/decryption_window.png)
-- ![Progress](./screenshots/progress_window.png)
-- ![Finished](./screenshots/operation_finished_window.png)
-- ![Logs](./screenshots/main_window_with_logs.png)
-- ![Preferences](./screenshots/prefrences_window.png)
-- ![About](./screenshots/about_window.png)
+- Main Window
+  ![Main Window](./screenshots/main_window.png)
+- Encryption Window
+  ![Encryption](./screenshots/encryption_window.png)
+- Decryption Window
+  ![Decryption](./screenshots/decryption_window.png)
+- Progress Window
+  ![Progress](./screenshots/progress_window.png)
+- Operation Finished Window
+  ![Finished](./screenshots/operation_finished_window.png)
+- Main Screen Progress Logs
+  ![Logs](./screenshots/main_window_with_logs.png)
+- Prefrences Window
+  ![Preferences](./screenshots/prefrences_window.png)
+- About Window
+  ![About](./screenshots/about_window.png)
 
 ## Quick Start
 
