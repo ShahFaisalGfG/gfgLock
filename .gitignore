@@ -12,8 +12,9 @@ trash/
 *.exe
 *.bkp
 *.txt
+*.pdf
 
 release*.md
 optimization*.md
 benchmark*.md
-
+context*.md

@@ -65,7 +65,7 @@ def get_chunk_sizes() -> list:
         ("Off (no chunking)", None),
         ("8 MB (default)", 8 * 1024 * 1024),
         ("16 MB (fast)", 16 * 1024 * 1024),
-        ("32 MB", 32 * 1024 * 1024),
+        ("32 MB (faster)", 32 * 1024 * 1024),
         ("64 MB (heavy)", 64 * 1024 * 1024),
         ("128 MB (experimental)", 128 * 1024 * 1024),
     ]

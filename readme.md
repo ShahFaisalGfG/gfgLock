@@ -20,7 +20,7 @@ gfgLock v2.6.9 is a focused Windows tool for encrypting files with modern, authe
 
 ## Screenshots
 
-###### Main window, dialogs and progress examples:
+#### Main window, dialogs and progress examples:
 
 - Main Window
 
@@ -119,6 +119,71 @@ Last Updated: December 19, 2025
 - **Logging:** Enable/disable comprehensive logging
 - **Log Level:** All operations or only critical errors
 - **Log Actions:** Clear all logs or open logs folder
+
+---
+
+## Chunk Size Selection Guide
+
+Choose the appropriate chunk size based on your file size and system resources:
+
+| Chunk Size            | Best For         | RAM Usage        | Speed          | Notes                                                        |
+| --------------------- | ---------------- | ---------------- | -------------- | ------------------------------------------------------------ |
+| **Off (no chunking)** | Files <10 MB     | Full file in RAM | ⚡ **Fastest** | Recommended for small files; entire file processed in memory |
+| 8 MB                  | **General use**  | ~8 MB buffer     | Fast           | Default; balanced for most systems                           |
+| 16 MB                 | Larger files     | ~16 MB buffer    | Faster         | Good for files >50 MB; modern systems                        |
+| 32 MB                 | High-end systems | ~32 MB buffer    | ⚡ Faster      | Files >100 MB; high-speed SSDs                               |
+| 64 MB+                | Very large files | ~64+ MB buffer   | ⚡⚡ Fastest   | Enterprise/high-speed NVMe; files >500 MB                    |
+
+### Recommendations
+
+- **Laptops/Low RAM (<8 GB):** Use "Off" (no chunking) for small files; or 8 MB chunks for large ones
+- **Desktop PCs (8-16 GB RAM):** Default 8 MB; use 16-32 MB for files >100 MB
+- **High-end Systems (16+ GB RAM):** Use 32 MB or 64 MB for best throughput on large files
+- **Network/Shared Drives:** Use smaller chunks (8 MB) for stable, consistent performance
+
+---
+
+## Encryption Algorithm Selection
+
+Choose the right algorithm for your security and performance needs:
+
+### AES-256 GCM (Recommended - `.gfglock`)
+
+- **Speed:** (⚡⚡)
+- **Security:** ✅ Authenticated encryption (AEAD)
+- **Use When:** You need strong security with authentication; general-purpose encryption
+- **Best For:** Documents, sensitive data, compliance requirements
+- **Overhead:** Includes authentication tag (16 bytes per file)
+
+### AES-256 CFB (Fast - `.gfglck`)
+
+- **Speed:** (⚡⚡⚡)
+- **Security:** ⚠️ No built-in authentication (stream cipher)
+- **Use When:** You need maximum speed and authentication is handled separately
+- **Best For:** Large file batches, archival, non-sensitive data, speed-critical applications
+- **Advantage:** ~40% faster than GCM; simpler encryption mode
+- **Note:** Recommended to verify file integrity separately (e.g., checksums)
+
+### ChaCha20-Poly1305 (AEAD - `.gfgcha`)
+
+- **Speed:** (⚡)
+- **Security:** ✅ Authenticated encryption (AEAD)
+- **Use When:** You prioritize side-channel resistance; low-power/older CPU systems
+- **Best For:** High-security applications, systems without AES-NI, cryptography purists
+- **Advantage:** Resistant to timing attacks; excellent on CPU without hardware AES
+- **Note:** Pure software implementation (no hardware acceleration)
+
+### Quick Decision Matrix
+
+```json
+├─ Need Maximum Security?
+│  ├─ YES → Use AES-256 GCM (AEAD + Hardware Accelerated)
+│  └─ NO  → Use AES-256 CFB (Faster, no authentication)
+│
+└─ Concerned About Side-Channels?
+   ├─ YES → Use ChaCha20-Poly1305 (Timing-resistant)
+   └─ NO  → Use AES-256 GCM (Default, balanced)
+```
 
 ---
 
@@ -311,8 +376,7 @@ Future releases planned:
 
 - 🔮 **v2.7.0** — Context-Menu Fix
 - 🔮 **v2.8.0** — Resumable/pause operations for large files
-- 🔮 **v3.0.0** — Hardware acceleration (GPU AES-NI)
-- 🔮 **v3.1.0** — File integrity verification (checksums)
+- 🔮 **v3.0.0** — File integrity verification (checksums)
 
 ---
 

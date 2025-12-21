@@ -61,24 +61,14 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; Icon for the application
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 ; Documentation
-Source: "..\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
+Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
-; Do NOT include the full source tree in the production installer.
-; Shipping source exposes internal code. We only bundle the PyInstaller output in
-; {#SourceDir} (the application executable and required runtime files).
-; If you need to include specific developer docs or snippets, add them explicitly here.
-; Example (commented):
-; Source: "..\src\docs\developer_notes.md"; DestDir: "{app}\docs"; Flags: ignoreversion
-
-; NOTE: At runtime the application writes logs and user settings to the user's profile.
-; - Logs: %APPDATA%\gfgLock\logs\ (per-user). Do not expect writable logs under {app} when installed to Program Files.
-; - Settings: %APPDATA%\gfgLock\ (per-user). Development builds may use src/logs/ for local testing.
 
 [Icons]
 ; Start Menu
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{group}\Documentation"; Filename: "{app}\docs\README.md"
+Name: "{group}\Documentation"; Filename: "{app}\docs\README.html"
 
 ; Desktop
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"; Tasks: desktopicon
@@ -145,6 +135,7 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
+Type: filesandordirs; Name: "{app}"
 Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\temp"
 Type: files; Name: "{app}\*.log"

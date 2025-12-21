@@ -133,6 +133,7 @@ class ProgressDialog(QtWidgets.QDialog):
         # Reset to minimum size after showing to prevent layout-driven expansion
         self.resize(620, 370)
 
+
 class EncryptDialog(QtWidgets.QDialog):
     def __init__(self, parent=None, mode="encrypt"):
         super().__init__(parent)
@@ -708,6 +709,11 @@ class EncryptDialog(QtWidgets.QDialog):
         self.progress_dlg.close() # type: ignore
         self.accept()
 
+
+
+
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -950,6 +956,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(btns)
 
         dlg.exec_()
+
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
