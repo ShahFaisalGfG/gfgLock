@@ -8,7 +8,7 @@ A compact, secure Windows file-encryption GUI. Supports AES-256 GCM, AES-256 CFB
 
 ## Overview
 
-gfgLock v2.6.9 is a focused Windows tool for encrypting files with modern, authenticated ciphers. It aims for a balance of usability and security: fast batch processing, clear logs, and a small, responsive UI.
+gfgLock is a focused Windows tool for encrypting files with modern, authenticated ciphers. It aims for a balance of usability and security: fast batch processing, clear logs, and a small, responsive UI.
 
 ## Key Features
 
@@ -71,7 +71,7 @@ Run `gfgLock_v2.7.0_portable.exe` — no install required.
 
 ## Installation (brief)
 
-- Installer: `gfgLock_Setup_2.6.9.exe` (recommended)
+- Installer: `gfgLock_Setup_2.7.0exe` (recommended)
 - Developer: clone repo, create venv, `pip install -r requirements.txt`, run `python src/gui.py`
 
 ## Support & License
@@ -267,7 +267,6 @@ gfgLock/
 │   └── gfglock_installer_non_admin.iss  # Per-user installer (Inno Setup)
 ├── requirements.txt                      # Python dependencies
 ├── README.md                             # This file
-├── release_notes_v2.6.9.md              # v2.6.9 Release notes
 └── LICENSE                              # MIT License
 ```
 
