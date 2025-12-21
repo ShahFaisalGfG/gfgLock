@@ -13,6 +13,7 @@ trash/
 *.bkp
 *.txt
 *.pdf
+*.html
 
 release*.md
 optimization*.md
