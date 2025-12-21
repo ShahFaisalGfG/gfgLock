@@ -30,15 +30,13 @@ AppUpdatesURL={#MyAppURL}
 PrivilegesRequired=lowest
 
 ; Install to per-user AppData (Roaming) for current user
-; Install to current user's AppData\Roaming by default
 DefaultDirName={userappdata}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\build\installer
 OutputBaseFilename={#MyAppName}_{#MyAppVersion}_user_installer
 SetupIconFile={#IconsDir}\gfgLock.ico
-; Use the generated uninstaller executable for the uninstall icon (resolves incorrect Program Files paths)
-UninstallDisplayIcon={uninstallexe}
+UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
