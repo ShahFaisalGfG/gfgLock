@@ -13,6 +13,8 @@
 #define MyAppExeName "gfgLock.exe"
 #define SourceDir "..\src\dist\gfgLock"
 #define IconsDir "..\src\assets\icons"
+#define ScreenshotsDir "..\screenshots"
+
 
 [Setup]
 AppId={{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}}
@@ -60,6 +62,9 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
+
 
 [Icons]
 Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"

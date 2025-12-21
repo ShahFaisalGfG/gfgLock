@@ -11,6 +11,7 @@
 #define MyAppExeName "gfgLock.exe"
 #define SourceDir "..\src\dist\gfgLock"
 #define IconsDir "..\src\assets\icons"
+#define ScreenshotsDir "..\screenshots"
 
 [Setup]
 ; App identification
@@ -63,6 +64,10 @@ Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 ; Documentation
 Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+
 
 [Icons]
 ; Start Menu
