@@ -2,7 +2,7 @@
 
 A compact, secure Windows file-encryption GUI. Supports AES-256 GCM, AES-256 CFB and ChaCha20-Poly1305, batch processing, logging, and theme switching.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://github.com/ShahFaisalGfG/gfgLock/releases) [![Latest Release](https://img.shields.io/badge/Latest-v2.6.9-green)](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v2.6.9)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://github.com/ShahFaisalGfG/gfgLock/releases) [![Latest Release](https://img.shields.io/badge/Latest-v2.7.0-green)](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v2.7.0)
 
 ---
 
@@ -16,6 +16,11 @@ gfgLock v2.6.9 is a focused Windows tool for encrypting files with modern, authe
 - Batch processing with multi-threading and configurable chunk sizes
 - Real-time file-based logging (`%APPDATA%\\gfgLock\\logs\\`)
 - Theme support: System / Light / Dark with live Apply
+- Preferences with Apply/Save and persistent `settings.json`
+- Batch processing with multi-threading and configurable chunk sizes
+- Real-time file-based logging (`%APPDATA%\\gfgLock\\logs\\`)
+- Theme support: System / Light / Dark with live Apply
+- Hardware acceleration where available (AES-NI / platform crypto backends)
 - Preferences with Apply/Save and persistent `settings.json`
 
 ## Screenshots
@@ -56,13 +61,13 @@ gfgLock v2.6.9 is a focused Windows tool for encrypting files with modern, authe
 
 ## Quick Start
 
-1. Download `gfgLock_Setup_2.6.9.exe` from Releases and install.
+1. Download `gfgLock_Setup_2.7.0.exe` from Releases and install.
 2. Add files/folders (drag & drop supported).
 3. Choose Encrypt or Decrypt, pick algorithm (Encrypt only), enter password, and Start.
 
 ### Portable
 
-Run `gfgLock_portable.exe` — no install required.
+Run `gfgLock_v2.7.0_portable.exe` — no install required.
 
 ## Installation (brief)
 
@@ -76,7 +81,7 @@ Run `gfgLock_portable.exe` — no install required.
 
 ---
 
-Last Updated: December 19, 2025
+Last Updated: December 21, 2025
 
 ## File Extensions & Compatibility
 
@@ -126,13 +131,13 @@ Last Updated: December 19, 2025
 
 Choose the appropriate chunk size based on your file size and system resources:
 
-| Chunk Size            | Best For         | RAM Usage        | Speed          | Notes                                                        |
-| --------------------- | ---------------- | ---------------- | -------------- | ------------------------------------------------------------ |
-| **Off (no chunking)** | Files <10 MB     | Full file in RAM | ⚡ **Fastest** | Recommended for small files; entire file processed in memory |
-| 8 MB                  | **General use**  | ~8 MB buffer     | Fast           | Default; balanced for most systems                           |
-| 16 MB                 | Larger files     | ~16 MB buffer    | Faster         | Good for files >50 MB; modern systems                        |
-| 32 MB                 | High-end systems | ~32 MB buffer    | ⚡ Faster      | Files >100 MB; high-speed SSDs                               |
-| 64 MB+                | Very large files | ~64+ MB buffer   | ⚡⚡ Fastest   | Enterprise/high-speed NVMe; files >500 MB                    |
+| Chunk Size                          | Best For         | RAM Usage                 | Speed          | Notes                                                                                       |
+| ----------------------------------- | ---------------- | ------------------------- | -------------- | ------------------------------------------------------------------------------------------- |
+| **Off (Stream mode — no chunking)** | Files <10 MB     | Full file in RAM / stream | ⚡ **Fastest** | Recommended for small files; also supports streamed, non-chunk processing (added in v2.7.0) |
+| 8 MB                                | **General use**  | ~8 MB buffer              | Fast           | Default; balanced for most systems                                                          |
+| 16 MB                               | Larger files     | ~16 MB buffer             | Faster         | Good for files >50 MB; modern systems                                                       |
+| 32 MB                               | High-end systems | ~32 MB buffer             | ⚡ Faster      | Files >100 MB; high-speed SSDs                                                              |
+| 64 MB+                              | Very large files | ~64+ MB buffer            | ⚡⚡ Fastest   | Enterprise/high-speed NVMe; files >500 MB                                                   |
 
 ### Recommendations
 
@@ -352,7 +357,14 @@ iscc installer/gfglock_installer_non_admin.iss # Per-user installer
 
 ## Version History
 
-### v2.6.9 (Current) — December 19, 2025
+### v2.7.0 (Current) — December 21, 2025
+
+- ⚡ Performance: Optimized encryption algorithms for improved speed and efficiency
+- 🛠 Hardware: Added hardware acceleration support (AES-NI) and improved crypto backend detection
+- 🔁 Streaming: Added streamed/non-chunk mode (`chunk_size`: Off) for small files and streaming use-cases
+- ✅ Stability: Minor fixes and reliability improvements
+
+### v2.6.9 — December 19, 2025
 
 - ✨ Multi-algorithm support (AES-256 GCM/CFB, ChaCha20-Poly1305)
 - ✨ Comprehensive logging system
@@ -366,7 +378,7 @@ iscc installer/gfglock_installer_non_admin.iss # Per-user installer
 - Basic logging
 - Drag & drop support
 
-**Note:** v1.0.0 was a pre-release and has been removed from GitHub releases. Upgrade to v2.6.9 for latest features and security.
+**Note:** v1.0.0 was a pre-release and has been removed from GitHub releases. Upgrade to v2.7.0 for latest features and security.
 
 ---
 
@@ -374,9 +386,10 @@ iscc installer/gfglock_installer_non_admin.iss # Per-user installer
 
 Future releases planned:
 
-- 🔮 **v2.7.0** — Context-Menu Fix
+- 🔮 **v2.7.0** — Enable Hardware acceleration, optimize performance
 - 🔮 **v2.8.0** — Resumable/pause operations for large files
-- 🔮 **v3.0.0** — File integrity verification (checksums)
+- 🔮 **v3.0.0** — Context-Menu Fix
+- 🔮 **v3.1.1** — File integrity verification (checksums)
 
 ---
 

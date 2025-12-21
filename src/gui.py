@@ -43,7 +43,7 @@ os.environ["QT_QPA_PLATFORM"] = "windows"
 # ========================================================
 # ========================================================
 app_name = "gfgLock"
-app_version = "2.6.9"
+app_version = "2.7.0"
 author = "Shah Faisal"
 company = "gfgRoyal"
 
