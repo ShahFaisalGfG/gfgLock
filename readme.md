@@ -175,7 +175,7 @@ Choose the right algorithm for your security and performance needs:
 
 ### Quick Decision Matrix
 
-```json
+```bash
 ├─ Need Maximum Security?
 │  ├─ YES → Use AES-256 GCM (AEAD + Hardware Accelerated)
 │  └─ NO  → Use AES-256 CFB (Faster, no authentication)
