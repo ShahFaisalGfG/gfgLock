@@ -237,7 +237,7 @@ class EncryptDialog(QtWidgets.QDialog):
         if chunk_index >= 0:
             self.chunk_combo.setCurrentIndex(chunk_index)
         else:
-            self.chunk_combo.setCurrentText("8 MB (default)")
+            self.chunk_combo.setCurrentText("16 MB (fast)")
 
         row.addWidget(QtWidgets.QLabel("CPU Threads:"))
         row.addWidget(self.threads_combo)

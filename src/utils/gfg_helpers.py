@@ -63,7 +63,7 @@ def get_chunk_sizes() -> list:
     """
     return [
         ("Off (no chunking)", None),
-        ("8 MB (default)", 8 * 1024 * 1024),
+        ("8 MB (normal)", 8 * 1024 * 1024),
         ("16 MB (fast)", 16 * 1024 * 1024),
         ("32 MB (faster)", 32 * 1024 * 1024),
         ("64 MB (heavy)", 64 * 1024 * 1024),
@@ -158,12 +158,12 @@ def get_default_settings() -> Dict[str, Any]:
         "theme": "system",  # system, light, dark
         "encryption": {
             "cpu_threads": default_threads,
-            "chunk_size": 8 * 1024 * 1024,  # 8 MB
+            "chunk_size": 16 * 1024 * 1024,  # 16 MB
             "encrypt_filenames": False
         },
         "decryption": {
             "cpu_threads": default_threads,
-            "chunk_size": 8 * 1024 * 1024,  # 8 MB
+            "chunk_size": 16 * 1024 * 1024,  # 16 MB
             "encrypt_filenames": False
         },
         "advanced": {

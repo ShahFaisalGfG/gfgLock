@@ -104,7 +104,7 @@ Last Updated: December 19, 2025
 ### Encryption Tab
 
 - **CPU Threads:** 1 to (cores - 1) — balance speed vs. responsiveness
-- **Chunk Size:** 8 MB (default) to 128 MB — memory vs. speed tradeoff
+- **Chunk Size:** 8 MB (normal) to 128 MB(heavy) — memory vs. speed tradeoff
 - **Encrypt Filenames:** Optional filename randomization
 
 ### Decryption Tab
@@ -137,7 +137,7 @@ Choose the appropriate chunk size based on your file size and system resources:
 ### Recommendations
 
 - **Laptops/Low RAM (<8 GB):** Use "Off" (no chunking) for small files; or 8 MB chunks for large ones
-- **Desktop PCs (8-16 GB RAM):** Default 8 MB; use 16-32 MB for files >100 MB
+- **Desktop PCs (8-16 GB RAM):** Normal 8 MB; use 16-32 MB for files >100 MB
 - **High-end Systems (16+ GB RAM):** Use 32 MB or 64 MB for best throughput on large files
 - **Network/Shared Drives:** Use smaller chunks (8 MB) for stable, consistent performance
 
