@@ -1034,32 +1034,32 @@ def main():
             final_paths.append(abs_p)  # keep for error visibility
             continue
 
-            # Only include files appropriate for the selected mode:
-            enc_exts = ('.gfglock', '.gfglck', '.gfgcha')
-            if os.path.isfile(abs_p):
-                # Encrypt mode: skip files that are already encrypted
-                if mode == "encrypt":
-                    if abs_p.lower().endswith(enc_exts):
-                        continue
-                # Decrypt mode: include only encrypted files
-                else:
-                    if not abs_p.lower().endswith(enc_exts):
-                        continue
-                final_paths.append(abs_p)
+        # Only include files appropriate for the selected mode:
+        enc_exts = ('.gfglock', '.gfglck', '.gfgcha')
+        if os.path.isfile(abs_p):
+            # Encrypt mode: skip files that are already encrypted
+            if mode == "encrypt":
+                if abs_p.lower().endswith(enc_exts):
+                    continue
+            # Decrypt mode: include only encrypted files
+            else:
+                if not abs_p.lower().endswith(enc_exts):
+                    continue
+            final_paths.append(abs_p)
 
-            elif os.path.isdir(abs_p):
-                for root, _, files in os.walk(abs_p):
-                    for f in files:
-                        fp = os.path.join(root, f)
-                        if mode == "encrypt":
-                            # In encrypt mode, skip files that already have an encrypted extension
-                            if fp.lower().endswith(enc_exts):
-                                continue
-                        else:
-                            # In decrypt mode, only include encrypted files
-                            if not fp.lower().endswith(enc_exts):
-                                continue
-                        final_paths.append(fp)
+        elif os.path.isdir(abs_p):
+            for root, _, files in os.walk(abs_p):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    if mode == "encrypt":
+                        # In encrypt mode, skip files that already have an encrypted extension
+                        if fp.lower().endswith(enc_exts):
+                            continue
+                    else:
+                        # In decrypt mode, only include encrypted files
+                        if not fp.lower().endswith(enc_exts):
+                            continue
+                    final_paths.append(fp)
 
     # Remove duplicates
     seen = set()
