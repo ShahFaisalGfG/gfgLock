@@ -1,3 +1,4 @@
+from multiprocessing import freeze_support
 import os
 import shlex
 import sys
@@ -960,6 +961,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    freeze_support()
     app.setStyle("Fusion")
     app.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
 
