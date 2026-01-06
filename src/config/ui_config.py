@@ -161,16 +161,9 @@ class FontSizes:
 class ComboBoxSizes:
     """ComboBox width settings."""
     
-    # CPU Threads combo: 77px (10% reduction from 85)
-    CPU_THREADS_WIDTH = 77
-    
-    # Initial Chunk Size combo: 81px (10% reduction from 90)
-    CHUNK_INITIAL_WIDTH = 81
-    
-    # Final Chunk Size combo: 108px (10% reduction from 120)
-    CHUNK_FINAL_WIDTH = 108
-
-
+    CPU_THREADS_WIDTH = 65
+    CHUNK_WIDTH = 108
+    ALG_WIDTH = 232
 # ============== LABEL HEIGHTS ==============
 class LabelSizes:
     """Label and text widget sizes."""

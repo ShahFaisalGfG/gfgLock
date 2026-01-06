@@ -104,12 +104,12 @@ class EncryptDialog(QtWidgets.QDialog):
         # chunk size
         self.chunk_combo = QtWidgets.QComboBox()
         # DPI-scaled initial width from config: base 81 at 96 DPI (10% reduction)
-        self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_INITIAL_WIDTH))
+        self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_WIDTH))
         
         for label, val in ChunkSizeOptions.get_options():
             self.chunk_combo.addItem(label, val)
-        # DPI-scaled final width from config: base 108 at 96 DPI (10% reduction)
-        self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_FINAL_WIDTH))
+        # Automatically size based on content
+        self.chunk_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
 
         # Set chunk size from settings
         chunk_index = self.chunk_combo.findData(default_chunk)
@@ -127,6 +127,7 @@ class EncryptDialog(QtWidgets.QDialog):
         if self.mode == "encrypt":
             row.addWidget(QtWidgets.QLabel("Algorithm:"))
             self.alg_combo = QtWidgets.QComboBox()
+            self.alg_combo.setFixedWidth(scale_value(ComboBoxSizes.ALG_WIDTH))
             for label, mode_id in EncryptionModes.get_options():
                 self.alg_combo.addItem(label, mode_id)
             try:
@@ -136,6 +137,8 @@ class EncryptDialog(QtWidgets.QDialog):
                     self.alg_combo.setCurrentIndex(idx)
             except Exception:
                 pass
+            # Automatically size based on content
+            self.alg_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
             row.addWidget(self.alg_combo)
 
         row.addStretch()
