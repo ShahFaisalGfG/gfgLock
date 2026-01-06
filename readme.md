@@ -276,7 +276,7 @@ gfgLock/
 
 | Package      | Purpose            | Version |
 | ------------ | ------------------ | ------- |
-| PyQt5        | GUI framework      | 5.15+   |
+| PyQt6        | GUI framework      | 5.15+   |
 | cryptography | AES-256 encryption | 3.4+    |
 | pycryptodome | ChaCha20-Poly1305  | 3.4+    |
 

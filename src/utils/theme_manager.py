@@ -4,7 +4,7 @@
 import sys
 from typing import Optional
 
-from PyQt5 import QtWidgets
+from PyQt6 import QtWidgets
 from utils.gfg_helpers import load_settings
 
 
@@ -36,40 +36,43 @@ def get_light_theme_stylesheet() -> str:
     """Get the light theme stylesheet."""
     return """
     QWidget {
-        background-color: #ffffff;
+        background-color: #f5f5f5;
         color: #000000;
     }
     
     QMainWindow {
-        background-color: #ffffff;
+        background-color: #f5f5f5;
+        color: #000000;
     }
     
     QPushButton {
-        background-color: #f0f0f0;
+        background-color: #e8e8e8;
         color: #000000;
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
         border-radius: 4px;
         padding: 5px;
         font-weight: 500;
     }
     
     QPushButton:hover {
-        background-color: #e0e0e0;
-        border: 1px solid #c0c0c0;
+        background-color: #d8d8d8;
+        border: 1px solid #a0a0a0;
     }
     
     QPushButton:pressed {
-        background-color: #d0d0d0;
+        background-color: #c8c8c8;
     }
     
     QPushButton:disabled {
         color: #999999;
-        background-color: #f5f5f5;
-        border: 1px solid #e0e0e0;
+        background-color: #ebebeb;
+        border: 1px solid #d0d0d0;
     }
+    
+    QLineEdit, QTextEdit, QPlainTextEdit {
         background-color: #ffffff;
         color: #000000;
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
         border-radius: 4px;
         padding: 4px;
     }
@@ -81,7 +84,7 @@ def get_light_theme_stylesheet() -> str:
     QComboBox {
         background-color: #ffffff;
         color: #000000;
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
         border-radius: 4px;
         padding: 4px;
     }
@@ -92,16 +95,25 @@ def get_light_theme_stylesheet() -> str:
     
     QComboBox:disabled {
         color: #999999;
-        background-color: #f5f5f5;
-        border: 1px solid #e0e0e0;
+        background-color: #ebebeb;
+        border: 1px solid #d0d0d0;
     }
+    
+    QComboBox::drop-down {
         border: none;
+    }
+    
+    QComboBox QAbstractItemView {
+        background-color: #ffffff;
+        color: #000000;
+        selection-background-color: #0078d4;
+        border: 1px solid #c0c0c0;
     }
     
     QListWidget {
         background-color: #ffffff;
         color: #000000;
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
         border-radius: 4px;
     }
     
@@ -111,8 +123,8 @@ def get_light_theme_stylesheet() -> str:
     }
     
     QProgressBar {
-        background-color: #f0f0f0;
-        border: 1px solid #d0d0d0;
+        background-color: #e8e8e8;
+        border: 1px solid #c0c0c0;
         border-radius: 4px;
         text-align: center;
         color: #000000;
@@ -134,7 +146,7 @@ def get_light_theme_stylesheet() -> str:
     
     QCheckBox::indicator:unchecked {
         background-color: #ffffff;
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
         border-radius: 3px;
     }
     
@@ -149,20 +161,24 @@ def get_light_theme_stylesheet() -> str:
     }
     
     #title_label {
-        color: #2b2b2b;
+        color: #1a1a1a;
     }
     
     #subtitle_label {
-        color: #666666;
+        color: #555555;
+    }
+    
+    #version_label {
+        color: #888888;
     }
     
     #header_widget {
-        background-color: #ffffff;
+        background-color: #f5f5f5;
     }
     
     #custom_title_bar {
-        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f5f5f5, stop:1 #e8e8e8);
-        border-bottom: 1px solid #c0c0c0;
+        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e8e8, stop:1 #d8d8d8);
+        border-bottom: 1px solid #a0a0a0;
     }
     
     #title_bar_text {
@@ -171,7 +187,7 @@ def get_light_theme_stylesheet() -> str:
     }
     
     #title_bar_button {
-        background-color: #f0f0f0;
+        background-color: #e0e0e0;
         color: #000000;
         border: none;
         padding: 0px;
@@ -181,11 +197,11 @@ def get_light_theme_stylesheet() -> str:
     }
     
     #title_bar_button:hover {
-        background-color: #e0e0e0;
+        background-color: #d0d0d0;
     }
     
     #title_bar_button:pressed {
-        background-color: #d0d0d0;
+        background-color: #c0c0c0;
     }
     
     #title_bar_close_button:hover {
@@ -199,7 +215,7 @@ def get_light_theme_stylesheet() -> str:
     
     QGroupBox {
         color: #000000;
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
         border-radius: 4px;
         margin-top: 8px;
         padding-top: 8px;
@@ -212,13 +228,13 @@ def get_light_theme_stylesheet() -> str:
     }
     
     QTabWidget::pane {
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
     }
     
     QTabBar::tab {
-        background-color: #f0f0f0;
+        background-color: #e8e8e8;
         color: #000000;
-        border: 1px solid #d0d0d0;
+        border: 1px solid #c0c0c0;
         border-bottom: none;
         border-radius: 4px 4px 0 0;
         padding: 6px 12px;
@@ -231,15 +247,43 @@ def get_light_theme_stylesheet() -> str:
     }
     
     QTabBar::tab:hover {
-        background-color: #e8e8e8;
+        background-color: #d8d8d8;
     }
     
     QDialog {
-        background-color: #ffffff;
+        background-color: #f5f5f5;
     }
     
     QMessageBox {
-        background-color: #ffffff;
+        background-color: #f5f5f5;
+    }
+    
+    QScrollBar:vertical {
+        background-color: #e8e8e8;
+        border: 1px solid #c0c0c0;
+    }
+    
+    QScrollBar::handle:vertical {
+        background-color: #c0c0c0;
+        border-radius: 4px;
+    }
+    
+    QScrollBar::handle:vertical:hover {
+        background-color: #a0a0a0;
+    }
+    
+    QScrollBar:horizontal {
+        background-color: #e8e8e8;
+        border: 1px solid #c0c0c0;
+    }
+    
+    QScrollBar::handle:horizontal {
+        background-color: #c0c0c0;
+        border-radius: 4px;
+    }
+    
+    QScrollBar::handle:horizontal:hover {
+        background-color: #a0a0a0;
     }
     """
 
@@ -383,6 +427,10 @@ def get_dark_theme_stylesheet() -> str:
     
     #subtitle_label {
         color: #b0b0b0;
+    }
+    
+    #version_label {
+        color: #888888;
     }
     
     #header_widget {

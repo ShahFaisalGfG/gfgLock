@@ -1,5 +1,5 @@
 {
-  "theme": "system",
+  "theme": "light",
   "encryption": {
     "cpu_threads": 4,
     "chunk_size": 8388608,

@@ -7,22 +7,16 @@ import os
 import sys
 from datetime import datetime
 from multiprocessing import cpu_count
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
+from PyQt6 import QtGui
 
-from cpuinfo import get_cpu_info
+from config import ChunkSizeOptions, EncryptionModes
+# Note: config.defaults is imported lazily in functions to avoid circular imports
 
 
-def check_aes_ni():
-    info = get_cpu_info()
-    flags = info.get('flags', [])
-
-    if 'aes' in flags:
-        print("AES-NI is supported on this PC.")
-    else:
-        print("AES-NI is NOT supported on this PC.")
-
-if __name__ == "__main__":
-    check_aes_ni()
+# ============== DEPRECATED: Use config instead ==============
+# These functions are kept for backward compatibility but are deprecated
+# All new code should import from config
 
 
 def resource_path(relative_path: str) -> str:
@@ -56,38 +50,16 @@ def get_cpu_thread_count() -> int:
         return 0  # Return 0 if the count is undetermined
     return cpu_count_val
 
-
-def get_chunk_sizes() -> list:
-    """Get list of (label, bytes) tuples for chunk size options.
+def clamp_threads(threads: int) -> int:
+    """Clamp thread count to safe value (max = CPU count - 1).
+    
+    Args:
+        threads: Desired thread count
     
     Returns:
-        list: [(label, size_in_bytes), ...]
+        int: Safe thread count clamped to valid range
     """
-    return [
-        ("Off (no chunking)", None),
-        ("8 MB (normal)", 8 * 1024 * 1024),
-        ("16 MB (fast)", 16 * 1024 * 1024),
-        ("32 MB (faster)", 32 * 1024 * 1024),
-        ("64 MB (heavy)", 64 * 1024 * 1024),
-        ("128 MB (experimental)", 128 * 1024 * 1024),
-    ]
-
-
-def get_encryption_modes() -> list:
-    """Get list of (label, mode_id) tuples for encryption algorithm options.
-    
-    Returns:
-        list: [(label, mode_id), ...]
-    """
-    return [
-        ("AES-256 GCM (Recommended - AEAD)", "aes256_gcm"),
-        ("AES-256 CFB (Fast - No AEAD)", "aes256_cfb"),
-        ("ChaCha20-Poly1305 (AEAD)", "chacha20_poly1305"),
-    ]
-
-
-def clamp_threads(threads):
-    """Clamps thread count to safe value."""
+    from multiprocessing import cpu_count
     try:
         max_safe = max(cpu_count() - 1, 1)
     except Exception:
@@ -96,9 +68,15 @@ def clamp_threads(threads):
         return 1
     return min(threads, max_safe)
 
-
-def format_duration(seconds):
-    """Formats duration in seconds to human-readable string."""
+def format_duration(seconds: float) -> str:
+    """Format duration in seconds to human-readable string for UI display.
+    
+    Args:
+        seconds: Duration in seconds
+    
+    Returns:
+        str: Formatted duration (e.g., "2 mins 30 sec", "1 hrs 5 mins 12 sec")
+    """
     seconds = int(seconds)
     if seconds < 60:
         return f"{seconds} seconds"
@@ -152,28 +130,12 @@ def get_settings_file() -> str:
 
 
 def get_default_settings() -> Dict[str, Any]:
-    """Get default application settings."""
-    total_threads = get_cpu_thread_count()
-    default_threads = max(1, total_threads // 2)
+    """Get default application settings.
     
-    return {
-        "theme": "system",  # system, light, dark
-        "encryption": {
-            "cpu_threads": default_threads,
-            "chunk_size": 16 * 1024 * 1024,  # 16 MB
-            "encrypt_filenames": False
-        },
-        "decryption": {
-            "cpu_threads": default_threads,
-            "chunk_size": 16 * 1024 * 1024,  # 16 MB
-            "encrypt_filenames": False
-        },
-        "advanced": {
-            "encryption_mode": "aes256_gcm",  # aes256_gcm, aes256_cfb, chacha20_poly1305
-            "enable_logs": False,
-            "log_level": "critical"  # critical, all
-        }
-    }
+    Imported from config.defaults module - see that file for customization.
+    """
+    from config.defaults import get_default_settings as get_defaults
+    return get_defaults()
 
 
 def load_settings() -> Dict[str, Any]:

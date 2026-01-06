@@ -2,8 +2,9 @@ from typing import Optional, cast
 import os
 import sys
 
-from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import Qt
+from PyQt6 import QtWidgets, QtCore, QtGui
+from PyQt6.QtCore import Qt
+from config import Spacing, ButtonSizes, WindowSizes, scale_value
 
 
 class CustomTitleBar(QtWidgets.QWidget):
@@ -19,16 +20,21 @@ class CustomTitleBar(QtWidgets.QWidget):
     def __init__(self, window_title: str, parent=None, show_min_max: bool = True):
         super().__init__(parent)
         self.setObjectName("custom_title_bar")
-        self.setFixedHeight(34)
+        # DPI-scaled height: base 31 at 96 DPI (10% reduction)
+        self.setFixedHeight(scale_value(31))
 
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(8, 0, 8, 0)
-        layout.setSpacing(6)
+        # DPI-scaled margins: base (7, 0, 7, 0) at 96 DPI (10% reduction)
+        layout.setContentsMargins(scale_value(7), 0, scale_value(7), 0)
+        # DPI-scaled spacing: base 5 at 96 DPI (10% reduction)
+        layout.setSpacing(scale_value(5))
 
         # App icon + title
         icon_lbl = QtWidgets.QLabel()
         icon_lbl.setObjectName("title_bar_icon")
-        icon_lbl.setFixedSize(20, 20)
+        # DPI-scaled size: base (18, 18) at 96 DPI (10% reduction)
+        icon_size = scale_value(18)
+        icon_lbl.setFixedSize(icon_size, icon_size)
         # Try to obtain the window icon (if set), otherwise fall back to bundled icon
         try:
             win = parent if parent is not None else self.window()
@@ -42,7 +48,9 @@ class CustomTitleBar(QtWidgets.QWidget):
                 if os.path.exists(bundled):
                     icon = QtGui.QIcon(bundled)
             if icon and not icon.isNull():
-                pix = icon.pixmap(20, 20)
+                # DPI-scaled pixmap size: base (18, 18) at 96 DPI (10% reduction)
+                pix_size = scale_value(18)
+                pix = icon.pixmap(pix_size, pix_size)
                 if pix and not pix.isNull():
                     icon_lbl.setPixmap(pix)
         except Exception:
@@ -52,14 +60,17 @@ class CustomTitleBar(QtWidgets.QWidget):
         self.title_label = QtWidgets.QLabel(window_title)
         self.title_label.setObjectName("title_bar_text")
         # Use explicit AlignmentFlag to satisfy static type checkers
-        self.title_label.setAlignment(cast(Qt.Alignment, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft))
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.title_label)
         layout.addStretch()
 
         # Minimize (show only if show_min_max is True)
         self.btn_minimize = QtWidgets.QPushButton("—")
         self.btn_minimize.setObjectName("title_bar_button")
-        self.btn_minimize.setFixedSize(36, 28)
+        # DPI-scaled size from config
+        btn_size_w = scale_value(ButtonSizes.TITLE_BAR_WIDTH)
+        btn_size_h = scale_value(ButtonSizes.TITLE_BAR_HEIGHT)
+        self.btn_minimize.setFixedSize(btn_size_w, btn_size_h)
         self.btn_minimize.clicked.connect(self.on_minimize)
         if show_min_max:
             layout.addWidget(self.btn_minimize)
@@ -69,7 +80,8 @@ class CustomTitleBar(QtWidgets.QWidget):
         # Maximize / Restore (show only if show_min_max is True)
         self.btn_maximize = QtWidgets.QPushButton("☐")
         self.btn_maximize.setObjectName("title_bar_button")
-        self.btn_maximize.setFixedSize(36, 28)
+        # DPI-scaled size: base (36, 28) at 96 DPI
+        self.btn_maximize.setFixedSize(btn_size_w, btn_size_h)
         self.btn_maximize.clicked.connect(self.toggle_maximize)
         if show_min_max:
             layout.addWidget(self.btn_maximize)
@@ -79,7 +91,8 @@ class CustomTitleBar(QtWidgets.QWidget):
         # Close
         self.btn_close = QtWidgets.QPushButton("✕")
         self.btn_close.setObjectName("title_bar_close_button")
-        self.btn_close.setFixedSize(36, 28)
+        # DPI-scaled size: base (36, 28) at 96 DPI
+        self.btn_close.setFixedSize(btn_size_w, btn_size_h)
         self.btn_close.clicked.connect(self.on_close)
         layout.addWidget(self.btn_close)
 
@@ -119,7 +132,7 @@ class CustomTitleBar(QtWidgets.QWidget):
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # type: ignore[override]
         # Record starting position and geometry for move operations.
         if event.button() == Qt.MouseButton.LeftButton:
-            self._start_pos = event.globalPos()
+            self._start_pos = event.globalPosition().toPoint()
             w = self.window()
             if w is not None:
                 self._start_geom = w.geometry()
@@ -133,13 +146,13 @@ class CustomTitleBar(QtWidgets.QWidget):
             w = self.window()
             if w is None or self._start_geom is None:
                 return
-            dp = event.globalPos() - self._start_pos
+            dp = event.globalPosition().toPoint() - self._start_pos
             try:
                 # If maximized, restore to normal and start moving
                 if w.isMaximized():
                     w.showNormal()
                     # adjust offset after restore
-                    self._start_pos = event.globalPos()
+                    self._start_pos = event.globalPosition().toPoint()
                     self._start_geom = w.geometry()
                 new_geom = self._start_geom
                 new_pos = new_geom.topLeft() + dp
@@ -169,10 +182,10 @@ class _WindowResizer(QtCore.QObject):
     cross-platform implementation sufficient for common use.
     """
 
-    def __init__(self, window: QtWidgets.QWidget, margin: int = 6):
+    def __init__(self, window: QtWidgets.QWidget, margin: Optional[int] = None):
         super().__init__(window)
         self._w = window
-        self._margin = margin
+        self._margin = margin if margin is not None else Spacing.WINDOW_RESIZE_MARGIN
         self._resizing = False
         self._resize_edges = 0
         self._start_rect: Optional[QtCore.QRect] = None
@@ -245,7 +258,7 @@ class _WindowResizer(QtCore.QObject):
         There can be multiple stacked override cursors; loop until none remain.
         """
         try:
-            # Keep restoring until overrideCursor() is None
+            # Keep restoring until overrideCursor is None
             while QtWidgets.QApplication.overrideCursor() is not None:
                 QtWidgets.QApplication.restoreOverrideCursor()
         except Exception:
@@ -260,7 +273,7 @@ class _WindowResizer(QtCore.QObject):
             return False
         me = cast(QtGui.QMouseEvent, event)
         # Convert global position to local window coordinates (handles events from child widgets)
-        global_pos = me.globalPos()
+        global_pos = me.globalPosition().toPoint()
         local_pos = self._w.mapFromGlobal(global_pos)
         
         if self._resizing and self._start_rect is not None and self._start_pos is not None:
@@ -301,7 +314,7 @@ class _WindowResizer(QtCore.QObject):
         if self._w.isMaximized() or not self._w.isEnabled():
             return False
         # Convert global position to local window coordinates
-        global_pos = me.globalPos()
+        global_pos = me.globalPosition().toPoint()
         local_pos = self._w.mapFromGlobal(global_pos)
         flags = self._edge_flags(local_pos)
         if flags == 0:
@@ -336,7 +349,7 @@ def show_message(parent: Optional[QtWidgets.QWidget], title: str, text: str, *,
     Returns True for Yes in 'yesno', False for No, None otherwise.
     """
     dlg = QtWidgets.QDialog(parent)
-    dlg.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
+    dlg.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)  # type: ignore[attr-defined]
     dlg.setModal(True)
     dlg.setWindowTitle(title)
     # Ensure message dialogs have the app icon so CustomTitleBar shows it
@@ -358,15 +371,18 @@ def show_message(parent: Optional[QtWidgets.QWidget], title: str, text: str, *,
         pass
     # Make the message dialog a bit larger and give it comfortable padding
     try:
-        dlg.setMinimumSize(420, 160)
-        dlg.resize(420, 160)
+        # DPI-scaled size from config
+        dlg_w, dlg_h = scale_value(WindowSizes.MESSAGE_DIALOG_WIDTH), scale_value(WindowSizes.MESSAGE_DIALOG_HEIGHT)
+        dlg.setMinimumSize(dlg_w, dlg_h)
+        dlg.resize(dlg_w, dlg_h)
     except Exception:
         pass
     try:
         tb = CustomTitleBar(title, dlg, show_min_max=False)
         layout = QtWidgets.QVBoxLayout(dlg)
-        # increase padding for better visual spacing
-        layout.setContentsMargins(16, 16, 16, 16)
+        # DPI-scaled padding from config
+        margin = scale_value(Spacing.DIALOG_PADDING)
+        layout.setContentsMargins(margin, margin, margin, margin)
         layout.insertWidget(0, tb)
     except Exception:
         layout = QtWidgets.QVBoxLayout(dlg)
@@ -394,15 +410,15 @@ def show_message(parent: Optional[QtWidgets.QWidget], title: str, text: str, *,
 
         yes.clicked.connect(_yes)
         no.clicked.connect(_no)
-        res = dlg.exec_()
+        res = dlg.exec()
         return True if res == 1 else False
     else:
-        btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+        btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(dlg.accept)
         # place the ok button in a right-aligned footer for consistency
         footer = QtWidgets.QHBoxLayout()
         footer.addStretch()
         footer.addWidget(btns)
         layout.addLayout(footer)
-        dlg.exec_()
+        dlg.exec()
         return None

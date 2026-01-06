@@ -3,10 +3,11 @@
 
 import os
 import sys
-from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import Qt
-from utils.gfg_helpers import load_settings, save_settings, get_cpu_thread_count, clear_logs, get_logs_dir, get_general_log_file, get_critical_log_file, get_chunk_sizes, get_encryption_modes, resource_path
+from PyQt6 import QtWidgets, QtCore, QtGui
+from PyQt6.QtCore import Qt
+from utils.gfg_helpers import load_settings, save_settings, get_cpu_thread_count, clear_logs, get_logs_dir, get_general_log_file, get_critical_log_file, resource_path
 from widgets.custom_title_bar import CustomTitleBar
+from config import ChunkSizeOptions, EncryptionModes, WindowSizes, scale_size
 import subprocess
 from datetime import datetime
 
@@ -24,11 +25,13 @@ class PreferencesWindow(QtWidgets.QDialog):
     
     def init_ui(self):
         """Initialize the UI."""
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)  # type: ignore[attr-defined]
         self.setWindowTitle("Preferences")
         self.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
         self.setModal(True)
-        self.resize(600, 700)
+        # DPI-scaled size from config
+        resize_w, resize_h = scale_size(WindowSizes.PREFERENCES_WINDOW_WIDTH, WindowSizes.PREFERENCES_WINDOW_HEIGHT)
+        self.resize(resize_w, resize_h)
         
         # Main layout with tab widget
         main_layout = QtWidgets.QVBoxLayout(self)
@@ -120,7 +123,7 @@ class PreferencesWindow(QtWidgets.QDialog):
         
         # Chunk Size
         self.enc_chunk_combo = QtWidgets.QComboBox()
-        for label, value in get_chunk_sizes():
+        for label, value in ChunkSizeOptions.get_options():
             self.enc_chunk_combo.addItem(label, value)
         
         group_layout.addRow("Chunk Size:", self.enc_chunk_combo)
@@ -155,7 +158,7 @@ class PreferencesWindow(QtWidgets.QDialog):
         
         # Chunk Size
         self.dec_chunk_combo = QtWidgets.QComboBox()
-        for label, value in get_chunk_sizes():
+        for label, value in ChunkSizeOptions.get_options():
             self.dec_chunk_combo.addItem(label, value)
         
         group_layout.addRow("Chunk Size:", self.dec_chunk_combo)
@@ -180,7 +183,7 @@ class PreferencesWindow(QtWidgets.QDialog):
         enc_mode_layout = QtWidgets.QVBoxLayout()
         
         self.enc_mode_combo = QtWidgets.QComboBox()
-        for label, mode_id in get_encryption_modes():
+        for label, mode_id in EncryptionModes.get_options():
             self.enc_mode_combo.addItem(label, mode_id)
         
         enc_mode_layout.addWidget(QtWidgets.QLabel("Default Encryption Algorithm:"))
@@ -229,7 +232,6 @@ class PreferencesWindow(QtWidgets.QDialog):
         
         # Clear logs button (red text to indicate destructive action)
         self.btn_clear_logs = QtWidgets.QPushButton("Clear All Logs")
-        self.btn_clear_logs.setStyleSheet("color: #c62828;")
         self.btn_clear_logs.clicked.connect(self.clear_all_logs)
         # Open logs folder button
         self.btn_open_logs = QtWidgets.QPushButton("Open Logs Folder")

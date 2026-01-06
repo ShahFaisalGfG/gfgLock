@@ -41,7 +41,7 @@ File: gfgLock_old.png
 
 **Qt Loading Test**: ✓ PASSED
 
-- Both PNG files load successfully with PyQt5 (QtGui)
+- Both PNG files load successfully with PyQt6 (QtGui)
 - No libpng warnings generated when loading with Qt
 
 ### 2. custom_title_bar.py Code Review ✓ VERIFIED

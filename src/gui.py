@@ -3,13 +3,12 @@ import shlex
 import sys
 from multiprocessing import freeze_support
 
-from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QTextOption
+from PyQt6 import QtWidgets, QtCore, QtGui
+from PyQt6.QtCore import Qt
 
 from services.worker import EncryptDecryptWorker
-from utils.gfg_helpers import load_settings, write_general_log, write_critical_log, write_log, get_chunk_sizes, \
-    get_encryption_modes, resource_path
+from utils.gfg_helpers import load_settings, write_general_log, write_critical_log, write_log, resource_path
+from config import ChunkSizeOptions, EncryptionModes, ComboBoxSizes, WindowSizes, Spacing, ButtonSizes, FontSizes, LabelSizes, IconSizes, scale_size, scale_value
 from utils.theme_manager import apply_theme
 from views.preferences import PreferencesWindow
 from widgets.custom_title_bar import CustomTitleBar
@@ -57,11 +56,14 @@ class ProgressDialog(QtWidgets.QDialog):
     def __init__(self, total, parent=None):
         super().__init__(parent)
 
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)  # type: ignore[attr-defined]
         self.setWindowTitle("Progress")
         # Set minimum size and initial size - allow user to resize larger
-        self.setMinimumSize(620, 380)
-        self.resize(620, 370)
+        # DPI-scaled sizes from config
+        min_w, min_h = scale_size(WindowSizes.PROGRESS_DIALOG_WIDTH, WindowSizes.PROGRESS_DIALOG_MIN_HEIGHT)
+        resize_w, resize_h = scale_size(WindowSizes.PROGRESS_DIALOG_WIDTH, WindowSizes.PROGRESS_DIALOG_HEIGHT)
+        self.setMinimumSize(min_w, min_h)
+        self.resize(resize_w, resize_h)
         self.setSizeGripEnabled(False)  # We use QSizeGrip manually, prevent auto-resize
         self.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
         self.setModal(True)
@@ -78,10 +80,11 @@ class ProgressDialog(QtWidgets.QDialog):
         self.label_current = QtWidgets.QLabel("Current file:")
         # Prevent this label from forcing the dialog to grow for long filenames.
         try:
-            self.label_current.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            self.label_current.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
             self.label_current.setWordWrap(False)
             self.label_current.setMinimumWidth(0)
-            self.label_current.setFixedHeight(20)
+            # DPI-scaled height: base 18 at 96 DPI (10% reduction)
+            self.label_current.setFixedHeight(scale_value(18))
         except Exception:
             pass
         layout.addWidget(self.label_current)
@@ -97,7 +100,7 @@ class ProgressDialog(QtWidgets.QDialog):
         self.logs.setReadOnly(True)
         # Prefer horizontal scrolling for long lines, but constrain width
         try:
-            self.logs.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+            self.logs.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
             self.logs.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
         except Exception:
             pass
@@ -105,9 +108,10 @@ class ProgressDialog(QtWidgets.QDialog):
         # Ignore content-based size adjustments and allow the widget to expand
         # only when the user resizes the dialog.
         try:
-            self.logs.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustIgnored)
-            self.logs.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-            self.logs.setMinimumHeight(100)  # Set minimum height to prevent large sizeHint
+            self.logs.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+            self.logs.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
+            # DPI-scaled minimum height: base 90 at 96 DPI (10% reduction)
+            self.logs.setMinimumHeight(scale_value(90))
         except Exception:
             pass
         layout.addWidget(self.logs, 1)  # Stretch factor of 1 to fill available space
@@ -133,7 +137,9 @@ class ProgressDialog(QtWidgets.QDialog):
         """Prevent automatic resizing when dialog is shown."""
         super().showEvent(a0)
         # Reset to minimum size after showing to prevent layout-driven expansion
-        self.resize(620, 370)
+        # DPI-scaled size from config
+        resize_w, resize_h = scale_size(WindowSizes.PROGRESS_DIALOG_WIDTH, WindowSizes.PROGRESS_DIALOG_HEIGHT)
+        self.resize(resize_w, resize_h)
 
 
 class EncryptDialog(QtWidgets.QDialog):
@@ -144,9 +150,11 @@ class EncryptDialog(QtWidgets.QDialog):
         self.current_file = ""
         self.settings = load_settings()
 
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)  # type: ignore[attr-defined]
         self.setWindowTitle("Encryption" if mode == "encrypt" else "Decryption")
-        self.resize(720, 470)
+        # DPI-scaled size from config
+        resize_w, resize_h = scale_size(WindowSizes.ENCRYPT_DIALOG_WIDTH, WindowSizes.ENCRYPT_DIALOG_HEIGHT)
+        self.resize(resize_w, resize_h)
         self.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
 
         enc_main = QtWidgets.QVBoxLayout(self)
@@ -160,7 +168,7 @@ class EncryptDialog(QtWidgets.QDialog):
 
         # File list
         self.list_widget = QtWidgets.QListWidget()
-        self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         enc_main.addWidget(self.list_widget)
         # Keep track of counts and selections
         self.list_widget.itemSelectionChanged.connect(lambda: self.update_count_label())
@@ -183,13 +191,13 @@ class EncryptDialog(QtWidgets.QDialog):
         pw_layout = QtWidgets.QHBoxLayout()
 
         self.pass_input = QtWidgets.QLineEdit()
-        self.pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         pw_layout.addWidget(QtWidgets.QLabel("Password:"))
         pw_layout.addWidget(self.pass_input)
 
         if self.mode == "encrypt":
             self.confirm_pass_input = QtWidgets.QLineEdit()
-            self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
+            self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
             pw_layout.addWidget(QtWidgets.QLabel("Confirm:"))
             pw_layout.addWidget(self.confirm_pass_input)
 
@@ -219,20 +227,21 @@ class EncryptDialog(QtWidgets.QDialog):
         self.threads_combo = QtWidgets.QComboBox()
         for i in range(1, max_safe + 1):
             self.threads_combo.addItem(str(i))
-        # reduced width to save horizontal space
-        self.threads_combo.setFixedWidth(85)
+        # DPI-scaled width from config: base 77 at 96 DPI (10% reduction)
+        self.threads_combo.setFixedWidth(scale_value(ComboBoxSizes.CPU_THREADS_WIDTH))
 
         if str(default_threads) in [str(i) for i in range(1, max_safe + 1)]:
             self.threads_combo.setCurrentText(str(default_threads))
 
         # chunk size
         self.chunk_combo = QtWidgets.QComboBox()
-        self.chunk_combo.setFixedWidth(90)
+        # DPI-scaled initial width from config: base 81 at 96 DPI (10% reduction)
+        self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_INITIAL_WIDTH))
         
-        for label, val in get_chunk_sizes():
+        for label, val in ChunkSizeOptions.get_options():
             self.chunk_combo.addItem(label, val)
-        # slightly smaller chunk size combobox
-        self.chunk_combo.setFixedWidth(120)
+        # DPI-scaled final width from config: base 108 at 96 DPI (10% reduction)
+        self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_FINAL_WIDTH))
 
         # Set chunk size from settings
         chunk_index = self.chunk_combo.findData(default_chunk)
@@ -250,7 +259,7 @@ class EncryptDialog(QtWidgets.QDialog):
         if self.mode == "encrypt":
             row.addWidget(QtWidgets.QLabel("Algorithm:"))
             self.alg_combo = QtWidgets.QComboBox()
-            for label, mode_id in get_encryption_modes():
+            for label, mode_id in EncryptionModes.get_options():
                 self.alg_combo.addItem(label, mode_id)
             try:
                 default_algo = self.settings.get("advanced", {}).get("encryption_mode", "aes256_gcm")
@@ -329,13 +338,13 @@ class EncryptDialog(QtWidgets.QDialog):
 
     def toggle_password(self):
         if self.show_pass_cb.isChecked():
-            self.pass_input.setEchoMode(QtWidgets.QLineEdit.Normal)
+            self.pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Normal)
             if self.mode == "encrypt":
-                self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Normal)
+                self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Normal)
         else:
-            self.pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
+            self.pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
             if self.mode == "encrypt":
-                self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
+                self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
     def add_files(self):
         # For decrypt mode, show only encrypted file types in the dialog
@@ -412,7 +421,7 @@ class EncryptDialog(QtWidgets.QDialog):
             except Exception:
                 return super().eventFilter(a0, a1)
 
-            if etype == QtCore.QEvent.DragEnter:  # type: ignore[attr-defined]
+            if etype == QtCore.QEvent.Type.DragEnter:  # type: ignore[attr-defined]
                 get_mime = getattr(event, 'mimeData', None)
                 mime = get_mime() if callable(get_mime) else None
                 if mime and getattr(mime, 'hasUrls', lambda: False)():
@@ -421,7 +430,7 @@ class EncryptDialog(QtWidgets.QDialog):
                         accept_fn()
                     return True
 
-            if etype == QtCore.QEvent.Drop:  # type: ignore[attr-defined]
+            if etype == QtCore.QEvent.Type.Drop:  # type: ignore[attr-defined]
                 get_mime = getattr(event, 'mimeData', None)
                 mime = get_mime() if callable(get_mime) else None
                 if mime and getattr(mime, 'hasUrls', lambda: False)():
@@ -564,7 +573,7 @@ class EncryptDialog(QtWidgets.QDialog):
                     avail = max(100, self.progress_dlg.width() - 120)
                 except Exception:
                     avail = 300
-            elided = fm.elidedText(display, QTextOption.ElideMiddle, avail)
+            elided = fm.elidedText(display, Qt.TextElideMode.ElideMiddle, avail)
         except Exception:
             elided = display if len(display) <= 200 else display[:200] + "..."
 
@@ -721,9 +730,9 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.settings = load_settings()
 
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)  # type: ignore[attr-defined]
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)  # type: ignore[attr-defined]
         self.setWindowTitle("gfgLock")
-        self.resize(720, 470)
+        self.resize(*scale_size(WindowSizes.MAIN_WINDOW_WIDTH, WindowSizes.MAIN_WINDOW_HEIGHT))
         self.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
 
         mw_main = QtWidgets.QWidget()
@@ -748,16 +757,17 @@ class MainWindow(QtWidgets.QMainWindow):
             pix = QtGui.QPixmap(resource_path("./assets/icons/gfgLock.png"))
             if not pix.isNull():
                 icon_lbl = QtWidgets.QLabel()
-                icon_lbl.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
-                icon_lbl.setFixedSize(52, 52)
+                # DPI-scaled sizes from config
+                icon_lbl.setPixmap(pix.scaled(scale_value(IconSizes.HEADER_SCALED), scale_value(IconSizes.HEADER_SCALED), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))  # type: ignore[attr-defined]
+                icon_lbl.setFixedSize(scale_value(IconSizes.HEADER_CONTAINER), scale_value(IconSizes.HEADER_CONTAINER))
                 header_layout.addWidget(icon_lbl)
         except Exception:
             pass
 
         title_layout = QtWidgets.QVBoxLayout()
-        title_lbl = QtWidgets.QLabel("<span style='font-size:16pt;font-weight:700;'>gfgLock</span>")
+        title_lbl = QtWidgets.QLabel(f"<span style='font-size:{FontSizes.MAIN_TITLE}pt;font-weight:700;'>gfgLock</span>")
         title_lbl.setObjectName("title_label")
-        title_lbl.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
+        title_lbl.setTextFormat(Qt.TextFormat.RichText)  # type: ignore[attr-defined]
         subtitle_lbl = QtWidgets.QLabel("Secure AES-256 file encryption and decryption — fast, simple, reliable")
         subtitle_lbl.setObjectName("subtitle_label")
         subtitle_lbl.setStyleSheet("font-size:9pt;")
@@ -780,10 +790,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_update = QtWidgets.QPushButton("Check Updates")
 
         # Use consistent, moderate styling for all buttons
-        main_btn_style = "font-size:9pt; padding:8px 12px;"
+        main_btn_style = ButtonSizes.BUTTON_STYLE
         for b in (self.btn_encrypt, self.btn_decrypt, self.btn_prefs, self.btn_about, self.btn_update):
             b.setStyleSheet(main_btn_style)
-            b.setMinimumHeight(34)
+            b.setMinimumHeight(scale_value(ButtonSizes.MAIN_BUTTON_HEIGHT))
 
         h.addWidget(self.btn_encrypt)
         h.addWidget(self.btn_decrypt)
@@ -793,14 +803,14 @@ class MainWindow(QtWidgets.QMainWindow):
         h.addWidget(self.btn_about)
         v.addLayout(h)
 
-        self.btn_encrypt.clicked.connect(lambda: EncryptDialog(self, "encrypt").exec_()) # type: ignore
-        self.btn_decrypt.clicked.connect(lambda: EncryptDialog(self, "decrypt").exec_()) # type: ignore
+        self.btn_encrypt.clicked.connect(lambda: EncryptDialog(self, "encrypt").exec()) # type: ignore
+        self.btn_decrypt.clicked.connect(lambda: EncryptDialog(self, "decrypt").exec()) # type: ignore
         self.btn_prefs.clicked.connect(self.open_preferences) # type: ignore
         self.btn_about.clicked.connect(self.show_about_dialog) # type: ignore
 
         # Check Updates button opens GitHub releases
         def _open_updates():
-            QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://github.com/ShahFaisalGfG/gfgLock/releases/tag/gfgLock"))
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://github.com/ShahFaisalGfG/gfgLock/releases/"))
         self.btn_update.clicked.connect(_open_updates)
         self.btn_update.setToolTip("Open GitHub releases page to check for latest version")
 
@@ -813,7 +823,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.logs_text.setPlaceholderText("Output logs...")
         # Prefer horizontal scrolling for long lines
         try:
-            self.logs_text.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+            self.logs_text.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.NoWrap)
             self.logs_text.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)  # type: ignore[attr-defined]
         except Exception:
             pass
@@ -821,8 +831,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Clear logs button: place in bottom-right footer row to match dialogs
         self.btn_clear_logs = QtWidgets.QPushButton("🧹 Clear")
         self.btn_clear_logs.setToolTip("Clear all logs")
-        self.btn_clear_logs.setMinimumHeight(34)
         self.btn_clear_logs.clicked.connect(self.clear_logs_panel)
+        # DPI-scaled minimum height: base 31 at 96 DPI (10% reduction)
+        self.btn_clear_logs.setMinimumHeight(scale_value(ButtonSizes.MAIN_BUTTON_HEIGHT))
         # add resize grip for frameless main window (above the clear button)
         try:
             grip_h = QtWidgets.QHBoxLayout()
@@ -850,7 +861,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """Open the preferences window."""
         prefs_window = PreferencesWindow(self)
         prefs_window.settings_changed.connect(self.on_settings_changed)
-        prefs_window.exec_()
+        prefs_window.exec()
 
     def on_settings_changed(self, settings):
         """Handle settings changed signal."""
@@ -863,7 +874,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dlg.setWindowTitle("About gfgLock")
         dlg.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
 
-        dlg.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)  # type: ignore[attr-defined]
+        dlg.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)  # type: ignore[attr-defined]
         layout = QtWidgets.QVBoxLayout(dlg)
         # custom title bar
         try:
@@ -872,37 +883,39 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(scale_value(Spacing.DIALOG_PADDING), scale_value(Spacing.DIALOG_PADDING), scale_value(Spacing.DIALOG_PADDING), scale_value(Spacing.DIALOG_PADDING))
+        layout.setSpacing(scale_value(Spacing.DIALOG_SPACING))
 
         # Centered header: logo, app name, subtitle
         header = QtWidgets.QWidget()
         hl = QtWidgets.QVBoxLayout(header)
-        hl.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
+        hl.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
 
         try:
             pix = QtGui.QPixmap(resource_path("./assets/icons/gfgLock.png"))
             if not pix.isNull():
                 logo = QtWidgets.QLabel()
-                logo.setPixmap(pix.scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation))  # type: ignore[attr-defined]
-                logo.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
+                # DPI-scaled size from config
+                logo.setPixmap(pix.scaled(scale_value(IconSizes.LARGE), scale_value(IconSizes.LARGE), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))  # type: ignore[attr-defined]
+                logo.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
                 hl.addWidget(logo)
         except Exception:
             pass
 
-        title = QtWidgets.QLabel("<span style='font-size:18pt;font-weight:700;'>gfgLock</span>")
-        title.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
-        title.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
+        title = QtWidgets.QLabel(f"<span style='font-size:{FontSizes.DIALOG_TITLE}pt;font-weight:700;'>gfgLock</span>")
+        title.setTextFormat(Qt.TextFormat.RichText)  # type: ignore[attr-defined]
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
         hl.addWidget(title)
 
         version = QtWidgets.QLabel("v" + app_version)
-        version.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
-        version.setStyleSheet("font-size:8pt; color: #999999; font-weight: 500;")
+        version.setObjectName("version_label")
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
+        version.setStyleSheet("font-size:8pt; font-weight: 500;")
         hl.addWidget(version)
 
         subtitle = QtWidgets.QLabel("Secure AES-256 file encryption and decryption")
-        subtitle.setAlignment(Qt.AlignCenter)  # type: ignore[attr-defined]
-        subtitle.setStyleSheet("font-size:9pt; color: #666666;")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
+        subtitle.setStyleSheet("font-size:9pt;")
         hl.addWidget(subtitle)
 
         layout.addWidget(header)
@@ -919,7 +932,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Company / Author
         info = QtWidgets.QWidget()
         info_l = QtWidgets.QFormLayout(info)
-        info_l.setLabelAlignment(Qt.AlignRight)  # type: ignore[attr-defined]
+        info_l.setLabelAlignment(Qt.AlignmentFlag.AlignRight)  # type: ignore[attr-defined]
         info_l.addRow("Company:", QtWidgets.QLabel(company))
         info_l.addRow("Author:", QtWidgets.QLabel(author))
         layout.addWidget(info)
@@ -929,21 +942,21 @@ class MainWindow(QtWidgets.QMainWindow):
         links.addStretch()
 
         email_btn = QtWidgets.QPushButton("Contact: shahfaisalgfg@outlook.com")
-        email_btn.setCursor(QtGui.QCursor(Qt.PointingHandCursor))  # type: ignore[attr-defined]
+        email_btn.setCursor(QtGui.QCursor(Qt.CursorShape.PointingHandCursor))  # type: ignore[attr-defined]
         def _open_mail():
             QtGui.QDesktopServices.openUrl(QtCore.QUrl("mailto:shahfaisalgfg@outlook.com"))
         email_btn.clicked.connect(_open_mail)
         links.addWidget(email_btn)
 
         github_btn = QtWidgets.QPushButton("GitHub Repo")
-        github_btn.setCursor(QtGui.QCursor(Qt.PointingHandCursor))  # type: ignore[attr-defined]
+        github_btn.setCursor(QtGui.QCursor(Qt.CursorShape.PointingHandCursor))  # type: ignore[attr-defined]
         def _open_github():
             QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://github.com/ShahFaisalGfG/gfgLock"))
         github_btn.clicked.connect(_open_github)
         links.addWidget(github_btn)
 
         site_btn = QtWidgets.QPushButton("Website")
-        site_btn.setCursor(QtGui.QCursor(Qt.PointingHandCursor))  # type: ignore[attr-defined]
+        site_btn.setCursor(QtGui.QCursor(Qt.CursorShape.PointingHandCursor))  # type: ignore[attr-defined]
         def _open_site():
             QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://shahfaisalgfg.github.io/shahfaisal"))
         site_btn.clicked.connect(_open_site)
@@ -953,11 +966,11 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(links)
 
         # Close button
-        btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+        btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(dlg.accept)
         layout.addWidget(btns)
 
-        dlg.exec_()
+        dlg.exec()
 
 
 def main():
@@ -976,7 +989,7 @@ def main():
     if not args:
         win = MainWindow()
         win.show()
-        sys.exit(app.exec_())
+        sys.exit(app.exec())
 
     # === Detect operation mode ===
     mode = None
@@ -1000,7 +1013,7 @@ def main():
         win = MainWindow()
         win.show_logs("\n".join(debug_logs))
         win.show()
-        sys.exit(app.exec_())
+        sys.exit(app.exec())
 
     # === Reconstruct paths correctly (Windows Explorer breaks paths with spaces) ===
     raw_paths = []
@@ -1082,7 +1095,7 @@ def main():
         from widgets.custom_title_bar import show_message
         show_message(None, "No files", f"No valid files found for {mode}ion.", icon="warning")
 
-    dlg.exec_()
+    dlg.exec()
     sys.exit(0)
 
 

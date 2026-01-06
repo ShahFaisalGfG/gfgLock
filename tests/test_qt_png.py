@@ -5,7 +5,7 @@ import sys
 import io
 import contextlib
 from pathlib import Path
-from PyQt5 import QtGui, QtWidgets
+from PyQt6 import QtGui, QtWidgets
 
 # Create QApplication first
 app = QtWidgets.QApplication(sys.argv)
@@ -13,7 +13,7 @@ app = QtWidgets.QApplication(sys.argv)
 icons_dir = Path(r'd:\source\repos\ShahFaisalGfG\gfgLock\src\assets\icons')
 png_files = sorted(icons_dir.glob('*.png'))
 
-print("Testing PNG files with PyQt5 (Qt will attempt to load them):")
+print("Testing PNG files with PyQt6 (Qt will attempt to load them):")
 print()
 
 # Capture stderr to catch any libpng warnings

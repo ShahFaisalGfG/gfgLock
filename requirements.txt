@@ -1,5 +1,5 @@
 cryptography>=46.0
 pycryptodome>=3.23
-PyQt5>=5.15
+PyQt6>=6.10
 pyinstaller>=6.17
 py-cpuinfo>=9.0
