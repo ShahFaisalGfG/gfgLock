@@ -3,8 +3,8 @@ from PyQt6.QtCore import Qt
 from config import AppInfo, WindowSizes, Spacing, ButtonSizes, FontSizes, IconSizes, scale_size, scale_value
 from utils import apply_theme
 from utils import load_settings, resource_path
-from views import EncryptDialog
-from views import PreferencesWindow
+from views.encrypt_dialog import EncryptDialog
+from views.preferences import PreferencesWindow
 from widgets import CustomTitleBar
 
 

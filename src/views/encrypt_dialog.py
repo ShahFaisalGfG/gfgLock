@@ -6,7 +6,7 @@ from config import ChunkSizeOptions, EncryptionModes, ComboBoxSizes, WindowSizes
 from services import EncryptDecryptWorker
 from utils import apply_theme
 from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path
-from views import ProgressDialog
+from views.progress_dialog import ProgressDialog
 from widgets import CustomTitleBar
 
 

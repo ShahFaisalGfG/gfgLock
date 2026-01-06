@@ -7,7 +7,8 @@ from PyQt6 import QtWidgets, QtGui
 
 from utils import apply_theme
 from utils import resource_path
-from views import MainWindow, EncryptDialog
+from views.main_window import MainWindow
+from views.encrypt_dialog import EncryptDialog
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
