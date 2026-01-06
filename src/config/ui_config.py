@@ -84,19 +84,9 @@ class WindowSizes:
 class IconSizes:
     """Icon dimensions used throughout the UI."""
     
-    # Small icons (18x18 base, 10% reduction from 20x20)
-    SMALL = 18
-    
-    # Medium icons (39x39 scaled, 42x42 container base, 10% reduction)
-    MEDIUM_SCALED = 39
-    MEDIUM_CONTAINER = 42
-    
-    # Large icons (86x86 base, 10% reduction from 96x96)
-    LARGE = 86
-    
-    # Header icons (39x39 scaled, 42x42 container, 10% reduction from 43x47)
-    HEADER_SCALED = 39
-    HEADER_CONTAINER = 42
+    MEDIUM = 32
+    HEADER_CONTAINER = 56
+    LARGE = 96
 
 
 # ============== BUTTON SIZES (Base values at 96 DPI, scaled by DPI factor) ==============

@@ -757,8 +757,10 @@ class MainWindow(QtWidgets.QMainWindow):
             pix = QtGui.QPixmap(resource_path("./assets/icons/gfgLock.png"))
             if not pix.isNull():
                 icon_lbl = QtWidgets.QLabel()
-                # DPI-scaled sizes from config
-                icon_lbl.setPixmap(pix.scaled(scale_value(IconSizes.HEADER_SCALED), scale_value(IconSizes.HEADER_SCALED), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))  # type: ignore[attr-defined]
+                target_size = scale_value(IconSizes.HEADER_CONTAINER * 2)
+                pix_scaled = pix.scaledToWidth(target_size, Qt.TransformationMode.SmoothTransformation)  # type: ignore[attr-defined]
+                pix_scaled.setDevicePixelRatio(2.0)
+                icon_lbl.setPixmap(pix_scaled)
                 icon_lbl.setFixedSize(scale_value(IconSizes.HEADER_CONTAINER), scale_value(IconSizes.HEADER_CONTAINER))
                 header_layout.addWidget(icon_lbl)
         except Exception:
@@ -895,8 +897,11 @@ class MainWindow(QtWidgets.QMainWindow):
             pix = QtGui.QPixmap(resource_path("./assets/icons/gfgLock.png"))
             if not pix.isNull():
                 logo = QtWidgets.QLabel()
-                # DPI-scaled size from config
-                logo.setPixmap(pix.scaled(scale_value(IconSizes.LARGE), scale_value(IconSizes.LARGE), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))  # type: ignore[attr-defined]
+                # Scale pixmap at 2x resolution for crisp display on high-DPI screens
+                target_size = scale_value(IconSizes.LARGE * 2)
+                pix_scaled = pix.scaledToWidth(target_size, Qt.TransformationMode.SmoothTransformation)  # type: ignore[attr-defined]
+                pix_scaled.setDevicePixelRatio(2.0)
+                logo.setPixmap(pix_scaled)
                 logo.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
                 hl.addWidget(logo)
         except Exception:

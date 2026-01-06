@@ -4,7 +4,7 @@ import sys
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from config import Spacing, ButtonSizes, WindowSizes, scale_value
+from config import Spacing, ButtonSizes, WindowSizes, scale_value, IconSizes
 
 
 class CustomTitleBar(QtWidgets.QWidget):
@@ -32,8 +32,7 @@ class CustomTitleBar(QtWidgets.QWidget):
         # App icon + title
         icon_lbl = QtWidgets.QLabel()
         icon_lbl.setObjectName("title_bar_icon")
-        # DPI-scaled size: base (18, 18) at 96 DPI (10% reduction)
-        icon_size = scale_value(18)
+        icon_size = scale_value(IconSizes.MEDIUM)
         icon_lbl.setFixedSize(icon_size, icon_size)
         # Try to obtain the window icon (if set), otherwise fall back to bundled icon
         try:
@@ -48,9 +47,8 @@ class CustomTitleBar(QtWidgets.QWidget):
                 if os.path.exists(bundled):
                     icon = QtGui.QIcon(bundled)
             if icon and not icon.isNull():
-                # DPI-scaled pixmap size: base (18, 18) at 96 DPI (10% reduction)
-                pix_size = scale_value(18)
-                pix = icon.pixmap(pix_size, pix_size)
+                # Use 2x resolution for crisp display on high-DPI screens
+                pix = icon.pixmap(icon_size, icon_size)
                 if pix and not pix.isNull():
                     icon_lbl.setPixmap(pix)
         except Exception:
