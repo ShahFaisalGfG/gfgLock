@@ -2,12 +2,16 @@
 
 # Requires: pycryptodome
 
-import os, time, datetime, io, sys
-from multiprocessing import Pool, cpu_count, freeze_support
-# pycryptodome's Crypto package may not be resolvable by some linters — silence type checker
-from Crypto.Cipher import ChaCha20_Poly1305 
+import datetime
+import io
+import os
+import time
+from multiprocessing import Pool, freeze_support
 from secrets import token_bytes
 from typing import Optional
+
+# pycryptodome's Crypto package may not be resolvable by some linters — silence type checker
+from Crypto.Cipher import ChaCha20_Poly1305
 from utils.gfg_helpers import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
 
 SALT_SIZE = 16

@@ -3,6 +3,7 @@
 
 import sys
 from typing import Optional
+
 from PyQt5 import QtWidgets
 from utils.gfg_helpers import load_settings
 

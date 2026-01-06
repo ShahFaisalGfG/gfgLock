@@ -1,7 +1,8 @@
 # worker.py
 import time
-from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
+
 from PyQt5 import QtCore
 from core import aes256_gcm_cfb as aes_core
 from core import chacha20_poly1305 as xchacha_core

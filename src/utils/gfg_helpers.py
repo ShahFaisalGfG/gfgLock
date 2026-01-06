@@ -1,14 +1,16 @@
 # gfg_helpers.py
 # Shared helper functions for gfgLock encryption modules
 
+import hashlib
+import json
 import os
 import sys
-import json
-import hashlib
-from cpuinfo import get_cpu_info
-from multiprocessing import cpu_count
 from datetime import datetime
-from typing import Dict, Any, Optional
+from multiprocessing import cpu_count
+from typing import Dict, Any
+
+from cpuinfo import get_cpu_info
+
 
 def check_aes_ni():
     info = get_cpu_info()

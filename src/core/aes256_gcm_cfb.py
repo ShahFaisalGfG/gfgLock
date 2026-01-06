@@ -3,13 +3,17 @@
 # install requirements using requirements.txt(pip install -r requirements.txt) or run below command in terminal.
 # pip install cryptography
 
+import datetime
 import hashlib
-import os, time, datetime, io, sys
-from multiprocessing import Pool, cpu_count, freeze_support
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
+import io
+import os
+import time
+from multiprocessing import Pool, freeze_support
 from secrets import token_bytes
 from typing import Optional, cast
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from utils.gfg_helpers import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
 
 SALT_SIZE = 16

@@ -1,16 +1,17 @@
-from multiprocessing import freeze_support
 import os
 import shlex
 import sys
+from multiprocessing import freeze_support
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QTextOption
 
 from services.worker import EncryptDecryptWorker
-from views.preferences import PreferencesWindow
+from utils.gfg_helpers import load_settings, write_general_log, write_critical_log, write_log, get_chunk_sizes, \
+    get_encryption_modes, resource_path
 from utils.theme_manager import apply_theme
-from utils.gfg_helpers import load_settings, write_general_log, write_critical_log, write_log, get_chunk_sizes, get_encryption_modes, resource_path
+from views.preferences import PreferencesWindow
 from widgets.custom_title_bar import CustomTitleBar
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
