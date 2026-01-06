@@ -12,7 +12,7 @@ from typing import Optional
 
 # pycryptodome's Crypto package may not be resolvable by some linters — silence type checker
 from Crypto.Cipher import ChaCha20_Poly1305
-from utils.gfg_helpers import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
+from utils import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
 
 SALT_SIZE = 16
 NONCE_SIZE = 12 

@@ -2,14 +2,16 @@
 # Preferences/Settings window for gfgLock
 
 import os
+import subprocess
 import sys
+from datetime import datetime
+
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from utils.gfg_helpers import load_settings, save_settings, get_cpu_thread_count, clear_logs, get_logs_dir, get_general_log_file, get_critical_log_file, resource_path
-from widgets.custom_title_bar import CustomTitleBar
 from config import ChunkSizeOptions, EncryptionModes, WindowSizes, scale_size
-import subprocess
-from datetime import datetime
+from utils import load_settings, save_settings, get_cpu_thread_count, clear_logs, get_logs_dir, get_general_log_file, \
+    get_critical_log_file, resource_path
+from widgets import CustomTitleBar
 
 
 class PreferencesWindow(QtWidgets.QDialog):

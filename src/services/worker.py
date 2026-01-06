@@ -6,7 +6,7 @@ from functools import partial
 from PyQt6 import QtCore
 from core import aes256_gcm_cfb as aes_core
 from core import chacha20_poly1305 as xchacha_core
-from utils.gfg_helpers import load_settings
+from utils import load_settings
 
 
 class WorkerSignals(QtCore.QObject):

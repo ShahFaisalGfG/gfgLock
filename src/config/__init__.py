@@ -1,6 +1,15 @@
 # config/__init__.py
 # UI configuration and constants for gfgLock
 
+from config.defaults import (
+    AppInfo,
+    get_default_settings,
+    ThemeDefaults,
+    EncryptionDefaults,
+    DecryptionDefaults,
+    AlgorithmDefaults,
+    LoggingDefaults,
+)
 from config.ui_config import (
     get_dpi_scale,
     scale_size,
@@ -21,17 +30,9 @@ from config.ui_config import (
     get_dialog_margins,
 )
 
-from config.defaults import (
-    get_default_settings,
-    ThemeDefaults,
-    EncryptionDefaults,
-    DecryptionDefaults,
-    AlgorithmDefaults,
-    LoggingDefaults,
-)
-
 __all__ = [
     # UI Config exports
+    'AppInfo',
     'get_dpi_scale',
     'scale_size',
     'scale_value',

@@ -2,8 +2,19 @@
 # Default application preferences and settings for gfgLock
 # Centralized configuration for easy customization of default options
 
-from typing import Dict, Any
 import os
+from typing import Dict, Any
+
+
+# ============== APP INFO ==============
+class AppInfo:
+    """Application information and metadata."""
+    
+    APP_NAME = "gfgLock"
+    APP_VERSION = "2.7.0"
+    APP_AUTHOR = "Shah Faisal"
+    APP_COMPANY = "gfgRoyal"
+    APP_DESCRIPTION = "Secure AES-256 file encryption and decryption — fast, simple, reliable"
 
 
 # ============== HELPER FUNCTIONS ==============

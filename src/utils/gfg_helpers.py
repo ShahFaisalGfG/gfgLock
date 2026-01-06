@@ -6,11 +6,11 @@ import json
 import os
 import sys
 from datetime import datetime
-from multiprocessing import cpu_count
-from typing import Dict, Any, Tuple
-from PyQt6 import QtGui
+from typing import Dict, Any
 
 from config import ChunkSizeOptions, EncryptionModes
+
+
 # Note: config.defaults is imported lazily in functions to avoid circular imports
 
 

@@ -14,7 +14,7 @@ from typing import Optional, cast
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from utils.gfg_helpers import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
+from utils import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
 
 SALT_SIZE = 16
 NONCE_SIZE = 12
