@@ -396,7 +396,7 @@ Future releases planned (Major):
 
 Contributions welcome! Bug fixes, features, and documentation improvements are appreciated.
 
-### Quick Start
+### Quick Start (Contribution)
 
 1. **Fork** the repository on GitHub
 2. **Clone** your fork: `git clone https://github.com/<your-username>/gfgLock.git`
