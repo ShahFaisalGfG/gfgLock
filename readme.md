@@ -340,7 +340,7 @@ iscc installer/gfglock_installer_non_admin.iss # Per-user installer
 
 | Issue                                | Solution                                                                      |
 | ------------------------------------ | ----------------------------------------------------------------------------- |
-| "Could not parse stylesheet" warning | Harmless Qt message; ignore (no data loss)                                    |
+| Could not parse stylesheet" warning  | Harmless Qt message; ignore (no data loss)                                    |
 | Files fail to decrypt                | Verify extension (`.gfglock`, `.gfglck`, `.gfgcha`), password, file integrity |
 | Performance slow                     | Increase CPU Threads, reduce Chunk Size, close other apps                     |
 | Logs not created                     | Enable logs in Advanced settings, check `%APPDATA%\gfgLock\logs\` permissions |
@@ -383,7 +383,7 @@ iscc installer/gfglock_installer_non_admin.iss # Per-user installer
 
 ## Roadmap
 
-Future releases planned:
+Future releases planned (Major):
 
 - 🔮 **v2.7.0** — Enable Hardware acceleration, optimize performance
 - 🔮 **v2.8.0** — Resumable/pause operations for large files
@@ -437,4 +437,4 @@ This software is provided "AS IS" without warranty of any kind.
 
 **Stay Secure. Encrypt Responsibly.** 🔐
 
-Last Updated: December 19, 2025
+Last Updated: January 27, 2026
