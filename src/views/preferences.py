@@ -8,7 +8,7 @@ from datetime import datetime
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from config import ChunkSizeOptions, EncryptionModes, WindowSizes, scale_size
+from config import ChunkSizeOptions, EncryptionModes, WindowSizes, ButtonSizes, Spacing, StyleSheets, ComboBoxSizes, CheckBoxSizes, scale_size, scale_value
 from utils import load_settings, save_settings, get_cpu_thread_count, clear_logs, get_logs_dir, get_general_log_file, \
     get_critical_log_file, resource_path
 from widgets import CustomTitleBar
@@ -37,6 +37,9 @@ class PreferencesWindow(QtWidgets.QDialog):
         
         # Main layout with tab widget
         main_layout = QtWidgets.QVBoxLayout(self)
+        # Set compact margins and spacing
+        main_layout.setContentsMargins(scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING))
+        main_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
 
         # Insert custom title bar
         try:
@@ -46,6 +49,8 @@ class PreferencesWindow(QtWidgets.QDialog):
             pass
         
         self.tab_widget = QtWidgets.QTabWidget()
+        # Make active tab text bold
+        self.tab_widget.setStyleSheet(StyleSheets.TAB_SELECTED)
         main_layout.addWidget(self.tab_widget)
         
         # Create tabs
@@ -56,10 +61,17 @@ class PreferencesWindow(QtWidgets.QDialog):
 
         # Button layout
         button_layout = QtWidgets.QHBoxLayout()
+        button_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         self.btn_reset = QtWidgets.QPushButton("Reset to Defaults")
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
         self.btn_apply = QtWidgets.QPushButton("Apply")
         self.btn_save = QtWidgets.QPushButton("Save")
+        
+        # Apply bold styling to action buttons with compact style
+        action_btn_style = ButtonSizes.DIALOG_BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT
+        for btn in (self.btn_reset, self.btn_cancel, self.btn_apply, self.btn_save):
+            btn.setStyleSheet(action_btn_style)
+            btn.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         
         button_layout.addWidget(self.btn_reset)
         button_layout.addStretch()
@@ -86,17 +98,23 @@ class PreferencesWindow(QtWidgets.QDialog):
         """Create appearance settings tab."""
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(widget)
+        layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         # Theme selection
         theme_group = QtWidgets.QGroupBox("Theme")
         theme_layout = QtWidgets.QVBoxLayout()
+        theme_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
+        
+        theme_label = QtWidgets.QLabel("Select Theme:")
+        theme_label.setStyleSheet(StyleSheets.FORM_LABEL)
+        theme_layout.addWidget(theme_label)
         
         self.theme_combo = QtWidgets.QComboBox()
+        self.theme_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.theme_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         self.theme_combo.addItem("System (Default)", "system")
         self.theme_combo.addItem("Light", "light")
         self.theme_combo.addItem("Dark", "dark")
-        
-        theme_layout.addWidget(QtWidgets.QLabel("Select Theme:"))
         theme_layout.addWidget(self.theme_combo)
         theme_group.setLayout(theme_layout)
         
@@ -109,9 +127,11 @@ class PreferencesWindow(QtWidgets.QDialog):
         """Create encryption settings tab."""
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(widget)
+        layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         group = QtWidgets.QGroupBox("Encryption Settings")
         group_layout = QtWidgets.QFormLayout()
+        group_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         # CPU Threads
         total_threads = get_cpu_thread_count()
@@ -120,11 +140,15 @@ class PreferencesWindow(QtWidgets.QDialog):
         self.enc_threads_combo = QtWidgets.QComboBox()
         for i in range(1, max_safe + 1):
             self.enc_threads_combo.addItem(str(i), i)
+        self.enc_threads_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.enc_threads_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         
         group_layout.addRow("CPU Threads:", self.enc_threads_combo)
         
         # Chunk Size
         self.enc_chunk_combo = QtWidgets.QComboBox()
+        self.enc_chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.enc_chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         for label, value in ChunkSizeOptions.get_options():
             self.enc_chunk_combo.addItem(label, value)
         
@@ -132,6 +156,8 @@ class PreferencesWindow(QtWidgets.QDialog):
         
         # Encrypt Filenames
         self.enc_filenames_cb = QtWidgets.QCheckBox("Encrypt Filenames by Default")
+        self.enc_filenames_cb.setStyleSheet(StyleSheets.CHECKBOX_STYLE)
+        self.enc_filenames_cb.setMinimumHeight(scale_value(CheckBoxSizes.COMPACT_HEIGHT))
         group_layout.addRow(self.enc_filenames_cb)
         
         group.setLayout(group_layout)
@@ -144,9 +170,11 @@ class PreferencesWindow(QtWidgets.QDialog):
         """Create decryption settings tab."""
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(widget)
+        layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         group = QtWidgets.QGroupBox("Decryption Settings")
         group_layout = QtWidgets.QFormLayout()
+        group_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         # CPU Threads
         total_threads = get_cpu_thread_count()
@@ -155,11 +183,15 @@ class PreferencesWindow(QtWidgets.QDialog):
         self.dec_threads_combo = QtWidgets.QComboBox()
         for i in range(1, max_safe + 1):
             self.dec_threads_combo.addItem(str(i), i)
+        self.dec_threads_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.dec_threads_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         
         group_layout.addRow("CPU Threads:", self.dec_threads_combo)
         
         # Chunk Size
         self.dec_chunk_combo = QtWidgets.QComboBox()
+        self.dec_chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.dec_chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         for label, value in ChunkSizeOptions.get_options():
             self.dec_chunk_combo.addItem(label, value)
         
@@ -179,19 +211,25 @@ class PreferencesWindow(QtWidgets.QDialog):
         """Create advanced settings tab."""
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(widget)
+        layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         # Encryption Mode
         enc_mode_group = QtWidgets.QGroupBox("Encryption Mode")
         enc_mode_layout = QtWidgets.QVBoxLayout()
+        enc_mode_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         self.enc_mode_combo = QtWidgets.QComboBox()
         for label, mode_id in EncryptionModes.get_options():
             self.enc_mode_combo.addItem(label, mode_id)
+        self.enc_mode_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.enc_mode_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         
-        enc_mode_layout.addWidget(QtWidgets.QLabel("Default Encryption Algorithm:"))
+        enc_mode_label = QtWidgets.QLabel("Default Encryption Algorithm:")
+        enc_mode_label.setStyleSheet(StyleSheets.FORM_LABEL)
+        enc_mode_layout.addWidget(enc_mode_label)
         enc_mode_layout.addWidget(self.enc_mode_combo)
         enc_mode_info = QtWidgets.QLabel(
-            "<span style='font-size:8pt;'><b>Note:</b> GCM and ChaCha20 provide authentication (AEAD).<br>"
+            "<span style='" + StyleSheets.INFO_TEXT + "'><b>Note:</b> GCM and ChaCha20 provide authentication (AEAD).<br>"
             "CFB is faster but without authentication.</span>"
         )
         enc_mode_info.setWordWrap(True)
@@ -202,16 +240,24 @@ class PreferencesWindow(QtWidgets.QDialog):
         # Logging
         log_group = QtWidgets.QGroupBox("Logging")
         log_layout = QtWidgets.QVBoxLayout()
+        log_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         
         # Enable logs checkbox
         self.enable_logs_cb = QtWidgets.QCheckBox("Enable Logs")
+        self.enable_logs_cb.setStyleSheet(StyleSheets.CHECKBOX_STYLE)
+        self.enable_logs_cb.setMinimumHeight(scale_value(CheckBoxSizes.COMPACT_HEIGHT))
         self.enable_logs_cb.stateChanged.connect(self.on_logs_toggled)
         log_layout.addWidget(self.enable_logs_cb)
         
         # Log level dropdown
         log_level_layout = QtWidgets.QHBoxLayout()
-        log_level_layout.addWidget(QtWidgets.QLabel("Log Level:"))
+        log_level_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING // 2))
+        log_level_label = QtWidgets.QLabel("Log Level:")
+        log_level_label.setStyleSheet(StyleSheets.FORM_LABEL)
+        log_level_layout.addWidget(log_level_label)
         self.log_level_combo = QtWidgets.QComboBox()
+        self.log_level_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.log_level_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         self.log_level_combo.addItem("Critical Only", "critical")
         self.log_level_combo.addItem("All/General", "all")
         log_level_layout.addWidget(self.log_level_combo)
@@ -225,7 +271,7 @@ class PreferencesWindow(QtWidgets.QDialog):
         
         # Info text
         log_info = QtWidgets.QLabel(
-            "<span style='font-size:8pt;'><b>Critical:</b> Only critical errors<br>"
+            "<span style='" + StyleSheets.INFO_TEXT + "'><b>Critical:</b> Only critical errors<br>"
             "<b>All/General:</b> All operations (includes critical)<br>"
             "Logs are saved in the <code>/logs</code> directory.</span>"
         )
@@ -235,12 +281,19 @@ class PreferencesWindow(QtWidgets.QDialog):
         # Clear logs button (red text to indicate destructive action)
         self.btn_clear_logs = QtWidgets.QPushButton("Clear All Logs")
         self.btn_clear_logs.clicked.connect(self.clear_all_logs)
+        # Apply bold styling and red color to clear logs button with compact style
+        self.btn_clear_logs.setStyleSheet(StyleSheets.CLEAR_LOGS_BUTTON)
+        self.btn_clear_logs.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         # Open logs folder button
         self.btn_open_logs = QtWidgets.QPushButton("Open Logs Folder")
         self.btn_open_logs.setToolTip("Open the logs directory in the file explorer")
         self.btn_open_logs.clicked.connect(self.open_logs_folder)
+        # Apply bold styling to open logs button with compact style
+        self.btn_open_logs.setStyleSheet(ButtonSizes.DIALOG_BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT)
+        self.btn_open_logs.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         # Place the two buttons together
         btn_h = QtWidgets.QHBoxLayout()
+        btn_h.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         # push buttons to the right corner
         btn_h.addStretch()
         btn_h.addWidget(self.btn_clear_logs)

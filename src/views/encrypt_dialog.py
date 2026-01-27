@@ -2,7 +2,7 @@ import os
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from config import ChunkSizeOptions, EncryptionModes, ComboBoxSizes, WindowSizes, scale_size, scale_value
+from config import ChunkSizeOptions, EncryptionModes, ComboBoxSizes, CheckBoxSizes, WindowSizes, ButtonSizes, FontSizes, Spacing, StyleSheets, scale_size, scale_value
 from services import EncryptDecryptWorker
 from utils import apply_theme
 from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path
@@ -26,6 +26,9 @@ class EncryptDialog(QtWidgets.QDialog):
         self.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
 
         enc_main = QtWidgets.QVBoxLayout(self)
+        # Set compact margins and spacing for dialog
+        enc_main.setContentsMargins(scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING))
+        enc_main.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
 
         # custom title bar
         try:
@@ -43,34 +46,47 @@ class EncryptDialog(QtWidgets.QDialog):
 
         # Add files/folders
         h = QtWidgets.QHBoxLayout()
+        h.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         self.btn_add_files = QtWidgets.QPushButton("Add Files")
         self.btn_add_folders = QtWidgets.QPushButton("Add Folders")
         self.btn_remove = QtWidgets.QPushButton("Remove Selected")
         self.btn_remove.setEnabled(False)  # Disabled until files are selected
+        # Apply bold styling to action buttons with compact style
+        action_btn_style = ButtonSizes.DIALOG_BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT
+        for btn in (self.btn_add_files, self.btn_add_folders, self.btn_remove):
+            btn.setStyleSheet(action_btn_style)
+            btn.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         h.addWidget(self.btn_add_files)
         h.addWidget(self.btn_add_folders)
         h.addWidget(self.btn_remove)
         enc_main.addLayout(h)
 
-        # OPTIONS AREA
+        # PASSWORD row
         form = QtWidgets.QFormLayout()
+        form.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)  # type: ignore[attr-defined]
 
         # Password row
         pw_layout = QtWidgets.QHBoxLayout()
+        pw_layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
 
         self.pass_input = QtWidgets.QLineEdit()
         self.pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self.pass_input.setStyleSheet(StyleSheets.LINEEDIT_STYLE)
         pw_layout.addWidget(QtWidgets.QLabel("Password:"))
         pw_layout.addWidget(self.pass_input)
 
         if self.mode == "encrypt":
             self.confirm_pass_input = QtWidgets.QLineEdit()
             self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+            self.confirm_pass_input.setStyleSheet(StyleSheets.LINEEDIT_STYLE)
             pw_layout.addWidget(QtWidgets.QLabel("Confirm:"))
             pw_layout.addWidget(self.confirm_pass_input)
 
         # Show password checkbox placed on the same row as password inputs
         self.show_pass_cb = QtWidgets.QCheckBox("Show")
+        self.show_pass_cb.setStyleSheet(StyleSheets.CHECKBOX_STYLE)
+        self.show_pass_cb.setMinimumHeight(scale_value(CheckBoxSizes.COMPACT_HEIGHT))
         self.show_pass_cb.stateChanged.connect(self.toggle_password)
         pw_layout.addWidget(self.show_pass_cb)
 
@@ -78,6 +94,7 @@ class EncryptDialog(QtWidgets.QDialog):
 
         # CPU Threads + Chunk Size on same row
         row = QtWidgets.QHBoxLayout()
+        row.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
 
         # CPU threads - load from settings
         total_threads = os.cpu_count() or 1
@@ -97,6 +114,8 @@ class EncryptDialog(QtWidgets.QDialog):
             self.threads_combo.addItem(str(i))
         # DPI-scaled width from config: base 77 at 96 DPI (10% reduction)
         self.threads_combo.setFixedWidth(scale_value(ComboBoxSizes.CPU_THREADS_WIDTH))
+        self.threads_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.threads_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
 
         if str(default_threads) in [str(i) for i in range(1, max_safe + 1)]:
             self.threads_combo.setCurrentText(str(default_threads))
@@ -105,6 +124,8 @@ class EncryptDialog(QtWidgets.QDialog):
         self.chunk_combo = QtWidgets.QComboBox()
         # DPI-scaled initial width from config: base 81 at 96 DPI (10% reduction)
         self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_WIDTH))
+        self.chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+        self.chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
         
         for label, val in ChunkSizeOptions.get_options():
             self.chunk_combo.addItem(label, val)
@@ -128,6 +149,8 @@ class EncryptDialog(QtWidgets.QDialog):
             row.addWidget(QtWidgets.QLabel("Algorithm:"))
             self.alg_combo = QtWidgets.QComboBox()
             self.alg_combo.setFixedWidth(scale_value(ComboBoxSizes.ALG_WIDTH))
+            self.alg_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+            self.alg_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
             for label, mode_id in EncryptionModes.get_options():
                 self.alg_combo.addItem(label, mode_id)
             try:
@@ -148,6 +171,8 @@ class EncryptDialog(QtWidgets.QDialog):
         if self.mode == "encrypt":
             bottom_row = QtWidgets.QHBoxLayout()
             self.encrypt_name_cb = QtWidgets.QCheckBox("Encrypt filenames")
+            self.encrypt_name_cb.setStyleSheet(StyleSheets.CHECKBOX_STYLE)
+            self.encrypt_name_cb.setMinimumHeight(scale_value(CheckBoxSizes.COMPACT_HEIGHT))
             self.encrypt_name_cb.setChecked(default_encrypt_name)
             bottom_row.addWidget(self.encrypt_name_cb)
             bottom_row.addStretch()
@@ -157,14 +182,20 @@ class EncryptDialog(QtWidgets.QDialog):
 
         # Bottom Start/Cancel buttons
         bottom = QtWidgets.QHBoxLayout()
+        bottom.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         # File count label on the left
         self.count_label = QtWidgets.QLabel("0 files")
+        self.count_label.setStyleSheet(f"font-size:{FontSizes.COMPACT_BODY}pt;")
         bottom.addWidget(self.count_label)
         bottom.addStretch()
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
         self.btn_start = QtWidgets.QPushButton(
             "Start Encryption" if self.mode == "encrypt" else "Start Decryption"
         )
+        # Apply bold styling to start and cancel buttons with compact style
+        for btn in (self.btn_cancel, self.btn_start):
+            btn.setStyleSheet(action_btn_style)
+            btn.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         bottom.addWidget(self.btn_cancel)
         bottom.addWidget(self.btn_start)
         # add resize grip to allow resizing frameless dialog

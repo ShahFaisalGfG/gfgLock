@@ -4,7 +4,7 @@ from typing import Optional, cast
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from config import Spacing, ButtonSizes, WindowSizes, scale_value, IconSizes
+from config import Spacing, ButtonSizes, FontSizes, WindowSizes, LabelSizes, scale_value, IconSizes
 
 
 class CustomTitleBar(QtWidgets.QWidget):
@@ -20,14 +20,14 @@ class CustomTitleBar(QtWidgets.QWidget):
     def __init__(self, window_title: str, parent=None, show_min_max: bool = True):
         super().__init__(parent)
         self.setObjectName("custom_title_bar")
-        # DPI-scaled height: base 31 at 96 DPI (10% reduction)
-        self.setFixedHeight(scale_value(31))
+        # DPI-scaled height from config
+        self.setFixedHeight(scale_value(LabelSizes.TITLE_BAR_HEIGHT))
 
         layout = QtWidgets.QHBoxLayout(self)
-        # DPI-scaled margins: base (7, 0, 7, 0) at 96 DPI (10% reduction)
-        layout.setContentsMargins(scale_value(7), 0, scale_value(7), 0)
-        # DPI-scaled spacing: base 5 at 96 DPI (10% reduction)
-        layout.setSpacing(scale_value(5))
+        # DPI-scaled margins from config: base (7, 0, 7, 0) at 96 DPI (10% reduction)
+        layout.setContentsMargins(scale_value(Spacing.TITLE_BAR_MARGINS), 0, scale_value(Spacing.TITLE_BAR_MARGINS), 0)
+        # DPI-scaled spacing from config: base 5 at 96 DPI (10% reduction)
+        layout.setSpacing(scale_value(Spacing.TITLE_BAR_SPACING))
 
         # App icon + title
         icon_lbl = QtWidgets.QLabel()
@@ -378,9 +378,10 @@ def show_message(parent: Optional[QtWidgets.QWidget], title: str, text: str, *,
     try:
         tb = CustomTitleBar(title, dlg, show_min_max=False)
         layout = QtWidgets.QVBoxLayout(dlg)
-        # DPI-scaled padding from config
-        margin = scale_value(Spacing.DIALOG_PADDING)
+        # DPI-scaled compact padding from config
+        margin = scale_value(Spacing.COMPACT_DIALOG_PADDING)
         layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         layout.insertWidget(0, tb)
     except Exception:
         layout = QtWidgets.QVBoxLayout(dlg)
@@ -388,14 +389,22 @@ def show_message(parent: Optional[QtWidgets.QWidget], title: str, text: str, *,
     # Body
     lbl = QtWidgets.QLabel(text)
     lbl.setWordWrap(True)
+    lbl.setStyleSheet(f"font-size:{FontSizes.COMPACT_BODY}pt;")
     layout.addWidget(lbl)
 
     # Buttons
     if buttons == "yesno":
         btns = QtWidgets.QHBoxLayout()
+        btns.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         btns.addStretch()
         yes = QtWidgets.QPushButton("Yes")
         no = QtWidgets.QPushButton("No")
+        # Apply bold styling to confirmation buttons with compact style
+        bold_style = ButtonSizes.DIALOG_BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT
+        yes.setStyleSheet(bold_style)
+        no.setStyleSheet(bold_style)
+        yes.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
+        no.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         btns.addWidget(yes)
         btns.addWidget(no)
         layout.addLayout(btns)
@@ -413,8 +422,14 @@ def show_message(parent: Optional[QtWidgets.QWidget], title: str, text: str, *,
     else:
         btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(dlg.accept)
+        # Apply bold styling to OK button with compact style
+        ok_button = btns.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        if ok_button:
+            ok_button.setStyleSheet(ButtonSizes.DIALOG_BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT)
+            ok_button.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         # place the ok button in a right-aligned footer for consistency
         footer = QtWidgets.QHBoxLayout()
+        footer.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         footer.addStretch()
         footer.addWidget(btns)
         layout.addLayout(footer)

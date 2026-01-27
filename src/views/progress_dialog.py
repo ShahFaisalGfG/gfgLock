@@ -1,6 +1,6 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from config import WindowSizes, scale_size, scale_value
+from config import WindowSizes, ButtonSizes, FontSizes, Spacing, StyleSheets, LabelSizes, scale_size, scale_value
 from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path
 from widgets import CustomTitleBar
 
@@ -22,6 +22,9 @@ class ProgressDialog(QtWidgets.QDialog):
         self.setModal(True)
 
         layout = QtWidgets.QVBoxLayout(self)
+        # Set compact margins and spacing
+        layout.setContentsMargins(scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING), scale_value(Spacing.COMPACT_DIALOG_PADDING))
+        layout.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
 
         # custom title bar
         try:
@@ -36,8 +39,8 @@ class ProgressDialog(QtWidgets.QDialog):
             self.label_current.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
             self.label_current.setWordWrap(False)
             self.label_current.setMinimumWidth(0)
-            # DPI-scaled height: base 18 at 96 DPI (10% reduction)
-            self.label_current.setFixedHeight(scale_value(18))
+            # DPI-scaled height from config
+            self.label_current.setFixedHeight(scale_value(LabelSizes.CURRENT_FILE_HEIGHT))
         except Exception:
             pass
         layout.addWidget(self.label_current)
@@ -47,6 +50,7 @@ class ProgressDialog(QtWidgets.QDialog):
         layout.addWidget(self.progress_bar)
 
         self.detail = QtWidgets.QLabel(f"0/{total}")
+        self.detail.setStyleSheet(StyleSheets.DETAIL_LABEL)
         layout.addWidget(self.detail)
 
         self.logs = QtWidgets.QPlainTextEdit()
@@ -63,8 +67,8 @@ class ProgressDialog(QtWidgets.QDialog):
         try:
             self.logs.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
             self.logs.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
-            # DPI-scaled minimum height: base 90 at 96 DPI (10% reduction)
-            self.logs.setMinimumHeight(scale_value(90))
+            # DPI-scaled minimum height from config
+            self.logs.setMinimumHeight(scale_value(LabelSizes.LOGS_MIN_HEIGHT))
         except Exception:
             pass
         layout.addWidget(self.logs, 1)  # Stretch factor of 1 to fill available space
@@ -81,7 +85,11 @@ class ProgressDialog(QtWidgets.QDialog):
 
         # Bottom row: place Cancel aligned to the right (same position as Start in EncryptDialog)
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
+        # Apply bold styling to cancel button with compact style
+        self.btn_cancel.setStyleSheet(ButtonSizes.DIALOG_BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT)
+        self.btn_cancel.setMinimumHeight(scale_value(ButtonSizes.DIALOG_BUTTON_HEIGHT))
         footer_h = QtWidgets.QHBoxLayout()
+        footer_h.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
         footer_h.addStretch()
         footer_h.addWidget(self.btn_cancel)
         layout.addLayout(footer_h)

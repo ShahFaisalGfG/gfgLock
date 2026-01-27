@@ -1,13 +1,13 @@
 {
   "theme": "system",
   "encryption": {
-    "cpu_threads": 4,
-    "chunk_size": 33554432,
-    "encrypt_filenames": true
+    "cpu_threads": 2,
+    "chunk_size": 16777216,
+    "encrypt_filenames": false
   },
   "decryption": {
-    "cpu_threads": 4,
-    "chunk_size": 134217728,
+    "cpu_threads": 2,
+    "chunk_size": 16777216,
     "encrypt_filenames": false
   },
   "advanced": {

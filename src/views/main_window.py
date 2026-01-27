@@ -1,6 +1,6 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from config import AppInfo, WindowSizes, Spacing, ButtonSizes, FontSizes, IconSizes, scale_size, scale_value
+from config import AppInfo, WindowSizes, Spacing, ButtonSizes, FontSizes, IconSizes, StyleSheets, scale_size, scale_value
 from utils import apply_theme
 from utils import load_settings, resource_path
 from views.encrypt_dialog import EncryptDialog
@@ -50,12 +50,12 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
         title_layout = QtWidgets.QVBoxLayout()
-        title_lbl = QtWidgets.QLabel(f"<span style='font-size:{FontSizes.MAIN_TITLE}pt;font-weight:700;'>gfgLock</span>")
+        title_lbl = QtWidgets.QLabel(f"<span style='{StyleSheets.MAIN_TITLE_LABEL}'>gfgLock</span>")
         title_lbl.setObjectName("title_label")
         title_lbl.setTextFormat(Qt.TextFormat.RichText)  # type: ignore[attr-defined]
         subtitle_lbl = QtWidgets.QLabel("Secure AES-256 file encryption and decryption — fast, simple, reliable")
         subtitle_lbl.setObjectName("subtitle_label")
-        subtitle_lbl.setStyleSheet("font-size:9pt;")
+        subtitle_lbl.setStyleSheet(StyleSheets.MAIN_SUBTITLE)
 
         title_layout.addWidget(title_lbl)
         title_layout.addWidget(subtitle_lbl)
@@ -75,7 +75,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_update = QtWidgets.QPushButton("Check Updates")
 
         # Use consistent, moderate styling for all buttons
-        main_btn_style = ButtonSizes.BUTTON_STYLE
+        main_btn_style = ButtonSizes.BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT
         for b in (self.btn_encrypt, self.btn_decrypt, self.btn_prefs, self.btn_about, self.btn_update):
             b.setStyleSheet(main_btn_style)
             b.setMinimumHeight(scale_value(ButtonSizes.MAIN_BUTTON_HEIGHT))
@@ -100,6 +100,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_update.setToolTip("Open GitHub releases page to check for latest version")
 
         self.status = QtWidgets.QLabel("Ready")
+        self.status.setStyleSheet(StyleSheets.STATUS_LABEL)
         v.addWidget(self.status)
 
         # Dev-only logs panel - Remove after testing
@@ -117,6 +118,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_clear_logs = QtWidgets.QPushButton("🧹 Clear")
         self.btn_clear_logs.setToolTip("Clear all logs")
         self.btn_clear_logs.clicked.connect(self.clear_logs_panel)
+        self.btn_clear_logs.setStyleSheet(main_btn_style)
         # DPI-scaled minimum height: base 31 at 96 DPI (10% reduction)
         self.btn_clear_logs.setMinimumHeight(scale_value(ButtonSizes.MAIN_BUTTON_HEIGHT))
         # add resize grip for frameless main window (above the clear button)
@@ -190,7 +192,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        title = QtWidgets.QLabel(f"<span style='font-size:{FontSizes.DIALOG_TITLE}pt;font-weight:700;'>gfgLock</span>")
+        title = QtWidgets.QLabel(f"<span style='{StyleSheets.ABOUT_TITLE}'>gfgLock</span>")
         title.setTextFormat(Qt.TextFormat.RichText)  # type: ignore[attr-defined]
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
         hl.addWidget(title)
@@ -198,12 +200,12 @@ class MainWindow(QtWidgets.QMainWindow):
         version = QtWidgets.QLabel("v" + AppInfo.APP_VERSION)
         version.setObjectName("version_label")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
-        version.setStyleSheet("font-size:8pt; font-weight: 500;")
+        version.setStyleSheet(StyleSheets.ABOUT_VERSION)
         hl.addWidget(version)
 
         subtitle = QtWidgets.QLabel("Secure AES-256 file encryption and decryption")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
-        subtitle.setStyleSheet("font-size:9pt;")
+        subtitle.setStyleSheet(StyleSheets.ABOUT_SUBTITLE)
         hl.addWidget(subtitle)
 
         layout.addWidget(header)
@@ -256,6 +258,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # Close button
         btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(dlg.accept)
+        # Apply bold styling to OK button
+        ok_button = btns.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        if ok_button:
+            ok_button.setStyleSheet(ButtonSizes.BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT)
         layout.addWidget(btns)
 
         dlg.exec()

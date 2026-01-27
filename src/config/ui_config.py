@@ -100,9 +100,19 @@ class ButtonSizes:
     # Main window buttons: 31px height (10% reduction from 34)
     MAIN_BUTTON_HEIGHT = 31
     
+    # Dialog buttons (compact): 26px height (20% reduction from 32)
+    DIALOG_BUTTON_HEIGHT = 26
+    
     # Button padding: 7px 11px (10% reduction from 8px 12px)
     BUTTON_PADDING = "7px 11px"
     BUTTON_STYLE = f"font-size:9pt; padding:{BUTTON_PADDING};"
+    
+    # Compact button padding for dialogs: 5px 9px
+    DIALOG_BUTTON_PADDING = "5px 9px"
+    DIALOG_BUTTON_STYLE = f"font-size:8pt; padding:{DIALOG_BUTTON_PADDING};"
+    
+    # Bold weight for action buttons (e.g., start/stop/save/apply/reset/cancel)
+    BUTTON_BOLD_WEIGHT = "font-weight:650;"
 
 
 # ============== SPACING & PADDING (Base values at 96 DPI, scaled by DPI factor) ==============
@@ -119,9 +129,18 @@ class Spacing:
     DIALOG_MARGINS = (14, 14, 14, 14)  # (left, top, right, bottom)
     DIALOG_SPACING = 9  # Vertical space between elements (10% reduction from 10)
     
+    # Compact dialog margins and padding (for secondary windows)
+    COMPACT_DIALOG_PADDING = 10  # Tighter padding
+    COMPACT_DIALOG_MARGINS = (10, 10, 10, 10)
+    COMPACT_DIALOG_SPACING = 6  # Tighter spacing
+    
     # GroupBox spacing
     GROUPBOX_MARGIN_TOP = 8
     GROUPBOX_PADDING_TOP = 8
+    
+    # Compact GroupBox spacing (for secondary windows)
+    COMPACT_GROUPBOX_MARGIN_TOP = 6
+    COMPACT_GROUPBOX_PADDING_TOP = 6
     
     # Tab bar padding
     TAB_PADDING_VERTICAL = 6
@@ -141,17 +160,32 @@ class FontSizes:
     # Dialog titles: 16pt (10% reduction from 18pt)
     DIALOG_TITLE = 16
     
+    # Compact dialog titles (for secondary windows): 13pt
+    COMPACT_DIALOG_TITLE = 13
+    
     # Subtitles and descriptions: 9pt
     SUBTITLE = 9
+    
+    # Compact subtitle: 8pt
+    COMPACT_SUBTITLE = 8
     
     # Version and metadata: 8pt
     VERSION = 8
     
+    # Compact version: 7pt
+    COMPACT_VERSION = 7
+    
     # Default body text: 9pt
     BODY = 9
     
+    # Compact body text: 8pt
+    COMPACT_BODY = 8
+    
     # Title bar and button text: 10pt
     TITLE_BAR = 10
+    
+    # Compact form labels: 8pt
+    COMPACT_FORM_LABEL = 8
     
     # Small info text: 8pt
     INFO = 8
@@ -164,6 +198,20 @@ class ComboBoxSizes:
     CPU_THREADS_WIDTH = 65
     CHUNK_WIDTH = 108
     ALG_WIDTH = 232
+    
+    # ComboBox and input heights (compact): 26px (matches dialog button height for consistency)
+    COMPACT_INPUT_HEIGHT = 26
+    
+    # ComboBox stylesheet for compact appearance - fixed height to match buttons
+    COMPACT_COMBOBOX_STYLE = f"font-size:{FontSizes.COMPACT_BODY}pt; padding: 0px 4px; height: {COMPACT_INPUT_HEIGHT}px;"
+
+
+# ============== CHECKBOX SIZES ==============
+class CheckBoxSizes:
+    """CheckBox sizing for compact appearance."""
+    
+    # Checkbox height (compact): 20px (smaller than inputs for tighter spacing)
+    COMPACT_HEIGHT = 20
 # ============== LABEL HEIGHTS ==============
 class LabelSizes:
     """Label and text widget sizes."""
@@ -173,6 +221,9 @@ class LabelSizes:
     
     # Progress bar logs minimum height: 90px (10% reduction from 100)
     LOGS_MIN_HEIGHT = 90
+    
+    # Custom title bar height: 31px (10% reduction from 34)
+    TITLE_BAR_HEIGHT = 31
 
 
 # ============== ENCRYPTION & CHUNK SIZE OPTIONS ==============
@@ -243,6 +294,48 @@ class StyleSheets:
     
     # Subtitle (uses theme color via object name)
     SUBTITLE_LABEL = f"font-size:{FontSizes.SUBTITLE}pt;"
+    
+    # Form label (compact)
+    FORM_LABEL = f"font-size:{FontSizes.COMPACT_FORM_LABEL}pt;"
+    
+    # ComboBox and input (compact)
+    FORM_INPUT = ComboBoxSizes.COMPACT_COMBOBOX_STYLE
+    
+    # LineEdit/Password input (compact) - more compact than ComboBox
+    LINEEDIT_STYLE = f"font-size:{FontSizes.COMPACT_BODY}pt; padding: 2px 4px;"
+    
+    # Checkbox (compact)
+    CHECKBOX_STYLE = f"font-size:{FontSizes.COMPACT_FORM_LABEL}pt; min-height: {CheckBoxSizes.COMPACT_HEIGHT}px;"
+    
+    # Info text (compact)
+    INFO_TEXT = f"font-size:{FontSizes.COMPACT_BODY}pt;"
+    
+    # Main window title
+    MAIN_TITLE_LABEL = f"font-size:{FontSizes.MAIN_TITLE}pt;font-weight:700;"
+    
+    # Main window subtitle
+    MAIN_SUBTITLE = f"font-size:{FontSizes.SUBTITLE}pt;font-weight:700;"
+    
+    # About dialog title
+    ABOUT_TITLE = f"font-size:{FontSizes.DIALOG_TITLE}pt;font-weight:700;"
+    
+    # About dialog subtitle
+    ABOUT_SUBTITLE = f"font-size:{FontSizes.SUBTITLE}pt;"
+    
+    # About dialog version
+    ABOUT_VERSION = f"font-size:{FontSizes.VERSION}pt;font-weight:500;"
+    
+    # Status label (main window)
+    STATUS_LABEL = "font-weight:600;"
+    
+    # Tab bar selected tab text (bold)
+    TAB_SELECTED = "QTabBar::tab:selected { font-weight: bold; }"
+    
+    # Detail/status text (compact)
+    DETAIL_LABEL = f"font-size:{FontSizes.COMPACT_BODY}pt;"
+    
+    # Clear logs button (destructive action - red)
+    CLEAR_LOGS_BUTTON = ButtonSizes.DIALOG_BUTTON_STYLE + ButtonSizes.BUTTON_BOLD_WEIGHT + "color: red;"
 
 
 # ============== UTILITY FUNCTIONS ==============
