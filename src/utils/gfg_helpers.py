@@ -8,8 +8,6 @@ import sys
 from datetime import datetime
 from typing import Dict, Any
 
-from config import ChunkSizeOptions, EncryptionModes
-
 
 # Note: config.defaults is imported lazily in functions to avoid circular imports
 
