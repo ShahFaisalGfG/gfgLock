@@ -7,8 +7,9 @@ from PyQt6 import QtWidgets, QtGui
 
 from utils import apply_theme
 from utils import resource_path
-from views.main_window import MainWindow
-from views.encrypt_dialog import EncryptDialog
+
+# Note: MainWindow and EncryptDialog are imported inside main() to ensure
+# QApplication is created first (avoids race conditions with PyQt6 event filters)
 
 # === PYINSTALLER SHELL ARGUMENT FIX - MUST BE HERE! ===
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -49,6 +50,10 @@ def main():
 
     # Apply theme
     apply_theme(app)
+
+    # Import views AFTER QApplication is created to avoid PyQt6 race conditions
+    from views.main_window import MainWindow
+    from views.encrypt_dialog import EncryptDialog
 
     args = sys.argv[1:]
     debug_logs = [f"Raw args received: {args}"]

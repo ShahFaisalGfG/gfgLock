@@ -46,7 +46,7 @@ class EncryptionDefaults:
     """Default encryption settings."""
     
     # CPU threads for encryption (default: half of available threads, min 1)
-    DEFAULT_THREADS = max(1, _get_cpu_thread_count() // 2)
+    DEFAULT_THREADS = _get_cpu_thread_count()
     
     # Chunk size for file I/O (16 MB default, good balance of speed/memory)
     DEFAULT_CHUNK_SIZE = 16 * 1024 * 1024  # 16 MB
@@ -60,10 +60,10 @@ class DecryptionDefaults:
     """Default decryption settings."""
     
     # CPU threads for decryption (default: half of available threads, min 1)
-    DEFAULT_THREADS = max(1, _get_cpu_thread_count() // 2)
+    DEFAULT_THREADS = _get_cpu_thread_count()
     
     # Chunk size for file I/O (16 MB default, same as encryption)
-    DEFAULT_CHUNK_SIZE = 16 * 1024 * 1024  # 16 MB
+    DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024  # 16 MB
     
     # Note: encrypt_filenames is determined by file header during decryption
     # This setting is not used for decryption

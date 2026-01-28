@@ -1,12 +1,16 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
-from config import WindowSizes, ButtonSizes, FontSizes, Spacing, StyleSheets, LabelSizes, scale_size, scale_value
-from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path
+from config import WindowSizes, ButtonSizes, Spacing, StyleSheets, LabelSizes, scale_size, scale_value
+from utils import resource_path, format_bytes, format_time, choose_scale
 from widgets import CustomTitleBar
+import time
 
+REM_TIME_UPDATE_INTERVAL = 1.0  # Update remaining time display at most every 1 seconds
 
 class ProgressDialog(QtWidgets.QDialog):
-    def __init__(self, total, parent=None):
+    # Time display update interval to avoid excessive calculations during encryption/decryption
+    
+    def __init__(self, total, parent=None, total_files=0):
         super().__init__(parent)
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)  # type: ignore[attr-defined]
@@ -20,6 +24,30 @@ class ProgressDialog(QtWidgets.QDialog):
         self.setSizeGripEnabled(False)  # We use QSizeGrip manually, prevent auto-resize
         self.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
         self.setModal(True)
+
+        # Store total bytes for progress display (total is now in bytes, not file count)
+        self.total_bytes = float(total)
+        # Store total files for file count display
+        self.total_files = int(total_files)
+        # Track current done bytes for combined display
+        self._current_done_bytes = 0.0
+        # Choose scale so the progress bar range fits in 32-bit signed int
+        self._scale, self._unit, self._scaled_total = choose_scale(self.total_bytes)
+        
+        # Timing tracking
+        self.start_time = time.time()
+        self._last_speed_update_time = self.start_time
+        self._last_speed_update_bytes = 0.0
+        self._current_speed = 0.0  # bytes per second
+        
+        # Adaptive correction factor (learns from actual vs estimated time)
+        self._correction_factor = 1.0  # Start with 1.0 (no correction)
+        self._correction_measurements = []  # Store (actual_time, estimated_time) pairs
+        self._min_elapsed_for_correction = 5.0  # Wait 5 seconds before calculating correction
+        self._correction_locked = False  # Lock after collecting enough data
+        
+        # Time display update interval to avoid excessive calculations during encryption/decryption
+        self._last_time_display_update = self.start_time
 
         layout = QtWidgets.QVBoxLayout(self)
         # Set compact margins and spacing
@@ -46,12 +74,26 @@ class ProgressDialog(QtWidgets.QDialog):
         layout.addWidget(self.label_current)
 
         self.progress_bar = QtWidgets.QProgressBar()
-        self.progress_bar.setRange(0, max(1, total))
+        # Use the scaled total for the progress bar range to avoid overflow
+        self.progress_bar.setRange(0, max(1, self._scaled_total))
         layout.addWidget(self.progress_bar)
 
-        self.detail = QtWidgets.QLabel(f"0/{total}")
+        # Combined progress label showing files and bytes on one row with time on the right
+        total_formatted = format_bytes(total)
+        bottom_row = QtWidgets.QHBoxLayout()
+        bottom_row.setSpacing(scale_value(Spacing.COMPACT_DIALOG_SPACING))
+        
+        self.detail = QtWidgets.QLabel(f"Files: 0/{self.total_files} (0 B / {total_formatted})")
         self.detail.setStyleSheet(StyleSheets.DETAIL_LABEL)
-        layout.addWidget(self.detail)
+        bottom_row.addWidget(self.detail)
+        
+        # Time label showing elapsed / estimated remaining time
+        self.time_label = QtWidgets.QLabel("Time: 00:00:00 / calculating")
+        self.time_label.setStyleSheet(StyleSheets.DETAIL_LABEL)
+        # Align to the right
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight)  # type: ignore[attr-defined]
+        bottom_row.addWidget(self.time_label)
+        layout.addLayout(bottom_row)
 
         self.logs = QtWidgets.QPlainTextEdit()
         self.logs.setReadOnly(True)
@@ -101,4 +143,129 @@ class ProgressDialog(QtWidgets.QDialog):
         # DPI-scaled size from config
         resize_w, resize_h = scale_size(WindowSizes.PROGRESS_DIALOG_WIDTH, WindowSizes.PROGRESS_DIALOG_HEIGHT)
         self.resize(resize_w, resize_h)
+
+    def update_progress(self, done_bytes: float, total_bytes: float, done_files: int = 0) -> None:
+        """Update progress bar with byte counts and human-readable display.
+        
+        Args:
+            done_bytes: Number of bytes processed so far
+            total_bytes: Total bytes to process (should match self.total_bytes)
+            done_files: Number of files completed (optional, defaults to 0)
+        """
+        # Store current done bytes for combined display updates
+        self._current_done_bytes = float(done_bytes)
+        
+        # Ensure progress reaches 100% when done
+        if done_bytes >= total_bytes:
+            done_scaled = self._scaled_total
+        else:
+            try:
+                # Use float division for proper rounding instead of truncation
+                done_scaled = min(int(float(done_bytes) / self._scale), self._scaled_total)
+            except Exception:
+                done_scaled = 0
+        
+        self.progress_bar.setValue(done_scaled)
+        done_formatted = format_bytes(done_bytes)
+        total_formatted = format_bytes(total_bytes)
+        # Combine files and bytes in one label
+        self.detail.setText(f"Files: {done_files}/{self.total_files} ({done_formatted} / {total_formatted})")
+        
+        # Update time display only at specified interval to avoid excessive calculations
+        self._update_time_display(done_bytes, total_bytes)
+    
+    def _update_time_display(self, done_bytes: float, total_bytes: float) -> None:
+        """Update the elapsed and estimated remaining time display.
+        
+        Uses adaptive correction factor to improve accuracy over time.
+        Updates at most every REM_TIME_UPDATE_INTERVAL seconds to avoid
+        slowing down encryption/decryption operations.
+        
+        Args:
+            done_bytes: Number of bytes processed
+            total_bytes: Total bytes to process
+        """
+        try:
+            current_time = time.time()
+            
+            # Skip update if not enough time has passed since last update
+            # This prevents excessive calculations during fast progress updates
+            if current_time - self._last_time_display_update < REM_TIME_UPDATE_INTERVAL:
+                return
+            
+            self._last_time_display_update = current_time
+            elapsed = current_time - self.start_time
+            
+            # Calculate current speed (bytes per second) using a smoothed average
+            # Update speed calculation every second or after significant progress
+            time_since_last_update = current_time - self._last_speed_update_time
+            bytes_since_last_update = done_bytes - self._last_speed_update_bytes
+            
+            if time_since_last_update >= 1.0 and bytes_since_last_update > 0:
+                # Update speed every second
+                self._current_speed = bytes_since_last_update / time_since_last_update
+                self._last_speed_update_time = current_time
+                self._last_speed_update_bytes = done_bytes
+            
+            # Calculate estimated time remaining
+            remaining_bytes = max(0, total_bytes - done_bytes)
+            if self._current_speed > 0 and remaining_bytes > 0:
+                estimated_remaining = remaining_bytes / self._current_speed
+                
+                # Apply adaptive correction factor if available
+                estimated_remaining *= self._correction_factor
+                
+                remaining_str = format_time(estimated_remaining)
+            else:
+                remaining_str = "--:--:--"
+            
+            elapsed_str = format_time(elapsed)
+            self.time_label.setText(f"Time: {elapsed_str} / {remaining_str}")
+            
+            # Update correction factor based on actual vs predicted time
+            # (Only during the first 10 seconds to capture initial performance patterns)
+            if not self._correction_locked and elapsed > self._min_elapsed_for_correction:
+                self._update_correction_factor(done_bytes, total_bytes, elapsed)
+        except Exception:
+            # Silently fail and keep previous time display
+            pass
+    
+    def _update_correction_factor(self, done_bytes: float, total_bytes: float, elapsed: float) -> None:
+        """
+        Update the adaptive correction factor based on actual vs predicted time.
+        
+        This learns from the first 10 seconds of operation to adapt to system performance.
+        """
+        try:
+            if done_bytes <= 0 or elapsed < self._min_elapsed_for_correction:
+                return
+            
+            # Calculate actual throughput
+            actual_speed = done_bytes / elapsed
+            
+            # Calculate what speed we initially predicted (total_bytes / estimated_total_time)
+            # We use our current speed estimate to back-calculate our error
+            if self._current_speed > 0:
+                # Ratio of actual speed to estimated speed
+                speed_ratio = actual_speed / self._current_speed
+                
+                # Store this measurement (we use speed ratio as a proxy for time correction)
+                self._correction_measurements.append(speed_ratio)
+                
+                # After collecting 3+ measurements over 10+ seconds, lock in correction
+                if len(self._correction_measurements) >= 3 and elapsed > 10.0:
+                    # Calculate mean correction factor from measurements
+                    import statistics
+                    avg_ratio = statistics.mean(self._correction_measurements)
+                    
+                    # Apply the correction (inverse of speed ratio = time correction)
+                    self._correction_factor = 1.0 / avg_ratio if avg_ratio > 0 else 1.0
+                    
+                    # Clamp between 0.5 and 2.0 to avoid extreme corrections
+                    self._correction_factor = max(0.5, min(2.0, self._correction_factor))
+                    
+                    self._correction_locked = True
+        except Exception:
+            # Silently fail, keep default correction factor
+            pass
 

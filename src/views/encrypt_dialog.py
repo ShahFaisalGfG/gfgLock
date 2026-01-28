@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt
 from config import ChunkSizeOptions, EncryptionModes, ComboBoxSizes, CheckBoxSizes, WindowSizes, ButtonSizes, FontSizes, Spacing, StyleSheets, scale_size, scale_value
 from services import EncryptDecryptWorker
 from utils import apply_theme
-from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path
+from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path, calculate_files_total_size, format_bytes
 from views.progress_dialog import ProgressDialog
 from widgets import CustomTitleBar
 
@@ -120,29 +120,24 @@ class EncryptDialog(QtWidgets.QDialog):
         if str(default_threads) in [str(i) for i in range(1, max_safe + 1)]:
             self.threads_combo.setCurrentText(str(default_threads))
 
-        # chunk size
-        self.chunk_combo = QtWidgets.QComboBox()
-        # DPI-scaled initial width from config: base 81 at 96 DPI (10% reduction)
-        self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_WIDTH))
-        self.chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
-        self.chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
-        
-        for label, val in ChunkSizeOptions.get_options():
-            self.chunk_combo.addItem(label, val)
-        # Automatically size based on content
-        self.chunk_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
-
-        # Set chunk size from settings
-        chunk_index = self.chunk_combo.findData(default_chunk)
-        if chunk_index >= 0:
-            self.chunk_combo.setCurrentIndex(chunk_index)
-        else:
-            self.chunk_combo.setCurrentText("16 MB (fast)")
-
         row.addWidget(QtWidgets.QLabel("CPU Threads:"))
         row.addWidget(self.threads_combo)
-        row.addWidget(QtWidgets.QLabel("Chunk Size:"))
-        row.addWidget(self.chunk_combo)
+        if self.mode == "encrypt":
+            # chunk size (only for encryption)
+            self.chunk_combo = QtWidgets.QComboBox()
+            self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_WIDTH))
+            self.chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+            self.chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
+            for label, val in ChunkSizeOptions.get_options():
+                self.chunk_combo.addItem(label, val)
+            self.chunk_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+            chunk_index = self.chunk_combo.findData(default_chunk)
+            if chunk_index >= 0:
+                self.chunk_combo.setCurrentIndex(chunk_index)
+            else:
+                self.chunk_combo.setCurrentText("16 MB (fast)")
+            row.addWidget(QtWidgets.QLabel("Chunk Size:"))
+            row.addWidget(self.chunk_combo)
         # Algorithm dropdown moved to the same row as threads/chunk
         # Algorithm dropdown is only shown for encryption mode
         if self.mode == "encrypt":
@@ -249,17 +244,23 @@ class EncryptDialog(QtWidgets.QDialog):
                 self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
     def add_files(self):
+        # Get last opened path from settings
+        last_path = self.settings.get("ui", {}).get("last_file_picker_path", "")
+        
         # For decrypt mode, show only encrypted file types in the dialog
         if self.mode == 'decrypt':
             file_filter = "Encrypted Files (*.gfglock *.gfglck *.gfgcha)"
-            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", "", file_filter)
+            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", last_path, file_filter)
         else:
             # Show non-encrypted files by default (can't exclude by pattern in QFileDialog,
             # so show all and we'll filter out encrypted extensions after selection)
             file_filter = "All Files (*.*)"
-            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", "", file_filter)
+            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", last_path, file_filter)
         if not files:
             return
+        
+        # Save the path of the first selected file's directory for next time
+        self._save_last_file_picker_path(files[0])
         enc_exts = ('.gfglock', '.gfglck', '.gfgcha')
         if self.mode == 'encrypt':
             # allow only files that are NOT already encrypted
@@ -272,8 +273,13 @@ class EncryptDialog(QtWidgets.QDialog):
         self.update_count_label()
 
     def add_folders(self):
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder")
+        # Get last opened path from settings
+        last_path = self.settings.get("ui", {}).get("last_file_picker_path", "")
+        
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder", last_path)
         if folder:
+            # Save the selected folder path for next time
+            self._save_last_file_picker_path(folder)
             enc_exts = ('.gfglock', '.gfglck', '.gfgcha')
             for root, _, files in os.walk(folder):
                 for fn in files:
@@ -300,15 +306,53 @@ class EncryptDialog(QtWidgets.QDialog):
             self.list_widget.addItem(p)
             self.update_count_label()
 
+    def _save_last_file_picker_path(self, file_or_folder_path):
+        """Save the directory path of the selected file/folder to settings."""
+        try:
+            # Get directory from the file/folder path
+            if os.path.isfile(file_or_folder_path):
+                dir_path = os.path.dirname(file_or_folder_path)
+            else:
+                dir_path = file_or_folder_path
+            
+            # Update settings
+            if "ui" not in self.settings:
+                self.settings["ui"] = {}
+            self.settings["ui"]["last_file_picker_path"] = dir_path
+            
+            # Persist to disk
+            from utils import save_settings
+            save_settings(self.settings)
+        except Exception:
+            # Silently fail if unable to save path
+            pass
+
     def update_count_label(self):
         total = self.list_widget.count()
         selected = len(self.list_widget.selectedItems())
+        
+        # Get all file paths from the list
+        all_paths = [self.list_widget.item(i).text() for i in range(total)] # type: ignore
+        
+        # Get selected file paths
+        selected_paths = [item.text() for item in self.list_widget.selectedItems()]
+        
+        # Calculate total and selected sizes
+        total_size = calculate_files_total_size(all_paths)
+        selected_size = calculate_files_total_size(selected_paths) if selected > 0 else 0
+        
+        # Format sizes for display
+        total_size_str = format_bytes(total_size, strip_zeros=True)
+        selected_size_str = format_bytes(selected_size, strip_zeros=True)
+
+        # Build the text
         if selected > 0:
-            text = f"{total} files | {selected} selected"
+            text = f"{total} files {total_size_str} | {selected} selected {selected_size_str}"
             self.btn_remove.setEnabled(True)
         else:
-            text = f"{total} files"
+            text = f"{total} files {total_size_str}"
             self.btn_remove.setEnabled(False)
+        
         self.count_label.setText(text)
 
     def eventFilter(self, a0, a1):
@@ -318,6 +362,19 @@ class EncryptDialog(QtWidgets.QDialog):
         obj = a0
         event = a1
         if obj is self.list_widget:
+            # Handle Delete key to remove selected files from the list
+            try:
+                if event.type() == QtCore.QEvent.Type.KeyPress:  # type: ignore[attr-defined]
+                    # event is already a QKeyEvent, just use it directly
+                    key_event = event if isinstance(event, QtGui.QKeyEvent) else None
+                    if key_event:
+                        key_code = key_event.key()
+                    # Delete key code is 16777223 in PyQt6
+                    if key_code == 16777223 or key_code == Qt.Key.Key_Delete:  # type: ignore[attr-defined]
+                        self.remove_selected()
+                        return True
+            except Exception:
+                pass
             try:
                 etype = event.type()  # type: ignore[attr-defined]
             except Exception:
@@ -398,13 +455,8 @@ class EncryptDialog(QtWidgets.QDialog):
         self.current_file = ""
 
         threads = int(self.threads_combo.currentText())
-        chunk_size = self.chunk_combo.currentData()
+        chunk_size = self.chunk_combo.currentData() if self.mode == 'encrypt' else None
         encrypt_name = self.encrypt_name_cb.isChecked() if self.mode == "encrypt" else False
-
-        # Progress dialog
-        self.progress_dlg = ProgressDialog(len(paths), self)
-        self.progress_dlg.show()
-        QtWidgets.QApplication.processEvents()
 
         # Worker
         enc_algo = None
@@ -423,7 +475,13 @@ class EncryptDialog(QtWidgets.QDialog):
             enc_algo=enc_algo
         )
 
+        # Progress dialog - use worker's total_bytes for byte-based progress and pass total files
+        self.progress_dlg = ProgressDialog(self.worker.total_bytes, self, total_files=len(paths))
+        self.progress_dlg.show()
+        QtWidgets.QApplication.processEvents()
+
         self.worker.signals.progress.connect(self.on_progress, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
+        self.worker.signals.files_progress.connect(self.on_files_progress, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
         self.worker.signals.file_changed.connect(self.on_current_file, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
         self.worker.signals.status.connect(self.on_status, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
         self.worker.signals.error.connect(self.on_error, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
@@ -434,8 +492,20 @@ class EncryptDialog(QtWidgets.QDialog):
         self.threadpool.start(self.worker) # type: ignore
 
     def on_progress(self, done, total):
-        self.progress_dlg.progress_bar.setValue(done) # type: ignore
-        self.progress_dlg.detail.setText(f"{done}/{total}") # type: ignore
+        # Pass current file count if available, otherwise 0
+        done_files = getattr(self, '_current_done_files', 0)
+        self.progress_dlg.update_progress(float(done), float(total), done_files) # type: ignore
+
+    def on_files_progress(self, done_files: int, total_files: int):
+        # Store current file count and update the progress label
+        self._current_done_files = done_files
+        try:
+            if self.progress_dlg:
+                # Update the label with current file count (use float for bytes)
+                self.progress_dlg.update_progress(float(self.progress_dlg._current_done_bytes) if hasattr(self.progress_dlg, '_current_done_bytes') else 0.0, 
+                                                  float(self.progress_dlg.total_bytes), done_files)
+        except Exception:
+            pass
 
     def on_current_file(self, text):
         # Update the current file label only. Actual logs from core are

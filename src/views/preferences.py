@@ -188,14 +188,7 @@ class PreferencesWindow(QtWidgets.QDialog):
         
         group_layout.addRow("CPU Threads:", self.dec_threads_combo)
         
-        # Chunk Size
-        self.dec_chunk_combo = QtWidgets.QComboBox()
-        self.dec_chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
-        self.dec_chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
-        for label, value in ChunkSizeOptions.get_options():
-            self.dec_chunk_combo.addItem(label, value)
-        
-        group_layout.addRow("Chunk Size:", self.dec_chunk_combo)
+        # Note: chunk size for decryption is read from file headers; no user selection
         
         # Encrypt Filenames (for display purposes)
         self.dec_filenames_label = QtWidgets.QLabel("N/A (Determined by file header)")
@@ -364,8 +357,7 @@ class PreferencesWindow(QtWidgets.QDialog):
         # Decryption
         dec_settings = self.settings.get("decryption", {})
         self.dec_threads_combo.setCurrentText(str(dec_settings.get("cpu_threads", 1)))
-        chunk_size = dec_settings.get("chunk_size", 8 * 1024 * 1024)
-        self.set_combo_by_value(self.dec_chunk_combo, chunk_size)
+        # decryption chunk size is determined per-file from header; no UI element
         
         # Advanced
         adv_settings = self.settings.get("advanced", {})
@@ -402,7 +394,6 @@ class PreferencesWindow(QtWidgets.QDialog):
         self.settings["encryption"]["encrypt_filenames"] = self.enc_filenames_cb.isChecked()
         
         self.settings["decryption"]["cpu_threads"] = int(self.dec_threads_combo.currentText())
-        self.settings["decryption"]["chunk_size"] = self.dec_chunk_combo.currentData()
         
         self.settings["advanced"]["encryption_mode"] = self.enc_mode_combo.currentData()
         self.settings["advanced"]["enable_logs"] = self.enable_logs_cb.isChecked()
