@@ -394,24 +394,15 @@ Future releases planned (Major):
 
 ## Contributing
 
-Contributions welcome! Bug fixes, features, and documentation improvements are appreciated.
+Contributions welcome! Please:
 
-### Quick Start (Contribution)
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-1. **Fork** the repository on GitHub
-2. **Clone** your fork: `git clone https://github.com/<your-username>/gfgLock.git`
-3. **Add upstream:** `git remote add upstream https://github.com/ShahFaisalGfG/gfgLock.git`
-4. **Sync:** `git fetch upstream && git checkout development && git pull upstream development`
-5. **Branch:** `git checkout -b feature/your-feature` (use clear names like `feature-encryption-progress` or `bugfix-null-error`)
-6. **Commit:** `git add . && git commit -m "Add: description of change"`
-7. **Push:** `git push origin feature/your-feature`
-8. **PR:** Open a Pull Request with **base branch: development**
-
-### Before Contributing
-
-- For bugs/features, open an [issue](https://github.com/ShahFaisalGfG/gfgLock/issues) first
-- Follow existing code patterns
-- Write clean, documented code
+For bugs/features, open an issue first.
 
 ---
 
