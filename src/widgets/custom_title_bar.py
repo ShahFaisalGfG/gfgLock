@@ -188,6 +188,8 @@ class _WindowResizer(QtCore.QObject):
         self._resize_edges = 0
         self._start_rect: Optional[QtCore.QRect] = None
         self._start_pos: Optional[QtCore.QPoint] = None
+        # Guard to prevent recursive event processing during geometry updates
+        self._processing_event = False
         
         # Enable mouse tracking so we get mouseMoveEvents even when no button is pressed
         self._w.setMouseTracking(True)
@@ -198,22 +200,42 @@ class _WindowResizer(QtCore.QObject):
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:  # type: ignore[override]
         try:
+            # Guard against recursive event processing
+            if self._processing_event:
+                return False
+            
             # Only filter events from the target window itself or its child widgets
-            # Check if obj is the window or a child of the window
-            if isinstance(obj, QtWidgets.QWidget):
-                if obj == self._w or self._w.isAncestorOf(obj):
-                    et = event.type()
-                    if et == QtCore.QEvent.Type.MouseMove:
-                        return self._handle_move(event)
-                    if et == QtCore.QEvent.Type.MouseButtonPress:
-                        return self._handle_press(event)
-                    if et == QtCore.QEvent.Type.MouseButtonRelease:
-                        return self._handle_release(event)
-                    if et == QtCore.QEvent.Type.Leave:
-                        # Ensure any override cursor is cleared when mouse leaves window
-                        self._clear_override_cursors()
+            if not isinstance(obj, QtWidgets.QWidget):
+                return False
+            
+            if obj != self._w and not self._w.isAncestorOf(obj):
+                return False
+            
+            et = event.type()
+            
+            # Use a guard for ALL event types to prevent recursion
+            self._processing_event = True
+            try:
+                if et == QtCore.QEvent.Type.MouseMove:
+                    return self._handle_move(event)
+                elif et == QtCore.QEvent.Type.MouseButtonPress:
+                    return self._handle_press(event)
+                elif et == QtCore.QEvent.Type.MouseButtonRelease:
+                    return self._handle_release(event)
+                elif et == QtCore.QEvent.Type.Leave:
+                    # Ensure any override cursor is cleared when mouse leaves window
+                    self._clear_override_cursors()
+                    return False
+                else:
+                    return False
+            finally:
+                self._processing_event = False
+        except RecursionError:
+            # Explicitly catch recursion errors and prevent further processing
+            self._processing_event = False
             return False
         except Exception:
+            self._processing_event = False
             return False
 
     def _edge_flags(self, pos: QtCore.QPoint) -> int:
@@ -293,7 +315,14 @@ class _WindowResizer(QtCore.QObject):
                 rect.setWidth(minw)
             if rect.height() < minh:
                 rect.setHeight(minh)
-            self._w.setGeometry(rect)
+            
+            # Block signals during geometry change to prevent event recursion
+            was_blocked = self._w.signalsBlocked()
+            self._w.blockSignals(True)
+            try:
+                self._w.setGeometry(rect)
+            finally:
+                self._w.blockSignals(was_blocked)
             return True
 
         # not resizing: update cursor based on local position

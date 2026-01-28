@@ -25,7 +25,7 @@ gfgLock is a focused Windows tool for encrypting files with modern, authenticate
 
 ## Screenshots
 
-#### Main window, dialogs and progress examples:
+#### Main window, dialogs and progress examples
 
 - Main Window
 
