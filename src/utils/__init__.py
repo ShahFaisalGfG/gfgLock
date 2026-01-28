@@ -20,7 +20,9 @@ from utils.gfg_helpers import (
     write_general_log,
     write_log,
     clear_logs,
-    predict_encrypted_size
+    predict_encrypted_size,
+    calculate_files_total_size,
+    format_file_size,
 )
 
 from utils.theme_manager import apply_theme
@@ -47,4 +49,6 @@ __all__ = [
     'clear_logs',
     'predict_encrypted_size',
     'apply_theme',
+    'calculate_files_total_size',
+    'format_file_size',
 ]

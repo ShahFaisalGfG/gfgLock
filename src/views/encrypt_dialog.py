@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt
 from config import ChunkSizeOptions, EncryptionModes, ComboBoxSizes, CheckBoxSizes, WindowSizes, ButtonSizes, FontSizes, Spacing, StyleSheets, scale_size, scale_value
 from services import EncryptDecryptWorker
 from utils import apply_theme
-from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path
+from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path, calculate_files_total_size, format_file_size
 from views.progress_dialog import ProgressDialog
 from widgets import CustomTitleBar
 
@@ -244,17 +244,23 @@ class EncryptDialog(QtWidgets.QDialog):
                 self.confirm_pass_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
     def add_files(self):
+        # Get last opened path from settings
+        last_path = self.settings.get("ui", {}).get("last_file_picker_path", "")
+        
         # For decrypt mode, show only encrypted file types in the dialog
         if self.mode == 'decrypt':
             file_filter = "Encrypted Files (*.gfglock *.gfglck *.gfgcha)"
-            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", "", file_filter)
+            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", last_path, file_filter)
         else:
             # Show non-encrypted files by default (can't exclude by pattern in QFileDialog,
             # so show all and we'll filter out encrypted extensions after selection)
             file_filter = "All Files (*.*)"
-            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", "", file_filter)
+            files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select files", last_path, file_filter)
         if not files:
             return
+        
+        # Save the path of the first selected file's directory for next time
+        self._save_last_file_picker_path(files[0])
         enc_exts = ('.gfglock', '.gfglck', '.gfgcha')
         if self.mode == 'encrypt':
             # allow only files that are NOT already encrypted
@@ -267,8 +273,13 @@ class EncryptDialog(QtWidgets.QDialog):
         self.update_count_label()
 
     def add_folders(self):
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder")
+        # Get last opened path from settings
+        last_path = self.settings.get("ui", {}).get("last_file_picker_path", "")
+        
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder", last_path)
         if folder:
+            # Save the selected folder path for next time
+            self._save_last_file_picker_path(folder)
             enc_exts = ('.gfglock', '.gfglck', '.gfgcha')
             for root, _, files in os.walk(folder):
                 for fn in files:
@@ -295,15 +306,53 @@ class EncryptDialog(QtWidgets.QDialog):
             self.list_widget.addItem(p)
             self.update_count_label()
 
+    def _save_last_file_picker_path(self, file_or_folder_path):
+        """Save the directory path of the selected file/folder to settings."""
+        try:
+            # Get directory from the file/folder path
+            if os.path.isfile(file_or_folder_path):
+                dir_path = os.path.dirname(file_or_folder_path)
+            else:
+                dir_path = file_or_folder_path
+            
+            # Update settings
+            if "ui" not in self.settings:
+                self.settings["ui"] = {}
+            self.settings["ui"]["last_file_picker_path"] = dir_path
+            
+            # Persist to disk
+            from utils import save_settings
+            save_settings(self.settings)
+        except Exception:
+            # Silently fail if unable to save path
+            pass
+
     def update_count_label(self):
         total = self.list_widget.count()
         selected = len(self.list_widget.selectedItems())
+        
+        # Get all file paths from the list
+        all_paths = [self.list_widget.item(i).text() for i in range(total)] # type: ignore
+        
+        # Get selected file paths
+        selected_paths = [item.text() for item in self.list_widget.selectedItems()]
+        
+        # Calculate total and selected sizes
+        total_size = calculate_files_total_size(all_paths)
+        selected_size = calculate_files_total_size(selected_paths) if selected > 0 else 0
+        
+        # Format sizes for display
+        total_size_str = format_file_size(total_size)
+        selected_size_str = format_file_size(selected_size)
+        
+        # Build the text
         if selected > 0:
-            text = f"{total} files | {selected} selected"
+            text = f"{total} files {total_size_str} | {selected} selected {selected_size_str}"
             self.btn_remove.setEnabled(True)
         else:
-            text = f"{total} files"
+            text = f"{total} files {total_size_str}"
             self.btn_remove.setEnabled(False)
+        
         self.count_label.setText(text)
 
     def eventFilter(self, a0, a1):
@@ -313,35 +362,16 @@ class EncryptDialog(QtWidgets.QDialog):
         obj = a0
         event = a1
         if obj is self.list_widget:
-            # Handle Delete key to remove selected files from the list. Support
-            # multiple PyQt6 enum styles by trying several access patterns.
+            # Handle Delete key to remove selected files from the list
             try:
                 if event.type() == QtCore.QEvent.Type.KeyPress:  # type: ignore[attr-defined]
-                    # get numeric key code
-                    try:
-                        key_event = QtGui.QKeyEvent(event)  # type: ignore[arg-type]
+                    # event is already a QKeyEvent, just use it directly
+                    key_event = event if isinstance(event, QtGui.QKeyEvent) else None
+                    if key_event:
                         key_code = key_event.key()
-                    except Exception:
-                        key_code = None
-
-                    delete_values = set()
-                    try:
-                        # PyQt6 enum nested style: Qt.Key.Key_Delete
-                        delete_values.add(int(Qt.Key.Key_Delete))
-                    except Exception:
-                        pass
-                    try:
-                        # Fallback: QtCore.Qt.Key.Key_Delete or similar
-                        from PyQt6.QtCore import Qt as QtCore_Qt
-                        delete_values.add(int(QtCore_Qt.Key.Key_Delete))
-                    except Exception:
-                        pass
-
-                    if key_code is not None and key_code in delete_values:
-                        try:
-                            self.remove_selected()
-                        except Exception:
-                            pass
+                    # Delete key code is 16777223 in PyQt6
+                    if key_code == 16777223 or key_code == Qt.Key.Key_Delete:  # type: ignore[attr-defined]
+                        self.remove_selected()
                         return True
             except Exception:
                 pass

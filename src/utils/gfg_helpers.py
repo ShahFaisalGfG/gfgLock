@@ -88,6 +88,42 @@ def format_duration(seconds: float) -> str:
         return f"{hours} hrs {mins} mins {secs} sec"
 
 
+def format_file_size(size_bytes: float) -> str:
+    """Format file size in bytes to human-readable format.
+    
+    Args:
+        size_bytes: Size in bytes
+    
+    Returns:
+        str: Formatted size (e.g., "1.5 MB", "2.3 GB", "256 KB")
+    """
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}".rstrip('0').rstrip('.')
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} PB"
+
+
+def calculate_files_total_size(file_paths: list) -> float:
+    """Calculate total size of all files in the given list.
+    
+    Args:
+        file_paths: List of file paths (absolute paths)
+    
+    Returns:
+        int: Total size in bytes. Returns 0 if files don't exist or on error.
+    """
+    total_size = 0
+    for file_path in file_paths:
+        try:
+            if os.path.isfile(file_path):
+                total_size += os.path.getsize(file_path)
+        except Exception:
+            # Skip files that can't be accessed
+            pass
+    return total_size
+
+
 def derive_key(password: str, salt: bytes, iterations: int = 200000) -> bytes:
     """PBKDF2 key derivation with salt for better security."""
     return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations, dklen=32)
