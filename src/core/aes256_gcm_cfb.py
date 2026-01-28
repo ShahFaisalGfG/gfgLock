@@ -23,13 +23,15 @@ SALT_SIZE = 16
 NONCE_SIZE = 12
 TAG_SIZE = 16
 CHUNK_FIELD_SIZE = 4  # 4-byte unsigned int stored after nonce/iv indicating chunk_size in bytes (0 => non-chunked)
-BUFFER_SIZE = 64 * 1024  # 64KB buffer for I/O operations (optimized for modern SSDs)
+BUFFER_SIZE = 512 * 1024  # 512KB buffer for I/O operations (optimized for modern SSDs and parallel throughput)
 SMALL_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB threshold: use non-chunked for small files regardless
+PROGRESS_UPDATE_INTERVAL = 100 * 1024 * 1024  # Batch progress updates: emit every 100MB instead of per-buffer
 
 
-def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True):
+def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True, progress_callback=None):
     logs = []
     out_path = None
+    chunker = None
     try:
         if not os.path.exists(path):
             msg = f"Critical error: {path} not found"
@@ -47,9 +49,9 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
         ext = ".gfglock" if AEAD else ".gfglck"
         out_name = generate_encrypted_name(path, encrypt_name, ext)
         out_path = os.path.join(os.path.dirname(path), out_name)
-        chunker = FileChunker()
 
         with open(path, "rb", buffering=BUFFER_SIZE) as fin, open(out_path, "wb", buffering=BUFFER_SIZE) as fout:
+            chunker = FileChunker()
             if AEAD:
                 # GCM mode with AEAD authentication
                 salt = token_bytes(SALT_SIZE)
@@ -66,16 +68,29 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
 
                 name_meta = os.path.basename(path).encode("utf-8") + b"\0"
                 fout.write(encryptor.update(name_meta))
+                if progress_callback:
+                    progress_callback(float(len(name_meta)))
 
                 if chunk_size is None:
                     # Non-chunked: load entire file into memory
                     file_data = fin.read()
                     fout.write(encryptor.update(file_data))
+                    if progress_callback:
+                        progress_callback(float(len(file_data)))
                 else:
                     # Stream directly from input file in chunks to avoid temp files
                     effective_chunk = max(chunk_size, BUFFER_SIZE)
+                    progress_batch = 0.0
                     for data in chunker.stream_chunks(fin, None, effective_chunk):
                         fout.write(encryptor.update(data))
+                        # Batch progress updates to reduce callback overhead
+                        progress_batch += len(data)
+                        if progress_batch >= PROGRESS_UPDATE_INTERVAL and progress_callback:
+                            progress_callback(float(progress_batch))
+                            progress_batch = 0.0
+                    # Emit any remaining progress
+                    if progress_batch > 0 and progress_callback:
+                        progress_callback(float(progress_batch))
 
                 fout.write(encryptor.finalize())
                 fout.write(encryptor.tag)
@@ -95,20 +110,36 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
 
                 name_meta = os.path.basename(path).encode("utf-8") + b"\0"
                 fout.write(encryptor.update(name_meta))
+                if progress_callback:
+                    progress_callback(float(len(name_meta)))
 
                 if chunk_size is None:
                     file_data = fin.read()
                     fout.write(encryptor.update(file_data))
+                    if progress_callback:
+                        progress_callback(float(len(file_data)))
                 else:
                     effective_chunk = max(chunk_size, BUFFER_SIZE)
+                    progress_batch = 0.0
                     for data in chunker.stream_chunks(fin, None, effective_chunk):
                         fout.write(encryptor.update(data))
-
-                fout.write(encryptor.finalize())
+                        # Batch progress updates to reduce callback overhead
+                        progress_batch += len(data)
+                        if progress_batch >= PROGRESS_UPDATE_INTERVAL and progress_callback:
+                            progress_callback(float(progress_batch))
+                            progress_batch = 0.0
+                    # Emit any remaining progress
+                    if progress_batch > 0 and progress_callback:
+                        progress_callback(float(progress_batch))
 
         os.remove(path)
         msg = f"Encrypted: {path} -> {out_path}"
         logs.append(msg); safe_print(msg)
+        # Clean up isolated temp directory
+        try:
+            chunker.cleanup_temp_dir()
+        except Exception:
+            pass
         return True, "\n".join(logs)
     except Exception as e:
         msg = f"Critical error while encrypting {path}: {e}"
@@ -119,9 +150,15 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
                 except Exception: pass
         except Exception:
             pass
+        # Clean up isolated temp directory
+        if chunker:
+            try:
+                chunker.cleanup_temp_dir()
+            except Exception:
+                pass
         return False, "\n".join(logs)
 
-def decrypt_file(path, password, chunk_size=None):
+def decrypt_file(path, password, chunk_size=None, progress_callback=None):
     logs = []
     out_path = None
     try:
@@ -168,6 +205,8 @@ def decrypt_file(path, password, chunk_size=None):
                 if chunk_size is None:
                     encrypted_data = fin.read(data_len)
                     tag = fin.read(TAG_SIZE)
+                    if progress_callback:
+                        progress_callback(float(len(encrypted_data)))
                     try:
                         cipher = Cipher(algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend())
                         decryptor = cipher.decryptor()
@@ -196,6 +235,7 @@ def decrypt_file(path, password, chunk_size=None):
                     temp_out: Optional[io.BufferedWriter] = None
 
                     remaining = data_len
+                    progress_batch = 0.0
                     try:
                         while remaining > 0:
                             to_read = min(remaining, effective_chunk)
@@ -203,6 +243,8 @@ def decrypt_file(path, password, chunk_size=None):
                             if not enc_chunk:
                                 break
                             remaining -= len(enc_chunk)
+                            # Batch progress updates to reduce callback overhead
+                            progress_batch += len(enc_chunk)
                             dec = decryptor.update(enc_chunk)
                             if not got_meta:
                                 idx = dec.find(b'\0')
@@ -220,6 +262,13 @@ def decrypt_file(path, password, chunk_size=None):
                             else:
                                 if temp_out:
                                     temp_out.write(dec)
+                            # Emit batched progress
+                            if progress_batch >= PROGRESS_UPDATE_INTERVAL and progress_callback:
+                                progress_callback(float(progress_batch))
+                                progress_batch = 0.0
+                        # Emit any remaining progress
+                        if progress_batch > 0 and progress_callback:
+                            progress_callback(float(progress_batch))
 
                         tag = fin.read(TAG_SIZE)
                         try:
@@ -270,6 +319,8 @@ def decrypt_file(path, password, chunk_size=None):
 
                 if chunk_size is None:
                     encrypted_data = fin.read(data_len)
+                    if progress_callback:
+                        progress_callback(float(len(encrypted_data)))
                     dec = decryptor.update(encrypted_data) + decryptor.finalize()
                     idx = dec.find(b'\0')
                     if idx == -1:
@@ -283,6 +334,7 @@ def decrypt_file(path, password, chunk_size=None):
                 else:
                     effective_chunk = max(chunk_size, BUFFER_SIZE)
                     remaining = data_len
+                    progress_batch = 0.0
                     try:
                         while remaining > 0:
                             to_read = min(remaining, effective_chunk)
@@ -290,6 +342,8 @@ def decrypt_file(path, password, chunk_size=None):
                             if not enc_chunk:
                                 break
                             remaining -= len(enc_chunk)
+                            # Batch progress updates to reduce callback overhead
+                            progress_batch += len(enc_chunk)
                             dec = decryptor.update(enc_chunk)
                             if not got_meta:
                                 idx = dec.find(b'\0')
@@ -307,6 +361,13 @@ def decrypt_file(path, password, chunk_size=None):
                             else:
                                 if temp_out is not None:
                                     temp_out.write(dec)
+                            # Emit batched progress
+                            if progress_batch >= PROGRESS_UPDATE_INTERVAL and progress_callback:
+                                progress_callback(float(progress_batch))
+                                progress_batch = 0.0
+                        # Emit any remaining progress
+                        if progress_batch > 0 and progress_callback:
+                            progress_callback(float(progress_batch))
 
                         decryptor.finalize()
                     except Exception as e:

@@ -319,7 +319,8 @@ class EncryptDialog(QtWidgets.QDialog):
                 if event.type() == QtCore.QEvent.Type.KeyPress:  # type: ignore[attr-defined]
                     # get numeric key code
                     try:
-                        key_code = event.key()
+                        key_event = QtGui.QKeyEvent(event)  # type: ignore[arg-type]
+                        key_code = key_event.key()
                     except Exception:
                         key_code = None
 
@@ -330,8 +331,9 @@ class EncryptDialog(QtWidgets.QDialog):
                     except Exception:
                         pass
                     try:
-                        # older style: Qt.Key_Delete
-                        delete_values.add(int(Qt.Key_Delete))
+                        # Fallback: QtCore.Qt.Key.Key_Delete or similar
+                        from PyQt6.QtCore import Qt as QtCore_Qt
+                        delete_values.add(int(QtCore_Qt.Key.Key_Delete))
                     except Exception:
                         pass
 
@@ -426,11 +428,6 @@ class EncryptDialog(QtWidgets.QDialog):
         chunk_size = self.chunk_combo.currentData() if self.mode == 'encrypt' else None
         encrypt_name = self.encrypt_name_cb.isChecked() if self.mode == "encrypt" else False
 
-        # Progress dialog
-        self.progress_dlg = ProgressDialog(len(paths), self)
-        self.progress_dlg.show()
-        QtWidgets.QApplication.processEvents()
-
         # Worker
         enc_algo = None
         if self.mode == "encrypt":
@@ -448,7 +445,13 @@ class EncryptDialog(QtWidgets.QDialog):
             enc_algo=enc_algo
         )
 
+        # Progress dialog - use worker's total_bytes for byte-based progress and pass total files
+        self.progress_dlg = ProgressDialog(self.worker.total_bytes, self, total_files=len(paths))
+        self.progress_dlg.show()
+        QtWidgets.QApplication.processEvents()
+
         self.worker.signals.progress.connect(self.on_progress, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
+        self.worker.signals.files_progress.connect(self.on_files_progress, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
         self.worker.signals.file_changed.connect(self.on_current_file, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
         self.worker.signals.status.connect(self.on_status, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
         self.worker.signals.error.connect(self.on_error, QtCore.Qt.ConnectionType.QueuedConnection) # type: ignore
@@ -459,8 +462,20 @@ class EncryptDialog(QtWidgets.QDialog):
         self.threadpool.start(self.worker) # type: ignore
 
     def on_progress(self, done, total):
-        self.progress_dlg.progress_bar.setValue(done) # type: ignore
-        self.progress_dlg.detail.setText(f"{done}/{total}") # type: ignore
+        # Pass current file count if available, otherwise 0
+        done_files = getattr(self, '_current_done_files', 0)
+        self.progress_dlg.update_progress(float(done), float(total), done_files) # type: ignore
+
+    def on_files_progress(self, done_files: int, total_files: int):
+        # Store current file count and update the progress label
+        self._current_done_files = done_files
+        try:
+            if self.progress_dlg:
+                # Update the label with current file count (use float for bytes)
+                self.progress_dlg.update_progress(float(self.progress_dlg._current_done_bytes) if hasattr(self.progress_dlg, '_current_done_bytes') else 0.0, 
+                                                  float(self.progress_dlg.total_bytes), done_files)
+        except Exception:
+            pass
 
     def on_current_file(self, text):
         # Update the current file label only. Actual logs from core are

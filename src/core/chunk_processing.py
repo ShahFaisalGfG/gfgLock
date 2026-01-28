@@ -1,12 +1,41 @@
 import os
 import tempfile
+import uuid
+import shutil
+from typing import Optional
 
 class FileChunker:
     def __init__(self, temp_dir=None):
         # If no temp_dir is provided, it uses the OS default temp folder
         self.temp_dir = temp_dir or tempfile.gettempdir()
+        self.isolated_temp_dir: Optional[str] = None  # Per-operation isolated temp directory
 
-    def split_file(self, file_path, chunk_size):
+    def _ensure_isolated_temp_dir(self):
+        """Create a per-operation isolated temp directory if not already created.
+        Uses a unique directory name to avoid collisions between concurrent operations.
+        """
+        if self.isolated_temp_dir is None:
+            uid = uuid.uuid4().hex[:8]
+            pid = os.getpid()
+            dir_name = f"gfglock_{pid}_{uid}"
+            self.isolated_temp_dir = os.path.join(self.temp_dir, dir_name)
+            os.makedirs(self.isolated_temp_dir, exist_ok=True)
+        return self.isolated_temp_dir
+
+    def cleanup_temp_dir(self):
+        """Remove the isolated temp directory and all its contents."""
+        if self.isolated_temp_dir and os.path.exists(self.isolated_temp_dir):
+            try:
+                shutil.rmtree(self.isolated_temp_dir)
+            except Exception:
+                pass
+            self.isolated_temp_dir = None
+
+    def __del__(self):
+        """Cleanup temp directory on object destruction."""
+        self.cleanup_temp_dir()
+
+    def split_file(self, file_path, chunk_size: int) -> list:
         """
         Splits a file into small binary chunks saved to disk.
         Accepts `chunk_size` in bytes. For backward compatibility a caller
@@ -19,11 +48,13 @@ class FileChunker:
         """
         # allow callers to pass small integers as MB for convenience
         if isinstance(chunk_size, int) and chunk_size > 0 and chunk_size <= 128:
-            chunk_size_bytes = chunk_size * 1024 * 1024
+            chunk_size_bytes = int(chunk_size * 1024 * 1024)
         else:
             chunk_size_bytes = int(chunk_size)
 
         chunk_paths = []
+        isolated_temp = self._ensure_isolated_temp_dir()
+        
         # Open source file in Read Binary mode
         with open(file_path, 'rb') as f:
             chunk_num = 0
@@ -32,10 +63,8 @@ class FileChunker:
                 if not data:
                     break
 
-                # Create a temporary file path for the chunk
-                chunk_filename = f"chunk_{chunk_num}.tmp"
-                chunk_path = os.path.join(self.temp_dir, chunk_filename)
-
+                # Use simple sequential filename within isolated temp dir (fast, no mkstemp needed)
+                chunk_path = os.path.join(isolated_temp, f"chunk_{chunk_num}.tmp")
                 with open(chunk_path, 'wb') as chunk_file:
                     chunk_file.write(data)
 
@@ -62,9 +91,12 @@ class FileChunker:
                             output_file.write(buffer)
                     
                     # Optional: Delete the chunk after merging to save disk space
-                    os.remove(chunk_path)
+                    try:
+                        os.remove(chunk_path)
+                    except Exception:
+                        pass
 
-    def split_stream(self, fileobj, total_bytes, chunk_size):
+    def split_stream(self, fileobj, total_bytes: int, chunk_size: int) -> list:
         """
         Read `total_bytes` from an open binary file-like object `fileobj`
         and write it out into temporary chunk files of up to `chunk_size` bytes.
@@ -72,25 +104,30 @@ class FileChunker:
         The fileobj's current position will be advanced by `total_bytes`.
         """
         if isinstance(chunk_size, int) and chunk_size > 0 and chunk_size <= 128:
-            chunk_size_bytes = chunk_size * 1024 * 1024
+            chunk_size_bytes = int(chunk_size * 1024 * 1024)
         else:
             chunk_size_bytes = int(chunk_size)
 
         paths = []
         remaining = int(total_bytes)
+        isolated_temp = self._ensure_isolated_temp_dir()
         idx = 0
+        
         while remaining > 0:
             to_read = min(remaining, chunk_size_bytes)
             data = fileobj.read(to_read)
             if not data:
                 break
-            tmp_name = os.path.join(self.temp_dir, f"stream_chunk_{idx}.tmp")
+            
+            # Use simple sequential filename within isolated temp dir (fast)
+            tmp_name = os.path.join(isolated_temp, f"stream_chunk_{idx}.tmp")
             with open(tmp_name, 'wb') as tf:
                 tf.write(data)
+            
             paths.append(tmp_name)
             remaining -= len(data)
             idx += 1
-
+        
         return paths
 
     def stream_chunks(self, fileobj, total_bytes=None, chunk_size=64*1024):

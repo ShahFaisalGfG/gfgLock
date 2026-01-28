@@ -5,8 +5,37 @@ from utils import load_settings, write_general_log, write_critical_log, write_lo
 from widgets import CustomTitleBar
 
 
+def format_bytes(bytes_val: float) -> str:
+    """Convert bytes to human-readable format (B, KB, MB, GB)."""
+    bytes_val = float(bytes_val)
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes_val < 1024.0:
+            return f"{bytes_val:.1f} {unit}"
+        bytes_val = bytes_val / 1024
+    return f"{bytes_val:.1f} TB"
+
+
+def _choose_scale(total_bytes: float) -> tuple:
+    """Choose a scale (power of 1024) so the scaled total fits in a 32-bit int.
+
+    Returns (scale, unit, scaled_total)
+    """
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    scaled = float(total_bytes)
+    idx = 0
+    # Reduce until it fits into signed 32-bit range
+    MAX_INT32 = 2_147_483_647
+    while scaled > MAX_INT32 and idx < len(units) - 1:
+        # ceil division to retain progress granularity
+        scaled = (scaled + 1023) / 1024
+        idx += 1
+
+    scale = 1024 ** idx
+    unit = units[idx]
+    return scale, unit, int(scaled)
+
 class ProgressDialog(QtWidgets.QDialog):
-    def __init__(self, total, parent=None):
+    def __init__(self, total, parent=None, total_files=0):
         super().__init__(parent)
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)  # type: ignore[attr-defined]
@@ -20,6 +49,15 @@ class ProgressDialog(QtWidgets.QDialog):
         self.setSizeGripEnabled(False)  # We use QSizeGrip manually, prevent auto-resize
         self.setWindowIcon(QtGui.QIcon(resource_path("./assets/icons/gfgLock.png")))
         self.setModal(True)
+
+        # Store total bytes for progress display (total is now in bytes, not file count)
+        self.total_bytes = float(total)
+        # Store total files for file count display
+        self.total_files = int(total_files)
+        # Track current done bytes for combined display
+        self._current_done_bytes = 0.0
+        # Choose scale so the progress bar range fits in 32-bit signed int
+        self._scale, self._unit, self._scaled_total = _choose_scale(self.total_bytes)
 
         layout = QtWidgets.QVBoxLayout(self)
         # Set compact margins and spacing
@@ -46,10 +84,13 @@ class ProgressDialog(QtWidgets.QDialog):
         layout.addWidget(self.label_current)
 
         self.progress_bar = QtWidgets.QProgressBar()
-        self.progress_bar.setRange(0, max(1, total))
+        # Use the scaled total for the progress bar range to avoid overflow
+        self.progress_bar.setRange(0, max(1, self._scaled_total))
         layout.addWidget(self.progress_bar)
 
-        self.detail = QtWidgets.QLabel(f"0/{total}")
+        # Combined progress label showing files and bytes on one row (e.g., "Files: 0/5 (0 B / 2.0 GB)")
+        total_formatted = format_bytes(total)
+        self.detail = QtWidgets.QLabel(f"Files: 0/{self.total_files} (0 B / {total_formatted})")
         self.detail.setStyleSheet(StyleSheets.DETAIL_LABEL)
         layout.addWidget(self.detail)
 
@@ -101,4 +142,31 @@ class ProgressDialog(QtWidgets.QDialog):
         # DPI-scaled size from config
         resize_w, resize_h = scale_size(WindowSizes.PROGRESS_DIALOG_WIDTH, WindowSizes.PROGRESS_DIALOG_HEIGHT)
         self.resize(resize_w, resize_h)
+
+    def update_progress(self, done_bytes: float, total_bytes: float, done_files: int = 0) -> None:
+        """Update progress bar with byte counts and human-readable display.
+        
+        Args:
+            done_bytes: Number of bytes processed so far
+            total_bytes: Total bytes to process (should match self.total_bytes)
+            done_files: Number of files completed (optional, defaults to 0)
+        """
+        # Store current done bytes for combined display updates
+        self._current_done_bytes = float(done_bytes)
+        
+        # Ensure progress reaches 100% when done
+        if done_bytes >= total_bytes:
+            done_scaled = self._scaled_total
+        else:
+            try:
+                # Use float division for proper rounding instead of truncation
+                done_scaled = min(int(float(done_bytes) / self._scale), self._scaled_total)
+            except Exception:
+                done_scaled = 0
+        
+        self.progress_bar.setValue(done_scaled)
+        done_formatted = format_bytes(done_bytes)
+        total_formatted = format_bytes(total_bytes)
+        # Combine files and bytes in one label
+        self.detail.setText(f"Files: {done_files}/{self.total_files} ({done_formatted} / {total_formatted})")
 

@@ -20,6 +20,7 @@ from utils.gfg_helpers import (
     write_general_log,
     write_log,
     clear_logs,
+    predict_encrypted_size
 )
 
 from utils.theme_manager import apply_theme
@@ -44,6 +45,6 @@ __all__ = [
     'write_general_log',
     'write_log',
     'clear_logs',
-    # theme_manager exports
+    'predict_encrypted_size',
     'apply_theme',
 ]
