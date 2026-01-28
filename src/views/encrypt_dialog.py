@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt
 from config import ChunkSizeOptions, EncryptionModes, ComboBoxSizes, CheckBoxSizes, WindowSizes, ButtonSizes, FontSizes, Spacing, StyleSheets, scale_size, scale_value
 from services import EncryptDecryptWorker
 from utils import apply_theme
-from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path, calculate_files_total_size, format_file_size
+from utils import load_settings, write_general_log, write_critical_log, write_log, resource_path, calculate_files_total_size, format_bytes
 from views.progress_dialog import ProgressDialog
 from widgets import CustomTitleBar
 
@@ -342,9 +342,9 @@ class EncryptDialog(QtWidgets.QDialog):
         selected_size = calculate_files_total_size(selected_paths) if selected > 0 else 0
         
         # Format sizes for display
-        total_size_str = format_file_size(total_size)
-        selected_size_str = format_file_size(selected_size)
-        
+        total_size_str = format_bytes(total_size, strip_zeros=True)
+        selected_size_str = format_bytes(selected_size, strip_zeros=True)
+
         # Build the text
         if selected > 0:
             text = f"{total} files {total_size_str} | {selected} selected {selected_size_str}"

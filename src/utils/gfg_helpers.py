@@ -88,20 +88,64 @@ def format_duration(seconds: float) -> str:
         return f"{hours} hrs {mins} mins {secs} sec"
 
 
-def format_file_size(size_bytes: float) -> str:
-    """Format file size in bytes to human-readable format.
+def format_bytes(bytes_val: float, strip_zeros: bool = False) -> str:
+    """Convert bytes to human-readable format (B, KB, MB, GB, TB, PB).
     
     Args:
-        size_bytes: Size in bytes
+        bytes_val: Size in bytes
+        strip_zeros: If True, remove trailing zeros and decimal point (e.g., "1.0 MB" -> "1 MB")
     
     Returns:
         str: Formatted size (e.g., "1.5 MB", "2.3 GB", "256 KB")
     """
+    bytes_val = float(bytes_val)
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}".rstrip('0').rstrip('.')
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} PB"
+        if bytes_val < 1024.0:
+            result = f"{bytes_val:.1f} {unit}"
+            if strip_zeros:
+                result = result.rstrip('0').rstrip('.')
+            return result
+        bytes_val = bytes_val / 1024
+    
+    result = f"{bytes_val:.1f} PB"
+    if strip_zeros:
+        result = result.rstrip('0').rstrip('.')
+    return result
+
+
+def format_time(seconds: float) -> str:
+    """Format seconds to HH:MM:SS format.
+    
+    Args:
+        seconds: Time in seconds
+    
+    Returns:
+        str: Formatted time (e.g., "01:23:45", "00:30:15")
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def choose_scale(total_bytes: float) -> tuple:
+    """Choose a scale (power of 1024) so the scaled total fits in a 32-bit int.
+
+    Returns (scale, unit, scaled_total)
+    """
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    scaled = float(total_bytes)
+    idx = 0
+    # Reduce until it fits into signed 32-bit range
+    MAX_INT32 = 2_147_483_647
+    while scaled > MAX_INT32 and idx < len(units) - 1:
+        # ceil division to retain progress granularity
+        scaled = (scaled + 1023) / 1024
+        idx += 1
+
+    scale = 1024 ** idx
+    unit = units[idx]
+    return scale, unit, int(scaled)
 
 
 def calculate_files_total_size(file_paths: list) -> float:
