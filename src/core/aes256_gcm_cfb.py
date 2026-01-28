@@ -10,15 +10,19 @@ import os
 import time
 from multiprocessing import Pool, freeze_support
 from secrets import token_bytes
+import struct
 from typing import Optional, cast
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from utils import get_cpu_thread_count, clamp_threads, format_duration, derive_key, safe_print
+from utils.gfg_helpers import generate_encrypted_name
+from core.chunk_processing import FileChunker
 
 SALT_SIZE = 16
 NONCE_SIZE = 12
 TAG_SIZE = 16
+CHUNK_FIELD_SIZE = 4  # 4-byte unsigned int stored after nonce/iv indicating chunk_size in bytes (0 => non-chunked)
 BUFFER_SIZE = 64 * 1024  # 64KB buffer for I/O operations (optimized for modern SSDs)
 SMALL_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB threshold: use non-chunked for small files regardless
 
@@ -40,14 +44,10 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
             chunk_size = None
 
         # Use distinct extensions for AEAD (GCM) and non-AEAD (CFB)
-        if encrypt_name:
-            now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            rand_part = int.from_bytes(token_bytes(4), "big")
-            out_name = f"{now}_{rand_part}" + (".gfglock" if AEAD else ".gfglck")
-        else:
-            base = os.path.splitext(os.path.basename(path))[0]
-            out_name = base + (".gfglock" if AEAD else ".gfglck")
+        ext = ".gfglock" if AEAD else ".gfglck"
+        out_name = generate_encrypted_name(path, encrypt_name, ext)
         out_path = os.path.join(os.path.dirname(path), out_name)
+        chunker = FileChunker()
 
         with open(path, "rb", buffering=BUFFER_SIZE) as fin, open(out_path, "wb", buffering=BUFFER_SIZE) as fout:
             if AEAD:
@@ -60,6 +60,9 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
 
                 fout.write(salt)
                 fout.write(nonce)
+                # store chunk_size in header (bytes), 0 means non-chunked
+                cs = 0 if chunk_size is None else int(chunk_size)
+                fout.write(struct.pack('>I', cs))
 
                 name_meta = os.path.basename(path).encode("utf-8") + b"\0"
                 fout.write(encryptor.update(name_meta))
@@ -69,40 +72,37 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
                     file_data = fin.read()
                     fout.write(encryptor.update(file_data))
                 else:
-                    # Chunked: process in blocks, using max(chunk_size, BUFFER_SIZE) for optimal I/O
+                    # Stream directly from input file in chunks to avoid temp files
                     effective_chunk = max(chunk_size, BUFFER_SIZE)
-                    while True:
-                        chunk = fin.read(effective_chunk)
-                        if not chunk:
-                            break
-                        fout.write(encryptor.update(chunk))
+                    for data in chunker.stream_chunks(fin, None, effective_chunk):
+                        fout.write(encryptor.update(data))
 
                 fout.write(encryptor.finalize())
                 fout.write(encryptor.tag)
             else:
                 # CFB mode without authentication (streaming, faster)
+                # Use a salt and derived key to match structure of other algorithms
+                salt = token_bytes(SALT_SIZE)
                 iv = token_bytes(16)
-                key = hashlib.sha256(password.encode('utf-8')).digest()  # Simple key for CFB
+                key = derive_key(password, salt)
                 cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
                 encryptor = cipher.encryptor()
 
+                fout.write(salt)
                 fout.write(iv)
+                cs = 0 if chunk_size is None else int(chunk_size)
+                fout.write(struct.pack('>I', cs))
 
                 name_meta = os.path.basename(path).encode("utf-8") + b"\0"
                 fout.write(encryptor.update(name_meta))
 
                 if chunk_size is None:
-                    # Non-chunked: load entire file into memory
                     file_data = fin.read()
                     fout.write(encryptor.update(file_data))
                 else:
-                    # Chunked: process in blocks, using max(chunk_size, BUFFER_SIZE) for optimal I/O
                     effective_chunk = max(chunk_size, BUFFER_SIZE)
-                    while True:
-                        chunk = fin.read(effective_chunk)
-                        if not chunk:
-                            break
-                        fout.write(encryptor.update(chunk))
+                    for data in chunker.stream_chunks(fin, None, effective_chunk):
+                        fout.write(encryptor.update(data))
 
                 fout.write(encryptor.finalize())
 
@@ -123,11 +123,12 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True)
 
 def decrypt_file(path, password, chunk_size=None):
     logs = []
+    out_path = None
     try:
         if not os.path.exists(path):
             msg = f"Critical error: {path} not found"
             logs.append(msg); safe_print(msg); return False, "\n".join(logs)
-        # Accept either GCM (.gfglock) or CFB (.gfglck) encrypted file extensions
+
         if not (path.endswith(".gfglock") or path.endswith(".gfglck")):
             msg = f"{path} is already decrypted"
             logs.append(msg); safe_print(msg); return False, "\n".join(logs)
@@ -137,14 +138,11 @@ def decrypt_file(path, password, chunk_size=None):
             msg = f"Critical error: {path} is too small or corrupted"
             logs.append(msg); safe_print(msg); return False, "\n".join(logs)
 
-        # Optimization: for small files, use non-chunked even if chunk_size specified
         if total_size < SMALL_FILE_THRESHOLD:
             chunk_size = None
 
-        with open(path, "rb", buffering=BUFFER_SIZE) as fin:
-            # Determine format by file extension instead of a mode byte.
-            if path.endswith(".gfglock"):
-                # GCM mode (AEAD) - requires full file in memory
+        with open(path, 'rb', buffering=BUFFER_SIZE) as fin:
+            if path.endswith('.gfglock'):
                 expected_min = SALT_SIZE + NONCE_SIZE + TAG_SIZE + 1
                 if total_size < expected_min:
                     msg = f"Critical error: {path} is too small or corrupted"
@@ -152,94 +150,175 @@ def decrypt_file(path, password, chunk_size=None):
 
                 salt = fin.read(SALT_SIZE)
                 nonce = fin.read(NONCE_SIZE)
-                data_len = total_size - SALT_SIZE - NONCE_SIZE - TAG_SIZE
+                cs_bytes = fin.read(CHUNK_FIELD_SIZE)
+                try:
+                    file_chunk_size = struct.unpack('>I', cs_bytes)[0]
+                    if file_chunk_size == 0:
+                        file_chunk_size = None
+                except Exception:
+                    file_chunk_size = None
+                data_len = total_size - SALT_SIZE - NONCE_SIZE - CHUNK_FIELD_SIZE - TAG_SIZE
 
                 key = derive_key(password, salt)
-                encrypted_data = fin.read(data_len)
-                tag = fin.read(TAG_SIZE)
-                
-                try:
-                    cipher = Cipher(algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend())
+                chunker = FileChunker()
+
+                # Use chunk size from file header if present; override passed value
+                chunk_size = file_chunk_size
+
+                if chunk_size is None:
+                    encrypted_data = fin.read(data_len)
+                    tag = fin.read(TAG_SIZE)
+                    try:
+                        cipher = Cipher(algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend())
+                        decryptor = cipher.decryptor()
+                        decrypted = decryptor.update(encrypted_data) + decryptor.finalize()
+                    except Exception as e:
+                        msg = f"Critical error while decrypting {path}: authentication failed ({e})"
+                        logs.append(msg); safe_print(msg); return False, "\n".join(logs)
+
+                    idx = decrypted.find(b'\0')
+                    if idx == -1:
+                        msg = f"Critical error while decrypting {path}: metadata not found"
+                        logs.append(msg); safe_print(msg); return False, "\n".join(logs)
+
+                    original_name = decrypted[:idx].decode('utf-8')
+                    out_path = os.path.join(os.path.dirname(path), original_name)
+                    file_data = decrypted[idx+1:]
+                    with open(out_path, 'wb', buffering=BUFFER_SIZE) as fout:
+                        fout.write(file_data)
+                else:
+                    effective_chunk = max(chunk_size, BUFFER_SIZE)
+                    cipher = Cipher(algorithms.AES(key), modes.GCM(nonce), backend=default_backend())
                     decryptor = cipher.decryptor()
-                    decrypted = decryptor.update(encrypted_data) + decryptor.finalize()
-                except Exception as e:
-                    msg = f"Critical error while decrypting {path}: authentication failed ({e})"
-                    logs.append(msg); safe_print(msg)
-                    return False, "\n".join(logs)
 
-                # Parse metadata
-                idx = decrypted.find(b'\0')
-                if idx == -1:
-                    msg = f"Critical error while decrypting {path}: metadata not found"
-                    logs.append(msg); safe_print(msg); return False, "\n".join(logs)
+                    meta = b''
+                    got_meta = False
+                    temp_out: Optional[io.BufferedWriter] = None
 
-                original_name = decrypted[:idx].decode('utf-8')
-                out_path = os.path.join(os.path.dirname(path), original_name)
-                file_data = decrypted[idx+1:]
+                    remaining = data_len
+                    try:
+                        while remaining > 0:
+                            to_read = min(remaining, effective_chunk)
+                            enc_chunk = fin.read(to_read)
+                            if not enc_chunk:
+                                break
+                            remaining -= len(enc_chunk)
+                            dec = decryptor.update(enc_chunk)
+                            if not got_meta:
+                                idx = dec.find(b'\0')
+                                if idx != -1:
+                                    meta += dec[:idx]
+                                    original_name = meta.decode('utf-8')
+                                    out_path = os.path.join(os.path.dirname(path), original_name)
+                                    temp_out = cast(io.BufferedWriter, open(out_path, 'wb', buffering=BUFFER_SIZE))
+                                    rest = dec[idx+1:]
+                                    if rest and temp_out is not None:
+                                        temp_out.write(rest)
+                                    got_meta = True
+                                else:
+                                    meta += dec
+                            else:
+                                if temp_out:
+                                    temp_out.write(dec)
 
-                with open(out_path, "wb", buffering=BUFFER_SIZE) as fout:
-                    fout.write(file_data)
+                        tag = fin.read(TAG_SIZE)
+                        try:
+                            decryptor.finalize_with_tag(tag)  # type: ignore[attr-defined]
+                        except Exception as e:
+                            raise
+                    except Exception as e:
+                        msg = f"Critical error while decrypting {path}: authentication failed ({e})"
+                        logs.append(msg); safe_print(msg)
+                        if temp_out:
+                            try: temp_out.close()
+                            except Exception: pass
+                        if out_path and os.path.exists(out_path):
+                            try: os.remove(out_path)
+                            except Exception: pass
+                        return False, "\n".join(logs)
 
-            elif path.endswith(".gfglck"):
-                # CFB mode (non-AEAD) - streaming or non-chunked decryption
-                expected_min = 16 + 1  # IV + at least 1 byte data
+                    if temp_out:
+                        try: temp_out.close()
+                        except Exception: pass
+
+            elif path.endswith('.gfglck'):
+                expected_min = SALT_SIZE + 16 + CHUNK_FIELD_SIZE + 1
                 if total_size < expected_min:
                     msg = f"Critical error: {path} is too small or corrupted"
                     logs.append(msg); safe_print(msg); return False, "\n".join(logs)
-
+                salt = fin.read(SALT_SIZE)
                 iv = fin.read(16)
-                key = hashlib.sha256(password.encode('utf-8')).digest()
+                cs_bytes = fin.read(CHUNK_FIELD_SIZE)
+                try:
+                    file_chunk_size = struct.unpack('>I', cs_bytes)[0]
+                    if file_chunk_size == 0:
+                        file_chunk_size = None
+                except Exception:
+                    file_chunk_size = None
+                data_len = total_size - SALT_SIZE - 16 - CHUNK_FIELD_SIZE
+
+                # Use chunk size from file header if present; override passed value
+                chunk_size = file_chunk_size
+
+                key = derive_key(password, salt)
                 cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
                 decryptor = cipher.decryptor()
 
-                meta = b""
+                meta = b''
                 got_meta = False
-                out_path = None
                 temp_out: Optional[io.BufferedWriter] = None
 
                 if chunk_size is None:
-                    # Non-chunked: load all remaining data and decrypt at once
-                    encrypted_data = fin.read()
+                    encrypted_data = fin.read(data_len)
                     dec = decryptor.update(encrypted_data) + decryptor.finalize()
-                    
                     idx = dec.find(b'\0')
-                    if idx != -1:
-                        original_name = dec[:idx].decode('utf-8')
-                        out_path = os.path.join(os.path.dirname(path), original_name)
-                        file_data = dec[idx+1:]
-                        with open(out_path, 'wb', buffering=BUFFER_SIZE) as fout:
-                            fout.write(file_data)
-                        got_meta = True
-                    else:
+                    if idx == -1:
                         msg = f"Critical error while decrypting {path}: metadata not found"
                         logs.append(msg); safe_print(msg); return False, "\n".join(logs)
+                    original_name = dec[:idx].decode('utf-8')
+                    out_path = os.path.join(os.path.dirname(path), original_name)
+                    file_data = dec[idx+1:]
+                    with open(out_path, 'wb', buffering=BUFFER_SIZE) as fout:
+                        fout.write(file_data)
                 else:
-                    # Chunked: process in blocks, using max(chunk_size, BUFFER_SIZE) for optimal I/O
                     effective_chunk = max(chunk_size, BUFFER_SIZE)
-                    while True:
-                        chunk = fin.read(effective_chunk)
-                        if not chunk:
-                            break
-                        dec = decryptor.update(chunk)
-                        
-                        if not got_meta:
-                            idx = dec.find(b'\0')
-                            if idx != -1:
-                                meta += dec[:idx]
-                                original_name = meta.decode('utf-8')
-                                out_path = os.path.join(os.path.dirname(path), original_name)
-                                temp_out = cast(io.BufferedWriter, open(out_path, 'wb', buffering=BUFFER_SIZE))
-                                rest = dec[idx+1:]
-                                if rest:
-                                    temp_out.write(rest)
-                                got_meta = True
+                    remaining = data_len
+                    try:
+                        while remaining > 0:
+                            to_read = min(remaining, effective_chunk)
+                            enc_chunk = fin.read(to_read)
+                            if not enc_chunk:
+                                break
+                            remaining -= len(enc_chunk)
+                            dec = decryptor.update(enc_chunk)
+                            if not got_meta:
+                                idx = dec.find(b'\0')
+                                if idx != -1:
+                                    meta += dec[:idx]
+                                    original_name = meta.decode('utf-8')
+                                    out_path = os.path.join(os.path.dirname(path), original_name)
+                                    temp_out = cast(io.BufferedWriter, open(out_path, 'wb', buffering=BUFFER_SIZE))
+                                    rest = dec[idx+1:]
+                                    if rest and temp_out is not None:
+                                        temp_out.write(rest)
+                                    got_meta = True
+                                else:
+                                    meta += dec
                             else:
-                                meta += dec
-                        else:
-                            if temp_out:
-                                temp_out.write(dec)
+                                if temp_out is not None:
+                                    temp_out.write(dec)
 
-                    decryptor.finalize()
+                        decryptor.finalize()
+                    except Exception as e:
+                        msg = f"Critical error while decrypting {path}: {e}"
+                        logs.append(msg); safe_print(msg)
+                        if temp_out:
+                            try: temp_out.close()
+                            except Exception: pass
+                        if out_path and os.path.exists(out_path):
+                            try: os.remove(out_path)
+                            except Exception: pass
+                        return False, "\n".join(logs)
 
                     if not got_meta:
                         msg = f"Critical error while decrypting {path}: metadata not found"
@@ -250,15 +329,16 @@ def decrypt_file(path, password, chunk_size=None):
                         return False, "\n".join(logs)
 
                     if temp_out:
-                        try:
-                            temp_out.close()
-                        except Exception:
-                            pass
+                        try: temp_out.close()
+                        except Exception: pass
             else:
                 msg = f"Critical error while decrypting {path}: unknown file format"
                 logs.append(msg); safe_print(msg); return False, "\n".join(logs)
 
-        os.remove(path)
+        try:
+            os.remove(path)
+        except Exception:
+            pass
         msg = f"Decrypted: {path} -> {out_path}"
         logs.append(msg); safe_print(msg)
         return True, "\n".join(logs)

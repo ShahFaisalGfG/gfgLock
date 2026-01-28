@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sys
+from secrets import token_hex
 from datetime import datetime
 from typing import Dict, Any
 
@@ -278,3 +279,19 @@ def clear_logs() -> bool:
         return True
     except Exception:
         return False
+
+
+def generate_encrypted_name(src_path: str, encrypt_name: bool, ext: str) -> str:
+    """
+    Generate an encrypted output filename for `src_path`.
+    If `encrypt_name` is True a timestamp+random suffix is used, otherwise
+    the original base name is preserved and the provided extension appended.
+
+    Returns the file name (not full path).
+    """
+    if encrypt_name:
+        now = datetime.now().strftime("%Y%m%d%H%M%S")
+        rand = token_hex(4)
+        return f"{now}_{rand}{ext}"
+    base = os.path.splitext(os.path.basename(src_path))[0]
+    return base + ext

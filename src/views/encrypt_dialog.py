@@ -120,29 +120,24 @@ class EncryptDialog(QtWidgets.QDialog):
         if str(default_threads) in [str(i) for i in range(1, max_safe + 1)]:
             self.threads_combo.setCurrentText(str(default_threads))
 
-        # chunk size
-        self.chunk_combo = QtWidgets.QComboBox()
-        # DPI-scaled initial width from config: base 81 at 96 DPI (10% reduction)
-        self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_WIDTH))
-        self.chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
-        self.chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
-        
-        for label, val in ChunkSizeOptions.get_options():
-            self.chunk_combo.addItem(label, val)
-        # Automatically size based on content
-        self.chunk_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
-
-        # Set chunk size from settings
-        chunk_index = self.chunk_combo.findData(default_chunk)
-        if chunk_index >= 0:
-            self.chunk_combo.setCurrentIndex(chunk_index)
-        else:
-            self.chunk_combo.setCurrentText("16 MB (fast)")
-
         row.addWidget(QtWidgets.QLabel("CPU Threads:"))
         row.addWidget(self.threads_combo)
-        row.addWidget(QtWidgets.QLabel("Chunk Size:"))
-        row.addWidget(self.chunk_combo)
+        if self.mode == "encrypt":
+            # chunk size (only for encryption)
+            self.chunk_combo = QtWidgets.QComboBox()
+            self.chunk_combo.setFixedWidth(scale_value(ComboBoxSizes.CHUNK_WIDTH))
+            self.chunk_combo.setStyleSheet(StyleSheets.FORM_INPUT)
+            self.chunk_combo.setMinimumHeight(scale_value(ComboBoxSizes.COMPACT_INPUT_HEIGHT))
+            for label, val in ChunkSizeOptions.get_options():
+                self.chunk_combo.addItem(label, val)
+            self.chunk_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+            chunk_index = self.chunk_combo.findData(default_chunk)
+            if chunk_index >= 0:
+                self.chunk_combo.setCurrentIndex(chunk_index)
+            else:
+                self.chunk_combo.setCurrentText("16 MB (fast)")
+            row.addWidget(QtWidgets.QLabel("Chunk Size:"))
+            row.addWidget(self.chunk_combo)
         # Algorithm dropdown moved to the same row as threads/chunk
         # Algorithm dropdown is only shown for encryption mode
         if self.mode == "encrypt":
@@ -318,6 +313,36 @@ class EncryptDialog(QtWidgets.QDialog):
         obj = a0
         event = a1
         if obj is self.list_widget:
+            # Handle Delete key to remove selected files from the list. Support
+            # multiple PyQt6 enum styles by trying several access patterns.
+            try:
+                if event.type() == QtCore.QEvent.Type.KeyPress:  # type: ignore[attr-defined]
+                    # get numeric key code
+                    try:
+                        key_code = event.key()
+                    except Exception:
+                        key_code = None
+
+                    delete_values = set()
+                    try:
+                        # PyQt6 enum nested style: Qt.Key.Key_Delete
+                        delete_values.add(int(Qt.Key.Key_Delete))
+                    except Exception:
+                        pass
+                    try:
+                        # older style: Qt.Key_Delete
+                        delete_values.add(int(Qt.Key_Delete))
+                    except Exception:
+                        pass
+
+                    if key_code is not None and key_code in delete_values:
+                        try:
+                            self.remove_selected()
+                        except Exception:
+                            pass
+                        return True
+            except Exception:
+                pass
             try:
                 etype = event.type()  # type: ignore[attr-defined]
             except Exception:
@@ -398,7 +423,7 @@ class EncryptDialog(QtWidgets.QDialog):
         self.current_file = ""
 
         threads = int(self.threads_combo.currentText())
-        chunk_size = self.chunk_combo.currentData()
+        chunk_size = self.chunk_combo.currentData() if self.mode == 'encrypt' else None
         encrypt_name = self.encrypt_name_cb.isChecked() if self.mode == "encrypt" else False
 
         # Progress dialog
