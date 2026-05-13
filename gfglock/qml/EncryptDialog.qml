@@ -42,6 +42,8 @@ ApplicationWindow {
         encryptController.clearFiles()
         encryptController.setMode("encrypt")
         encDlg.destroy()
+        if (typeof cliLaunchMode !== "undefined" && cliLaunchMode !== "")
+            Qt.quit()
     }
 
     Timer {
@@ -71,6 +73,12 @@ ApplicationWindow {
             var sz = encryptController.fileModel.totalSize
             filesLabel.text = "0 / " + encryptController.fileModel.count
                             + " files" + (sz ? "  ·  " + sz : "")
+            encDlg.minimumWidth  = 480
+            encDlg.minimumHeight = 347
+            encDlg.width  = 614
+            encDlg.height = 427
+            encDlg.x = Screen.virtualX + Math.round((Screen.desktopAvailableWidth  - encDlg.width)  / 2)
+            encDlg.y = Screen.virtualY + Math.round((Screen.desktopAvailableHeight - encDlg.height) / 2)
         }
         function onStatusChanged(msg) {
             progressLogs.append(msg)
@@ -503,6 +511,7 @@ ApplicationWindow {
                                     text:             "Cancel"
                                     Layout.fillWidth: true
                                     font.pixelSize:   12
+                                    Layout.preferredHeight: 48
                                     onClicked:        encDlg.close()
                                     Accessible.name: "Cancel"
                                     Accessible.role: Accessible.Button
@@ -512,6 +521,7 @@ ApplicationWindow {
                                     highlighted:      true
                                     Layout.fillWidth: true
                                     font.pixelSize:   12
+                                    Layout.preferredHeight: 48
                                     enabled: passInput.text.length > 0 &&
                                              (operationMode === "decrypt" || passInput.text === confirmInput.text) &&
                                              encryptController.fileModel.count > 0
@@ -704,10 +714,9 @@ ApplicationWindow {
                 : prefsController.decThreads
             threadsCombo.currentIndex = Math.min(Math.max(0, threads - 1), threadsCombo.count - 1)
 
-            var rawChunk = operationMode === "encrypt"
+            var chunkVal = operationMode === "encrypt"
                 ? prefsController.encChunkSize
                 : prefsController.decChunkSize
-            var chunkVal = (rawChunk === null || rawChunk === undefined) ? -1 : rawChunk
             for (var i = 0; i < _chunkOpts.length; i++) {
                 if (_chunkOpts[i].value === chunkVal) { chunkCombo.currentIndex = i; break }
             }
@@ -717,9 +726,7 @@ ApplicationWindow {
                 if (_algOpts[j].value === encMode) { algCombo.currentIndex = j; break }
             }
 
-            encFilesCheck.checked = operationMode === "encrypt"
-                ? prefsController.encFilenames
-                : prefsController.decFilenames
+            encFilesCheck.checked = prefsController.encFilenames
         } catch(e) {
             console.error("_initCombos:", e)
         }

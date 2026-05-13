@@ -288,12 +288,6 @@ ApplicationWindow {
                                 }
                             }
 
-                            CheckBox {
-                                id: decFilenamesCheck
-                                text: "Decrypt filenames by default"
-                                font.pixelSize: 12
-                                onCheckedChanged: prefsWin._dirty = true
-                            }
                         }
                     }
 
@@ -420,6 +414,7 @@ ApplicationWindow {
                 text: "Reset to Defaults"
                 flat: true
                 font.pixelSize: 12
+                Layout.preferredHeight: 48
                 Material.foreground: "#e0004f"
                 onClicked: {
                     prefsController.resetDefaults()
@@ -431,11 +426,13 @@ ApplicationWindow {
             Button {
                 text: "Cancel"
                 font.pixelSize: 12
+                Layout.preferredHeight: 48
                 onClicked: prefsWin.close()
             }
             Button {
                 text: "Apply"
                 font.pixelSize: 12
+                Layout.preferredHeight: 48
                 enabled: prefsWin._dirty
                 onClicked: applyValues()
             }
@@ -443,6 +440,7 @@ ApplicationWindow {
                 text: "Save"
                 highlighted: true
                 font.pixelSize: 12
+                Layout.preferredHeight: 48
                 onClicked: { applyValues(); prefsWin.close() }
             }
         }
@@ -459,20 +457,17 @@ ApplicationWindow {
             decThreadsCombo.currentIndex = Math.min(
                 Math.max(0, prefsController.decThreads - 1), decThreadsCombo.count - 1)
             encFilenamesCheck.checked = prefsController.encFilenames
-            decFilenamesCheck.checked = prefsController.decFilenames
             disableClampCheck.checked = !prefsController.clampThreads
             enableLogsCheck.checked = prefsController.enableLogs
             logLevelCombo.currentIndex = prefsController.logLevel === "all" ? 1 : 0
 
             var encChunk = prefsController.encChunkSize
-            var normEnc  = (encChunk === null || encChunk === undefined) ? -1 : encChunk
             for (var i = 0; i < _chunkOpts.length; i++) {
-                if (_chunkOpts[i].value === normEnc) { encChunkCombo.currentIndex = i; break }
+                if (_chunkOpts[i].value === encChunk) { encChunkCombo.currentIndex = i; break }
             }
             var decChunk = prefsController.decChunkSize
-            var normDec  = (decChunk === null || decChunk === undefined) ? -1 : decChunk
             for (var j = 0; j < _chunkOpts.length; j++) {
-                if (_chunkOpts[j].value === normDec) { decChunkCombo.currentIndex = j; break }
+                if (_chunkOpts[j].value === decChunk) { decChunkCombo.currentIndex = j; break }
             }
             var encMode = prefsController.encMode
             for (var k = 0; k < _algOpts.length; k++) {
@@ -493,11 +488,10 @@ ApplicationWindow {
             var updates = {
                 "theme":                          themeValues[themeCombo.currentIndex],
                 "encryption.cpu_threads":         encThreadsCombo.currentIndex + 1,
-                "encryption.chunk_size":          encChunkVal === -1 ? null : encChunkVal,
+                "encryption.chunk_size":          encChunkVal,
                 "encryption.encrypt_filenames":   encFilenamesCheck.checked,
                 "decryption.cpu_threads":         decThreadsCombo.currentIndex + 1,
-                "decryption.chunk_size":          decChunkVal === -1 ? null : decChunkVal,
-                "decryption.encrypt_filenames":   decFilenamesCheck.checked,
+                "decryption.chunk_size":          decChunkVal,
                 "advanced.encryption_mode":       _algOpts[algCombo.currentIndex].value,
                 "advanced.enable_logs":           enableLogsCheck.checked,
                 "advanced.log_level":             logLevelCombo.currentIndex === 1 ? "all" : "critical",

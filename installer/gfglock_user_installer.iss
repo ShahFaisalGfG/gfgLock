@@ -60,7 +60,7 @@ Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
-Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
+Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -106,6 +106,7 @@ Root: HKCU; Subkey: "Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt\
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\docs\README.html"; Description: "View README"; Flags: shellexec nowait postinstall skipifsilent unchecked
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

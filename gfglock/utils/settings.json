@@ -1,19 +1,19 @@
 {
   "theme": "light",
   "encryption": {
-    "cpu_threads": 4,
-    "chunk_size": null,
-    "encrypt_filenames": false
+    "cpu_threads": 6,
+    "chunk_size": 33554432,
+    "encrypt_filenames": true
   },
   "decryption": {
-    "cpu_threads": 4,
-    "chunk_size": null,
+    "cpu_threads": 6,
+    "chunk_size": 134217728,
     "encrypt_filenames": false
   },
   "advanced": {
     "encryption_mode": "aes256_gcm",
     "enable_logs": true,
-    "log_level": "all",
-    "clamp_cpu_threads": false
+    "log_level": "critical",
+    "clamp_cpu_threads": true
   }
 }
