@@ -69,9 +69,10 @@ class PrefsController(QObject):
     def encThreads(self) -> int:
         return self._get("encryption", "cpu_threads", default=EncryptionDefaults.DEFAULT_THREADS)
 
-    @Property(object, notify=settingsChanged)
-    def encChunkSize(self):
-        return self._get("encryption", "chunk_size", default=EncryptionDefaults.DEFAULT_CHUNK_SIZE)
+    @Property(int, notify=settingsChanged)
+    def encChunkSize(self) -> int:
+        val = self._get("encryption", "chunk_size", default=EncryptionDefaults.DEFAULT_CHUNK_SIZE)
+        return -1 if val is None else int(val)
 
     @Property(bool, notify=settingsChanged)
     def encFilenames(self) -> bool:
@@ -81,13 +82,10 @@ class PrefsController(QObject):
     def decThreads(self) -> int:
         return self._get("decryption", "cpu_threads", default=DecryptionDefaults.DEFAULT_THREADS)
 
-    @Property(object, notify=settingsChanged)
-    def decChunkSize(self):
-        return self._get("decryption", "chunk_size", default=DecryptionDefaults.DEFAULT_CHUNK_SIZE)
-
-    @Property(bool, notify=settingsChanged)
-    def decFilenames(self) -> bool:
-        return self._get("decryption", "encrypt_filenames", default=DecryptionDefaults.DEFAULT_ENCRYPT_FILENAMES)
+    @Property(int, notify=settingsChanged)
+    def decChunkSize(self) -> int:
+        val = self._get("decryption", "chunk_size", default=DecryptionDefaults.DEFAULT_CHUNK_SIZE)
+        return -1 if val is None else int(val)
 
     @Property(str, notify=settingsChanged)
     def encMode(self) -> str:
@@ -143,6 +141,8 @@ class PrefsController(QObject):
             theme_before = self._get("theme")
             for key, value in updates.items():
                 keys = key.split(".")
+                if keys[-1] == "chunk_size" and value == -1:
+                    value = None
                 self._set(value, *keys)
             save_settings(self._settings)
             self.settingsChanged.emit()

@@ -42,7 +42,6 @@ class DecryptionDefaults:
 
     DEFAULT_THREADS = _get_cpu_thread_count()
     DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024
-    DEFAULT_ENCRYPT_FILENAMES = False
 
 
 class AlgorithmDefaults:
@@ -78,7 +77,6 @@ def get_default_settings() -> Dict[str, Any]:
         "decryption": {
             "cpu_threads": DecryptionDefaults.DEFAULT_THREADS,
             "chunk_size": DecryptionDefaults.DEFAULT_CHUNK_SIZE,
-            "encrypt_filenames": DecryptionDefaults.DEFAULT_ENCRYPT_FILENAMES,
         },
         "advanced": {
             "encryption_mode": AlgorithmDefaults.DEFAULT_ALGORITHM,
