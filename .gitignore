@@ -1,19 +1,35 @@
+# ── Virtual environments ──────────────────────────────────────────────────────
 venv/
+.venv/
+
+# ── Build & distribution ──────────────────────────────────────────────────────
 build/
-__pycache__/
 dist/
 dist_portable/
-trash/
-
-
-*.log
 *.spec
+
+# ── Python cache ──────────────────────────────────────────────────────────────
+__pycache__/
 *.pyc
+*.egg-info/
+*.dist-info/
+
+# ── Runtime output ────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.claude/
+.pytest_cache/
+CLAUDE.md
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+trash/
 *.exe
 *.bkp
-*.txt
 *.pdf
-*.html
 
 release*.md
 optimization*.md
