@@ -12,7 +12,7 @@ ApplicationWindow {
     height:      460
     minimumWidth:  580
     minimumHeight: 400
-    visible: true
+    visible: typeof cliLaunchMode === "undefined" || cliLaunchMode === ""
     title:   "gfgLock"
     flags:   Qt.FramelessWindowHint | Qt.Window
     font.family: "Segoe UI Emoji"
@@ -23,6 +23,8 @@ ApplicationWindow {
     Component.onCompleted: {
         x = Screen.virtualX + Math.round((Screen.desktopAvailableWidth  - width)  / 2)
         y = Screen.virtualY + Math.round((Screen.desktopAvailableHeight - height) / 2)
+        if (typeof cliLaunchMode !== "undefined" && cliLaunchMode !== "")
+            openEncryptDialog(cliLaunchMode)
     }
 
     // ── Background ──────────────────────────────────────────────────────────
@@ -55,16 +57,6 @@ ApplicationWindow {
             window:      root
             title:       "gfgLock"
             showMaximize: true
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            height: 2
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "#0078d4" }
-                GradientStop { position: 1.0; color: "#4da8da" }
-            }
         }
 
         // Header — icon + title + description
@@ -153,8 +145,8 @@ ApplicationWindow {
                     highlighted: true
                     Material.accent: "#0078d4"
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    font.pixelSize: 12
+                    Layout.preferredHeight: 48
+                    font.pixelSize: 13
                     onClicked: openEncryptDialog("encrypt")
 
                     Accessible.name: "Encrypt files"
@@ -163,8 +155,8 @@ ApplicationWindow {
                 Button {
                     text:      "🔓  Decrypt"
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    font.pixelSize: 12
+                    Layout.preferredHeight: 48
+                    font.pixelSize: 13
                     onClicked: openEncryptDialog("decrypt")
 
                     Accessible.name: "Decrypt files"
@@ -173,8 +165,8 @@ ApplicationWindow {
                 Button {
                     text:      "⚙  Preferences"
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    font.pixelSize: 12
+                    Layout.preferredHeight: 48
+                    font.pixelSize: 13
                     onClicked: openPreferences()
 
                     Accessible.name: "Open Preferences"
@@ -183,8 +175,8 @@ ApplicationWindow {
                 Button {
                     text:      "ℹ  About"
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    font.pixelSize: 12
+                    Layout.preferredHeight: 48
+                    font.pixelSize: 13
                     onClicked: aboutDialog.open()
 
                     Accessible.name: "About gfgLock"
@@ -265,7 +257,8 @@ ApplicationWindow {
 
             Button {
                 text:           "🧹  Clear"
-                font.pixelSize: 12
+                font.pixelSize: 13
+                Layout.preferredHeight: 48
                 onClicked:      appController.clearLogs()
 
                 Accessible.name: "Clear activity log"
