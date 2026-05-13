@@ -66,6 +66,9 @@ def main() -> None:
     qml_dir = resource_path("gfglock/qml")
     engine.addImportPath(qml_dir)
 
+    cli_mode = _detect_mode(sys.argv[1:])
+    ctx.setContextProperty("cliLaunchMode", cli_mode)
+
     main_qml = os.path.join(qml_dir, "main.qml")
     engine.load(main_qml)
 
@@ -78,28 +81,29 @@ def main() -> None:
     sys.exit(app.exec())
 
 
+def _detect_mode(args: list) -> str:
+    """Return 'encrypt' or 'decrypt' from CLI args, or empty string if neither."""
+    if not args:
+        return ""
+    enc_exts = (".gfglock", ".gfglck", ".gfgcha")
+    if args[0].lower() in ("encrypt", "decrypt"):
+        return args[0].lower()
+    if any(os.path.exists(p) and p.lower().endswith(enc_exts) for p in args):
+        return "decrypt"
+    return ""
+
+
 def _handle_cli(enc_ctrl, args: list) -> None:
     """Pre-populate the file model from CLI arguments if any are present."""
     if not args:
         return
 
     enc_exts = (".gfglock", ".gfglck", ".gfgcha")
-
-    # Detect explicit mode or auto-detect from file extensions
-    mode = None
-    path_args = args
-    if args and args[0].lower() in ("encrypt", "decrypt"):
-        mode = args[0].lower()
-        path_args = args[1:]
-    else:
-        has_enc = any(
-            os.path.exists(p) and p.lower().endswith(enc_exts) for p in args
-        )
-        if has_enc:
-            mode = "decrypt"
-
+    mode = _detect_mode(args)
     if not mode:
         return
+
+    path_args = args[1:] if args[0].lower() in ("encrypt", "decrypt") else args
 
     # Reconstruct paths (Windows Explorer can break paths with spaces)
     raw_paths = _parse_paths(path_args)
@@ -130,6 +134,7 @@ def _handle_cli(enc_ctrl, args: list) -> None:
     seen: set = set()
     unique = [p for p in final_paths if not (p in seen or seen.add(p))]  # type: ignore[func-returns-value]
 
+    enc_ctrl.setMode(mode)
     for p in unique:
         enc_ctrl.addPath(p)
 

@@ -62,7 +62,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; Icon for the application
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 ; Documentation
-Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion isreadme
+Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -138,6 +138,7 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\docs\README.html"; Description: "View README"; Flags: shellexec nowait postinstall skipifsilent unchecked
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
