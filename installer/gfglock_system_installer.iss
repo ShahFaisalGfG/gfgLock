@@ -1,16 +1,16 @@
 ; =======================================================
 ; gfgLock Windows Installer
 ; Inno Setup Script
-; Version: 2.7.0
+; Version: 2.7.5
 ; =======================================================
 
 #define MyAppName "gfgLock"
-#define MyAppVersion "2.7.0"
+#define MyAppVersion "2.7.5"
 #define MyAppPublisher "gfgRoyal"
 #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
 #define MyAppExeName "gfgLock.exe"
-#define SourceDir "..\src\dist\gfgLock"
-#define IconsDir "..\src\assets\icons"
+#define SourceDir "..\dist\gfgLock"
+#define IconsDir "..\gfglock\assets\icons"
 #define ScreenshotsDir "..\screenshots"
 
 [Setup]
