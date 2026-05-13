@@ -2,7 +2,7 @@
 
 A compact, secure Windows file-encryption GUI. Supports AES-256 GCM, AES-256 CFB and ChaCha20-Poly1305, batch processing, logging, and theme switching.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://github.com/ShahFaisalGfG/gfgLock/releases) [![Latest Release](https://img.shields.io/badge/Latest-v2.7.0-green)](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v2.7.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://github.com/ShahFaisalGfG/gfgLock/releases) [![Latest Release](https://img.shields.io/badge/Latest-v2.7.5-green)](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v2.7.5)
 
 ---
 
@@ -13,19 +13,18 @@ gfgLock is a focused Windows tool for encrypting files with modern, authenticate
 ## Key Features
 
 - Multi-algorithm encryption: AES-256 GCM (`.gfglock`), AES-256 CFB (`.gfglck`), ChaCha20-Poly1305 (`.gfgcha`)
-- Batch processing with multi-threading and configurable chunk sizes
+- True chunk-based processing across all algorithms with real-time progress tracking
+- Continuous progress bar with remaining time estimation
 - Real-time file-based logging (`%APPDATA%\\gfgLock\\logs\\`)
-- Theme support: System / Light / Dark with live Apply
-- Preferences with Apply/Save and persistent `settings.json`
 - Batch processing with multi-threading and configurable chunk sizes
-- Real-time file-based logging (`%APPDATA%\\gfgLock\\logs\\`)
 - Theme support: System / Light / Dark with live Apply
 - Hardware acceleration where available (AES-NI / platform crypto backends)
+- PySide6 + QML framework with Material-style interface
 - Preferences with Apply/Save and persistent `settings.json`
 
 ## Screenshots
 
-#### Main window, dialogs and progress examples
+### Main window, dialogs and progress examples
 
 - Main Window
 
@@ -61,18 +60,18 @@ gfgLock is a focused Windows tool for encrypting files with modern, authenticate
 
 ## Quick Start
 
-1. Download `gfgLock_Setup_2.7.0.exe` from Releases and install.
+1. Download `gfgLock_Setup_2.7.5.exe` from Releases and install.
 2. Add files/folders (drag & drop supported).
 3. Choose Encrypt or Decrypt, pick algorithm (Encrypt only), enter password, and Start.
 
 ### Portable
 
-Run `gfgLock_v2.7.0_portable.exe` — no install required.
+Run `gfgLock_v2.7.5_portable.exe` — no install required.
 
 ## Installation (brief)
 
-- Installer: `gfgLock_Setup_2.7.0exe` (recommended)
-- Developer: clone repo, create venv, `pip install -r requirements.txt`, run `python src/gui.py`
+- Installer: `gfgLock_Setup_2.7.5.exe` (recommended)
+- Developer: clone repo, create venv, `pip install -r requirements.txt`, run `python -m gfglock`
 
 ## Support & License
 
@@ -81,7 +80,7 @@ Run `gfgLock_v2.7.0_portable.exe` — no install required.
 
 ---
 
-Last Updated: December 21, 2025
+Last Updated: May 2026
 
 ## File Extensions & Compatibility
 
@@ -96,6 +95,7 @@ Last Updated: December 21, 2025
 - Files encrypted with one algorithm cannot be decrypted with another
 - Always use the same tool to decrypt that encrypted the file
 - Each algorithm produces unique file format headers for verification
+- ⚠️ **Compatibility Notice:** Files encrypted with v2.7.0 or lower cannot be decrypted with v2.7.5 or higher versions due to file structure changes. Decryption is not backward compatible.
 
 ---
 
@@ -115,7 +115,7 @@ Last Updated: December 21, 2025
 ### Decryption Tab
 
 - **CPU Threads:** Performance tuning
-- **Chunk Size:** Processing efficiency
+- **Chunk Size:** Automatically detected from encrypted file (no manual selection needed)
 - Algorithm auto-detected from file extension
 
 ### Advanced Tab
@@ -197,14 +197,14 @@ Choose the right algorithm for your security and performance needs:
 Logs are stored in:
 
 - **Windows:** `%APPDATA%\gfgLock\logs\`
-- **Development:** `src/logs/`
+- **Development:** `gfglock/logs/`
 
 ### Log Files
 
-| File                   | Contents                                            |
-| ---------------------- | --------------------------------------------------- |
-| `gfglock_general.log`  | All operations (verbose, when "All" level selected) |
-| `gfglock_critical.log` | Errors and critical issues only                     |
+| File                        | Contents                                               |
+| --------------------------- | ------------------------------------------------------ |
+| `gfglock_full_activity.log` | All operations (verbose, when "Full" level selected)   |
+| `gfglock_critical.log`      | Errors and critical issues only                        |
 
 ---
 
@@ -244,29 +244,44 @@ PBKDF2 (200,000 iterations)
 
 ```bash
 gfgLock/
-├── src/
-│   ├── gui.py                           # Main application & dialogs
+├── gfglock/
+│   ├── __init__.py
+│   ├── __main__.py                      # Application entry point
+│   ├── app.py                           # QML engine & root setup
+│   ├── assets/icons/
+│   │   ├── gfgLock.ico                  # Windows icon
+│   │   └── gfgLock.png                  # Application icon
+│   ├── config/
+│   │   ├── defaults.py                  # Default constants
+│   │   └── ui_config.py                 # UI configuration
+│   ├── controllers/
+│   │   ├── app_ctrl.py                  # Application-level controller
+│   │   ├── encrypt_ctrl.py              # Encrypt/decrypt controller
+│   │   └── prefs_ctrl.py                # Preferences controller
 │   ├── core/
-│   │   ├── aes256_gcm_cfb.py            # AES-256 encryption (GCM/CFB)
-│   │   └── chacha20_poly1305.py         # ChaCha20-Poly1305 encryption
+│   │   ├── aes256_gcm_cfb.py            # AES-256 GCM/CFB encryption
+│   │   ├── chacha20_poly1305.py         # ChaCha20-Poly1305 encryption
+│   │   └── chunk_processing.py          # Chunk-based processing helpers
+│   ├── models/
+│   │   └── file_model.py                # File list model (QAbstractListModel)
+│   ├── qml/
+│   │   ├── main.qml                     # Main window
+│   │   ├── EncryptDialog.qml            # Encrypt/decrypt dialog
+│   │   ├── PreferencesWindow.qml        # Preferences window
+│   │   └── components/                  # Reusable QML components
 │   ├── services/
-│   │   └── worker.py                    # Multi-threaded operations dispatcher
-│   ├── views/
-│   │   └── preferences.py               # Settings dialog with tabs
-│   ├── utils/
-│   │   ├── gfg_helpers.py               # Helpers (logging, settings, resource_path)
-│   │   ├── theme_manager.py             # Dynamic theme system
-│   │   └── settings.json                # Default settings
-│   ├── widgets/
-│   │   └── custom_title_bar.py          # Frameless window title bar
-│   └── assets/icons/
-│       ├── gfgLock.png                  # Application icon
-│       └── gfgLock.ico                  # Windows icon
+│   │   └── worker.py                    # Multi-threaded encrypt/decrypt worker
+│   └── utils/
+│       ├── helpers.py                   # Utility helpers
+│       ├── logging.py                   # Log file management
+│       └── settings.py                  # Settings load/save
 ├── installer/
-│   ├── gfglock_installer.iss            # Admin installer (Inno Setup)
-│   └── gfglock_installer_non_admin.iss  # Per-user installer (Inno Setup)
-├── requirements.txt                      # Python dependencies
-├── README.md                             # This file
+│   ├── gfglock_system_installer.iss     # System-wide installer (Inno Setup)
+│   └── gfglock_user_installer.iss       # Per-user installer (Inno Setup)
+├── build.ps1                            # Windows build script (PyInstaller + Inno Setup)
+├── pyproject.toml                       # Project metadata & build config
+├── requirements.txt                     # Python dependencies
+├── README.md                            # This file
 └── LICENSE                              # MIT License
 ```
 
@@ -274,11 +289,12 @@ gfgLock/
 
 ## Dependencies
 
-| Package      | Purpose            | Version |
-| ------------ | ------------------ | ------- |
-| PyQt6        | GUI framework      | 5.15+   |
-| cryptography | AES-256 encryption | 3.4+    |
-| pycryptodome | ChaCha20-Poly1305  | 3.4+    |
+| Package      | Purpose                  | Version |
+| ------------ | ------------------------ | ------- |
+| PySide6      | Qt6 GUI framework        | 6.7+    |
+| cryptography | AES-256 encryption       | 3.4+    |
+| pycryptodome | ChaCha20-Poly1305        | 3.4+    |
+| py-cpuinfo   | CPU feature detection    | 9.0+    |
 
 **Full list:** See [requirements.txt](requirements.txt)
 
@@ -294,43 +310,26 @@ git clone https://github.com/ShahFaisalGfG/gfgLock.git
 cd gfgLock
 
 # Create virtual environment
-python -m venv venv
-source venv/Scripts/activate  # Windows: venv\Scripts\activate
+python -m venv .venv
+.venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Run application
-python src/gui.py
+python -m gfglock
 ```
 
 ### Building Installers
 
-Requires [Inno Setup](https://jrsoftware.org/isinfo.php) (Windows) and PyInstaller:
+Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php) and PyInstaller. Run the build script from the project root:
 
-```bash
-cd src
-
-# Build multi-folder exe
-pyinstaller --noconfirm --clean --windowed \
-  --add-data "assets/icons/gfgLock.png;assets/icons" \
-  --add-data "assets/icons/gfgLock.ico;assets/icons" \
-  --icon "assets/icons/gfgLock.ico" \
-  --name gfgLock gui.py
-
-# Build single-file portable exe
-pyinstaller --noconfirm --clean --windowed --onefile \
-  --add-data "assets/icons/gfgLock.png;assets/icons" \
-  --add-data "assets/icons/gfgLock.ico;assets/icons" \
-  --icon "assets/icons/gfgLock.ico" \
-  --name gfgLock_portable gui.py \
-  --distpath dist_portable
-
-# Build installers (from project root)
-cd ..
-iscc installer/gfglock_installer.iss          # Admin installer
-iscc installer/gfglock_installer_non_admin.iss # Per-user installer
+```powershell
+.\build.ps1
+# Installer output: build\installer\gfgLock_2.7.5_system_installer.exe
 ```
+
+The script automatically activates the venv, runs PyInstaller, validates the bundle, and compiles the Inno Setup installer.
 
 ---
 
@@ -356,7 +355,18 @@ iscc installer/gfglock_installer_non_admin.iss # Per-user installer
 
 ## Version History
 
-### v2.7.0 (Current) — December 21, 2025
+### v2.7.5 (Current) — May 2026
+
+- 🔄 **Framework:** Complete rewrite — PyQt6 widgets replaced with PySide6 + QML and Material-style interface
+- 📦 **Package:** Restructured from flat `src/` layout to `gfglock/` MVC package (controllers, models, services, utils, qml)
+- ⏱️ **Time Estimation:** Remaining time calculation displayed during encryption/decryption
+- 🎨 **UI/UX:** Animated floating labels on password fields, compacted checkboxes, keyboard shortcuts (Enter, Delete, Ctrl+A, Ctrl+C)
+- 🔑 **Focus Flow:** Auto-focus password field when files are added; Enter key starts operation or closes dialog when done
+- 📊 **Progress:** Real-time file-by-file progress with bytes and file count tracking
+- 🪵 **Logging:** Fixed log routing — critical and general log levels now correctly applied
+- 🏗️ **Build:** Added `build.ps1` one-command Windows installer build script (PyInstaller + Inno Setup)
+
+### v2.7.0 — December 21, 2025
 
 - ⚡ Performance: Optimized encryption algorithms for improved speed and efficiency
 - 🛠 Hardware: Added hardware acceleration support (AES-NI) and improved crypto backend detection
@@ -385,10 +395,11 @@ iscc installer/gfglock_installer_non_admin.iss # Per-user installer
 
 Future releases planned (Major):
 
-- 🔮 **v2.7.0** — Enable Hardware acceleration, optimize performance
 - 🔮 **v2.8.0** — Resumable/pause operations for large files
 - 🔮 **v3.0.0** — Context-Menu Fix
-- 🔮 **v3.1.1** — File integrity verification (checksums)
+- 🔮 **v3.2.0** — File integrity verification (checksums)
+- 🔮 **v4.1.0** — Add more features like auto encryption of decrypted files
+- 🔮 **v4.5.0** — Local Password Wallet
 
 ---
 
@@ -440,4 +451,4 @@ This software is provided "AS IS" without warranty of any kind.
 
 **Stay Secure. Encrypt Responsibly.** 🔐
 
-Last Updated: January 27, 2026
+Last Updated: May 2026
