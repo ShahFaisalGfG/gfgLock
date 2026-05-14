@@ -218,6 +218,7 @@ ApplicationWindow {
                 id: logsArea
                 readOnly:      true
                 wrapMode:      TextEdit.NoWrap
+                ContextMenu.menu: null
                 font.pixelSize: 11
                 font.family:   "Consolas, monospace"
                 color: Material.theme === Material.Dark ? "#cccccc" : "#333333"
