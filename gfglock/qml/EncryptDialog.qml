@@ -659,6 +659,7 @@ ApplicationWindow {
 
                             Accessible.name: "Progress log"
                             Accessible.role: Accessible.StaticText
+
                         }
                     }
 

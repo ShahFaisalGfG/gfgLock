@@ -258,6 +258,7 @@ ApplicationWindow {
 
                 Accessible.name: "Activity log"
                 Accessible.role: Accessible.StaticText
+
             }
         }
 
