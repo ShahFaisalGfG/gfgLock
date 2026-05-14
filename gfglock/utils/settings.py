@@ -51,11 +51,11 @@ def save_settings(settings: Dict[str, Any]) -> bool:
 
 
 def merge_settings(defaults: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
-    """Deep-merge overrides onto defaults, preserving nested structure."""
+    """Deep-merge overrides onto defaults, recursively preserving nested structure."""
     result = defaults.copy()
     for key, value in overrides.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = {**result[key], **value}
+            result[key] = merge_settings(result[key], value)
         else:
             result[key] = value
     return result

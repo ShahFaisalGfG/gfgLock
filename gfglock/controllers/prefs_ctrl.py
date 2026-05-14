@@ -33,6 +33,13 @@ class PrefsController(QObject):
         super().__init__(parent)
         self._settings = load_settings()
 
+    # ── Internal helpers ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _coerce_chunk(key: str, value) -> Any:
+        """Convert the -1 sentinel to None for chunk_size keys before storing."""
+        return None if key == "chunk_size" and value == -1 else value
+
     # ── Settings access helpers ───────────────────────────────────────────
 
     @overload
@@ -141,9 +148,7 @@ class PrefsController(QObject):
             theme_before = self._get("theme")
             for key, value in updates.items():
                 keys = key.split(".")
-                if keys[-1] == "chunk_size" and value == -1:
-                    value = None
-                self._set(value, *keys)
+                self._set(self._coerce_chunk(keys[-1], value), *keys)
             save_settings(self._settings)
             self.settingsChanged.emit()
             if self._get("theme") != theme_before:
@@ -156,7 +161,7 @@ class PrefsController(QObject):
         """Set a single dot-separated key and persist immediately."""
         try:
             keys = key.split(".")
-            self._set(value, *keys)
+            self._set(self._coerce_chunk(keys[-1], value), *keys)
             save_settings(self._settings)
             self.settingsChanged.emit()
             if key == "theme":
