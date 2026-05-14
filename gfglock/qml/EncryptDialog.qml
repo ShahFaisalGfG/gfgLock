@@ -647,6 +647,25 @@ ApplicationWindow {
 
                             Accessible.name: "Progress log"
                             Accessible.role: Accessible.StaticText
+
+                            MouseArea {
+                                anchors.fill:    parent
+                                acceptedButtons: Qt.RightButton
+                                onClicked:       progressMenu.popup()
+                            }
+
+                            Menu {
+                                id: progressMenu
+                                MenuItem {
+                                    text:        "Copy"
+                                    enabled:     progressLogs.selectedText !== ""
+                                    onTriggered: progressLogs.copy()
+                                }
+                                MenuItem {
+                                    text:        "Select All"
+                                    onTriggered: progressLogs.selectAll()
+                                }
+                            }
                         }
                     }
 
