@@ -1,3 +1,4 @@
+// qmllint disable unqualified import
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Window
