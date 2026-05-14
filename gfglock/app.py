@@ -16,6 +16,8 @@ from gfglock.controllers.encrypt_ctrl import EncryptController
 from gfglock.controllers.prefs_ctrl import PrefsController
 from gfglock.utils.helpers import resource_path
 
+_ENC_EXTS = (".gfglock", ".gfglck", ".gfgcha")
+
 
 def main() -> None:
     """Initialise the Qt application and launch the QML engine."""
@@ -76,7 +78,7 @@ def main() -> None:
         sys.exit(-1)
 
     # ── CLI argument handling ─────────────────────────────────────────────────
-    _handle_cli(enc_ctrl, sys.argv[1:])
+    _handle_cli(enc_ctrl, sys.argv[1:], cli_mode)
 
     sys.exit(app.exec())
 
@@ -85,22 +87,16 @@ def _detect_mode(args: list) -> str:
     """Return 'encrypt' or 'decrypt' from CLI args, or empty string if neither."""
     if not args:
         return ""
-    enc_exts = (".gfglock", ".gfglck", ".gfgcha")
     if args[0].lower() in ("encrypt", "decrypt"):
         return args[0].lower()
-    if any(os.path.exists(p) and p.lower().endswith(enc_exts) for p in args):
+    if any(os.path.exists(p) and p.lower().endswith(_ENC_EXTS) for p in args):
         return "decrypt"
     return ""
 
 
-def _handle_cli(enc_ctrl, args: list) -> None:
+def _handle_cli(enc_ctrl, args: list, mode: str) -> None:
     """Pre-populate the file model from CLI arguments if any are present."""
-    if not args:
-        return
-
-    enc_exts = (".gfglock", ".gfglck", ".gfgcha")
-    mode = _detect_mode(args)
-    if not mode:
+    if not args or not mode:
         return
 
     path_args = args[1:] if args[0].lower() in ("encrypt", "decrypt") else args
@@ -117,17 +113,17 @@ def _handle_cli(enc_ctrl, args: list) -> None:
             final_paths.append(abs_p)
             continue
         if os.path.isfile(abs_p):
-            if mode == "encrypt" and not abs_p.lower().endswith(enc_exts):
+            if mode == "encrypt" and not abs_p.lower().endswith(_ENC_EXTS):
                 final_paths.append(abs_p)
-            elif mode == "decrypt" and abs_p.lower().endswith(enc_exts):
+            elif mode == "decrypt" and abs_p.lower().endswith(_ENC_EXTS):
                 final_paths.append(abs_p)
         elif os.path.isdir(abs_p):
             for root, _, files in os.walk(abs_p):
                 for f in files:
                     fp = os.path.join(root, f)
-                    if mode == "encrypt" and not fp.lower().endswith(enc_exts):
+                    if mode == "encrypt" and not fp.lower().endswith(_ENC_EXTS):
                         final_paths.append(fp)
-                    elif mode == "decrypt" and fp.lower().endswith(enc_exts):
+                    elif mode == "decrypt" and fp.lower().endswith(_ENC_EXTS):
                         final_paths.append(fp)
 
     # Deduplicate
