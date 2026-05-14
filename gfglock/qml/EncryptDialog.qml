@@ -15,6 +15,7 @@ ApplicationWindow {
     property real   _elapsed:       0.0
     property bool   _done:          false
     property int    _prevFileCount: 0
+    property int    _failedCount:   0
 
     width: 920
     height: 640
@@ -67,8 +68,9 @@ ApplicationWindow {
 
         function onOperationStarted() {
             stackView.currentIndex = 1
-            encDlg._done    = false
-            encDlg._elapsed = 0.0
+            encDlg._done        = false
+            encDlg._elapsed     = 0.0
+            encDlg._failedCount = 0
             elapsedTimer.start()
             var sz = encryptController.fileModel.totalSize
             filesLabel.text = "0 / " + encryptController.fileModel.count
@@ -100,10 +102,20 @@ ApplicationWindow {
         }
         function onOperationFinished(elapsed, total, succeeded, failed, skipped) {
             elapsedTimer.stop()
-            encDlg._done       = true
-            finishedLabel.text =
-                "Done in " + elapsed.toFixed(1) + "s  ·  " +
-                succeeded + " ok  ·  " + failed + " failed  ·  " + skipped + " skipped"
+            encDlg._done        = true
+            encDlg._failedCount = failed
+            var verb  = operationMode === "encrypt" ? "encrypted" : "decrypted"
+            var files = function(n) { return n + (n === 1 ? " file" : " files") }
+            var t = elapsed.toFixed(1) + "s"
+            if (failed === 0 && skipped === 0)
+                currentFileLabel.text = "All " + files(succeeded) + " " + verb + " successfully in " + t + "."
+            else if (failed === 0)
+                currentFileLabel.text = files(succeeded) + " " + verb + "  ·  " + files(skipped) + " already " + verb + ", skipped  ·  " + t + "."
+            else if (skipped === 0)
+                currentFileLabel.text = files(succeeded) + " of " + files(total) + " " + verb + "  ·  " + files(failed) + " failed  ·  " + t + "."
+            else
+                currentFileLabel.text = files(succeeded) + " of " + files(total) + " " + verb + "  ·  " + files(failed) + " failed  ·  " + files(skipped) + " skipped  ·  " + t + "."
+            finishedLabel.text = "100%"
             progressBar.value   = 1.0
             doneBtn.text        = "Close"
             doneBtn.highlighted = true
@@ -546,10 +558,16 @@ ApplicationWindow {
                         Layout.fillWidth: true
 
                         Text {
-                            text:           operationMode === "encrypt" ? "Encrypting…" : "Decrypting…"
+                            text: {
+                                if (!encDlg._done)
+                                    return operationMode === "encrypt" ? "Encrypting…" : "Decrypting…"
+                                var verb = operationMode === "encrypt" ? "Encryption" : "Decryption"
+                                return encDlg._failedCount > 0 ? verb + " Completed with Errors" : verb + " Complete"
+                            }
                             font.pixelSize: 16
                             font.weight:    Font.Bold
-                            color:          Material.foreground
+                            color:          !encDlg._done ? Material.foreground
+                                            : encDlg._failedCount > 0 ? "#c7a500" : "#4caf50"
                             Layout.fillWidth: true
                         }
                         Text {
