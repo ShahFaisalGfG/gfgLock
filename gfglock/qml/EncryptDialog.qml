@@ -631,6 +631,7 @@ ApplicationWindow {
                             id:            progressLogs
                             readOnly:      true
                             wrapMode:      TextEdit.NoWrap
+<<<<<<< HEAD
                             ContextMenu.menu: Menu {
                                 MenuItem {
                                     text:        qsTr("Copy")
@@ -642,6 +643,9 @@ ApplicationWindow {
                                     onTriggered: progressLogs.selectAll()
                                 }
                             }
+=======
+                            ContextMenu.menu: null
+>>>>>>> 9357702c08d5e3754a9cc46874cc266acdc4ec12
                             font.pixelSize: 11
                             font.family:   "Consolas, monospace"
                             color: Material.theme === Material.Dark ? "#cccccc" : "#333333"
