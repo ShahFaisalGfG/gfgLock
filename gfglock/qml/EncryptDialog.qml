@@ -9,13 +9,18 @@ import "components"
 ApplicationWindow {
     id: encDlg
 
-    property string operationMode:  "encrypt"
-    property var    _algOpts:       prefsController.encryptionModeOptions
-    property var    _chunkOpts:     prefsController.chunkSizeOptions
-    property real   _elapsed:       0.0
-    property bool   _done:          false
-    property int    _prevFileCount: 0
-    property int    _failedCount:   0
+    property string operationMode:    "encrypt"
+    property var    _algOpts:         prefsController.encryptionModeOptions
+    property var    _chunkOpts:       prefsController.chunkSizeOptions
+    property real   _elapsed:         0.0
+    property bool   _done:            false
+    property int    _prevFileCount:   0
+    property int    _failedCount:     0
+    property int    _succeededCount:  0
+
+    readonly property color _colorSuccess: Material.theme === Material.Dark ? "#4caf50" : "#2e7d32"
+    readonly property color _colorPartial: Material.theme === Material.Dark ? "#ff9800" : "#e65100"
+    readonly property color _colorFailure: Material.theme === Material.Dark ? "#ef5350" : "#c62828"
 
     width: 920
     height: 640
@@ -68,9 +73,10 @@ ApplicationWindow {
 
         function onOperationStarted() {
             stackView.currentIndex = 1
-            encDlg._done        = false
-            encDlg._elapsed     = 0.0
-            encDlg._failedCount = 0
+            encDlg._done           = false
+            encDlg._elapsed        = 0.0
+            encDlg._failedCount    = 0
+            encDlg._succeededCount = 0
             elapsedTimer.start()
             var sz = encryptController.fileModel.totalSize
             filesLabel.text = "0 / " + encryptController.fileModel.count
@@ -102,20 +108,11 @@ ApplicationWindow {
         }
         function onOperationFinished(elapsed, total, succeeded, failed, skipped) {
             elapsedTimer.stop()
-            encDlg._done        = true
-            encDlg._failedCount = failed
-            var verb  = operationMode === "encrypt" ? "encrypted" : "decrypted"
-            var files = function(n) { return n + (n === 1 ? " file" : " files") }
-            var t = elapsed.toFixed(1) + "s"
-            if (failed === 0 && skipped === 0)
-                currentFileLabel.text = "All " + files(succeeded) + " " + verb + " successfully in " + t + "."
-            else if (failed === 0)
-                currentFileLabel.text = files(succeeded) + " " + verb + "  ·  " + files(skipped) + " already " + verb + ", skipped  ·  " + t + "."
-            else if (skipped === 0)
-                currentFileLabel.text = files(succeeded) + " of " + files(total) + " " + verb + "  ·  " + files(failed) + " failed  ·  " + t + "."
-            else
-                currentFileLabel.text = files(succeeded) + " of " + files(total) + " " + verb + "  ·  " + files(failed) + " failed  ·  " + files(skipped) + " skipped  ·  " + t + "."
-            finishedLabel.text = "100%"
+            encDlg._done           = true
+            encDlg._failedCount    = failed
+            encDlg._succeededCount = succeeded
+            currentFileLabel.text = _buildStatus(elapsed, total, succeeded, failed, skipped)
+            finishedLabel.text    = "100%"
             progressBar.value   = 1.0
             doneBtn.text        = "Close"
             doneBtn.highlighted = true
@@ -538,6 +535,9 @@ ApplicationWindow {
                                              (operationMode === "decrypt" || passInput.text === confirmInput.text) &&
                                              encryptController.fileModel.count > 0
                                     onClicked: startOp()
+                                    Keys.onPressed: function(event) {
+                                        if (event.key === Qt.Key_Space) event.accepted = true
+                                    }
                                     Accessible.name: operationMode === "encrypt" ? "Start encryption" : "Start decryption"
                                     Accessible.role: Accessible.Button
                                 }
@@ -566,8 +566,10 @@ ApplicationWindow {
                             }
                             font.pixelSize: 16
                             font.weight:    Font.Bold
-                            color:          !encDlg._done ? Material.foreground
-                                            : encDlg._failedCount > 0 ? "#c7a500" : "#4caf50"
+                            color:          !encDlg._done          ? Material.foreground
+                                            : encDlg._failedCount === 0 ? encDlg._colorSuccess
+                                            : encDlg._succeededCount > 0 ? encDlg._colorPartial
+                                            : encDlg._colorFailure
                             Layout.fillWidth: true
                         }
                         Text {
@@ -713,6 +715,34 @@ ApplicationWindow {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    function _opVerb() {
+        /** Returns the past-tense verb for the current operation mode. */
+        return operationMode === "encrypt" ? "encrypted" : "decrypted"
+    }
+
+    function _fileStr(n) {
+        /** Returns a pluralised file count string, e.g. "3 files" or "1 file". */
+        return n + (n === 1 ? " file" : " files")
+    }
+
+    function _buildStatus(elapsed, total, succeeded, failed, skipped) {
+        /** Builds the completion status line shown below the progress bar. */
+        try {
+            var verb = _opVerb()
+            var t    = elapsed.toFixed(1) + "s"
+            if (failed === 0 && skipped === 0)
+                return "All " + _fileStr(succeeded) + " " + verb + " successfully in " + t + "."
+            if (failed === 0)
+                return _fileStr(succeeded) + " " + verb + "  ·  " + _fileStr(skipped) + " already " + verb + ", skipped  ·  " + t + "."
+            if (skipped === 0)
+                return _fileStr(succeeded) + " of " + _fileStr(total) + " " + verb + "  ·  " + _fileStr(failed) + " failed  ·  " + t + "."
+            return _fileStr(succeeded) + " of " + _fileStr(total) + " " + verb + "  ·  " + _fileStr(failed) + " failed  ·  " + _fileStr(skipped) + " skipped  ·  " + t + "."
+        } catch(e) {
+            console.error("_buildStatus:", e)
+            return ""
+        }
+    }
 
     function _passStrength(pass) {
         if (pass.length === 0) return 0
