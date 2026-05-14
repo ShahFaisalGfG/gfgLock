@@ -218,6 +218,7 @@ ApplicationWindow {
                 id: logsArea
                 readOnly:      true
                 wrapMode:      TextEdit.NoWrap
+                ContextMenu.menu: null
                 ContextMenu.menu: Menu {
                     MenuItem {
                         text:        qsTr("Copy")
