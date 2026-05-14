@@ -246,6 +246,25 @@ ApplicationWindow {
 
                 Accessible.name: "Activity log"
                 Accessible.role: Accessible.StaticText
+
+                MouseArea {
+                    anchors.fill:    parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked:       logsMenu.popup()
+                }
+
+                Menu {
+                    id: logsMenu
+                    MenuItem {
+                        text:      "Copy"
+                        enabled:   logsArea.selectedText !== ""
+                        onTriggered: logsArea.copy()
+                    }
+                    MenuItem {
+                        text:        "Select All"
+                        onTriggered: logsArea.selectAll()
+                    }
+                }
             }
         }
 
