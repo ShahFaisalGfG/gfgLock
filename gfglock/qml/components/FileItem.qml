@@ -1,3 +1,4 @@
+// qmllint disable unqualified
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -38,7 +39,7 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         radius: parent.radius
-        color: itemMouse.containsMouse && !isSelected
+        color: itemMouse.containsMouse && !fileItem.isSelected
             ? (Material.theme === Material.Dark ? Qt.rgba(1, 1, 1, 0.04) : Qt.rgba(0, 0, 0, 0.03))
             : "transparent"
     }
@@ -61,9 +62,9 @@ Rectangle {
 
             Text {
                 anchors.centerIn: parent
-                text: fileExt.length > 6 ? fileExt.substring(0, 5) + "…" : fileExt
+                text: fileItem.fileExt.length > 6 ? fileItem.fileExt.substring(0, 5) + "…" : fileItem.fileExt
                 color: "#0078d4"
-                font.pixelSize: fileExt.length > 4 ? 10 : 12
+                font.pixelSize: fileItem.fileExt.length > 4 ? 10 : 12
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -76,7 +77,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: fileName
+                text: fileItem.fileName
                 color: Material.foreground
                 font.pixelSize: 13
                 font.weight: Font.Medium
@@ -85,7 +86,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: filePath
+                text: fileItem.filePath
                 color: Material.theme === Material.Dark ? "#888888" : "#767676"
                 font.pixelSize: 11
                 elide: Text.ElideMiddle
@@ -95,7 +96,7 @@ Rectangle {
 
         // Size label — hidden while hovering (X button takes that slot)
         Text {
-            text: fileSize
+            text: fileItem.fileSize
             color: Material.theme === Material.Dark ? "#aaaaaa" : "#555555"
             font.pixelSize: 11
             horizontalAlignment: Text.AlignRight
@@ -104,7 +105,8 @@ Rectangle {
 
         // Placeholder so layout width stays stable when size label hides
         Item {
-            width: 26; height: 26
+            Layout.preferredWidth:  26
+            Layout.preferredHeight: 26
             visible: itemMouse.containsMouse
         }
     }
@@ -117,11 +119,11 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
-                if (!isSelected)
-                    fileItem.itemClicked(index, Qt.NoModifier)
+                if (!fileItem.isSelected)
+                    fileItem.itemClicked(fileItem.index, Qt.NoModifier)
                 contextMenu.popup()
             } else {
-                fileItem.itemClicked(index, mouse.modifiers)
+                fileItem.itemClicked(fileItem.index, mouse.modifiers)
             }
         }
     }
@@ -174,7 +176,7 @@ Rectangle {
             id: removeMouse
             anchors.fill: parent
             hoverEnabled: true
-            onClicked: encryptController.fileModel.removeAt(index)
+            onClicked: encryptController.fileModel.removeAt(fileItem.index)
         }
     }
 
@@ -182,5 +184,5 @@ Rectangle {
     Accessible.role:      Accessible.ListItem
     Accessible.checkable: true
     Accessible.checked:   isSelected
-    Accessible.onPressAction: encryptController.fileModel.toggleSelection(index)
+    Accessible.onPressAction: encryptController.fileModel.toggleSelection(fileItem.index)
 }

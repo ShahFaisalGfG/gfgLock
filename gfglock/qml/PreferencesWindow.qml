@@ -1,3 +1,4 @@
+// qmllint disable unqualified
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -22,7 +23,7 @@ ApplicationWindow {
     Component.onCompleted: {
         x = Screen.virtualX + Math.round((Screen.desktopAvailableWidth  - width)  / 2)
         y = Screen.virtualY + Math.round((Screen.desktopAvailableHeight - height) / 2)
-        loadValues()
+        prefsWin.loadValues()
     }
 
     onClosing: prefsWin.destroy()
@@ -33,7 +34,7 @@ ApplicationWindow {
 
     Connections {
         target: prefsController
-        function onSettingsChanged() { loadValues() }
+        function onSettingsChanged() { prefsWin.loadValues() }
     }
 
     // ── Background ────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ ApplicationWindow {
                     anchors.margins: 20
                     spacing: 16
 
-                    Item { height: 8 }
+                    Item { implicitHeight: 8 }
 
                     GroupBox {
                         Layout.fillWidth: true
@@ -118,7 +119,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Item { height: 4 }
+                    Item { implicitHeight: 4 }
                 }
             }
 
@@ -134,7 +135,7 @@ ApplicationWindow {
                     anchors.margins: 20
                     spacing: 16
 
-                    Item { height: 8 }
+                    Item { implicitHeight: 8 }
 
                     GroupBox {
                         Layout.fillWidth: true
@@ -180,7 +181,7 @@ ApplicationWindow {
                                     font.pixelSize:         12
                                     Layout.preferredWidth:  155
                                     Layout.preferredHeight: 34
-                                    model:                  _chunkOpts.map(o => o.label)
+                                    model:                  prefsWin._chunkOpts.map(o => o.label)
                                     onCurrentIndexChanged: prefsWin._dirty = true
                                 }
                             }
@@ -208,7 +209,7 @@ ApplicationWindow {
                                 Layout.fillWidth:       true
                                 Layout.preferredHeight: 34
                                 font.pixelSize:         12
-                                model:                  _algOpts.map(o => o.label)
+                                model:                  prefsWin._algOpts.map(o => o.label)
                                 onCurrentIndexChanged: prefsWin._dirty = true
                             }
                             Text {
@@ -221,7 +222,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Item { height: 4 }
+                    Item { implicitHeight: 4 }
                 }
             }
 
@@ -237,7 +238,7 @@ ApplicationWindow {
                     anchors.margins: 20
                     spacing: 16
 
-                    Item { height: 8 }
+                    Item { implicitHeight: 8 }
 
                     GroupBox {
                         Layout.fillWidth: true
@@ -283,7 +284,7 @@ ApplicationWindow {
                                     font.pixelSize:         12
                                     Layout.preferredWidth:  155
                                     Layout.preferredHeight: 34
-                                    model:                  _chunkOpts.map(o => o.label)
+                                    model:                  prefsWin._chunkOpts.map(o => o.label)
                                     onCurrentIndexChanged: prefsWin._dirty = true
                                 }
                             }
@@ -291,7 +292,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Item { height: 4 }
+                    Item { implicitHeight: 4 }
                 }
             }
 
@@ -307,7 +308,7 @@ ApplicationWindow {
                     anchors.margins: 20
                     spacing: 16
 
-                    Item { height: 8 }
+                    Item { implicitHeight: 8 }
 
                     GroupBox {
                         Layout.fillWidth: true
@@ -393,14 +394,14 @@ ApplicationWindow {
                         }
                     }
 
-                    Item { height: 4 }
+                    Item { implicitHeight: 4 }
                 }
             }
         }
 
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            implicitHeight: 1
             color: Material.theme === Material.Dark ? "#3c3c3c" : "#e0e0e0"
         }
 
@@ -418,7 +419,7 @@ ApplicationWindow {
                 Material.foreground: "#e0004f"
                 onClicked: {
                     prefsController.resetDefaults()
-                    loadValues()
+                    prefsWin.loadValues()
                     prefsWin._dirty = false
                 }
             }
@@ -434,14 +435,14 @@ ApplicationWindow {
                 font.pixelSize: 12
                 Layout.preferredHeight: 48
                 enabled: prefsWin._dirty
-                onClicked: applyValues()
+                onClicked: prefsWin.applyValues()
             }
             Button {
                 text: "Save"
                 highlighted: true
                 font.pixelSize: 12
                 Layout.preferredHeight: 48
-                onClicked: { applyValues(); prefsWin.close() }
+                onClicked: { prefsWin.applyValues(); prefsWin.close() }
             }
         }
     }
