@@ -32,19 +32,19 @@ gfgLock is a focused Windows tool for encrypting files with modern, authenticate
 
 - Encryption Window
 
-  ![Encryption](./screenshots/encryption_window.png)
+  ![Encryption](./screenshots/encryption_window_with_files.png)
 
 - Decryption Window
 
-  ![Decryption](./screenshots/decryption_window.png)
+  ![Decryption](./screenshots/decryption_window_with_files.png)
 
 - Progress Window
 
-  ![Progress](./screenshots/progress_window.png)
+  ![Progress](./screenshots/encryption_progress_window.png)
 
 - Operation Finished Window
 
-  ![Finished](./screenshots/operation_finished_window.png)
+  ![Finished](./screenshots/encryption_progress_window_complete.png)
 
 - Main Screen Progress Logs
 
@@ -52,7 +52,7 @@ gfgLock is a focused Windows tool for encrypting files with modern, authenticate
 
 - Prefrences Window
 
-  ![Preferences](./screenshots/prefrences_window.png)
+  ![Preferences](./screenshots/prefrences_window_appearance.png)
 
 - About Window
 
