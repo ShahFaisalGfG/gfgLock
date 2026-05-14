@@ -1,3 +1,4 @@
+// qmllint disable unqualified import
 pragma ComponentBehavior: Bound
 
 import QtQuick
