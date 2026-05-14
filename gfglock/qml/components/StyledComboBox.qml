@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -8,6 +10,9 @@ ComboBox {
     font.pixelSize: 12
 
     delegate: ItemDelegate {
+        required property var modelData
+        required property int index
+
         width:       control.popup.width
         height:      32
         text:        modelData ?? ""

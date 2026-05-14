@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Window
 
@@ -108,7 +107,7 @@ Item {
         Rectangle {
             width: 46; height: parent.height
             visible: titleBar.showMinimize
-            color: minHover.containsMouse ? Qt.rgba(0.5, 0.5, 0.5, 0.22) : "transparent"
+            color: minHover.hovered ? Qt.rgba(0.5, 0.5, 0.5, 0.22) : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
 
             Text {
@@ -133,7 +132,7 @@ Item {
         Rectangle {
             width: 46; height: parent.height
             visible: titleBar.showMaximize
-            color: maxHover.containsMouse ? Qt.rgba(0.5, 0.5, 0.5, 0.22) : "transparent"
+            color: maxHover.hovered ? Qt.rgba(0.5, 0.5, 0.5, 0.22) : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
 
             Text {
@@ -158,13 +157,13 @@ Item {
         Rectangle {
             width: 46; height: parent.height
             visible: titleBar.showClose
-            color: closeHover.containsMouse ? "#e81123" : "transparent"
+            color: closeHover.hovered ? "#e81123" : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
 
             Text {
                 anchors.centerIn: parent
                 text:  "✕"
-                color: closeHover.containsMouse ? "#ffffff" : titleBar._fgColor
+                color: closeHover.hovered ? "#ffffff" : titleBar._fgColor
                 font.pixelSize: 12
                 Behavior on color { ColorAnimation { duration: 100 } }
             }
