@@ -1,3 +1,4 @@
+// qmllint disable unqualified
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -62,7 +63,7 @@ ApplicationWindow {
         // Header — icon + title + description
         Rectangle {
             Layout.fillWidth: true
-            height: 96
+            implicitHeight: 96
             color:  "transparent"
 
             RowLayout {
@@ -124,14 +125,14 @@ ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            implicitHeight: 1
             color:  Material.theme === Material.Dark ? "#3c3c3c" : "#e0e0e0"
         }
 
         // Action buttons
         Rectangle {
             Layout.fillWidth: true
-            height: 68
+            implicitHeight: 68
             color:  "transparent"
 
             RowLayout {
@@ -147,7 +148,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 48
                     font.pixelSize: 13
-                    onClicked: openEncryptDialog("encrypt")
+                    onClicked: root.openEncryptDialog("encrypt")
 
                     Accessible.name: "Encrypt files"
                     Accessible.role: Accessible.Button
@@ -157,7 +158,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 48
                     font.pixelSize: 13
-                    onClicked: openEncryptDialog("decrypt")
+                    onClicked: root.openEncryptDialog("decrypt")
 
                     Accessible.name: "Decrypt files"
                     Accessible.role: Accessible.Button
@@ -167,7 +168,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 48
                     font.pixelSize: 13
-                    onClicked: openPreferences()
+                    onClicked: root.openPreferences()
 
                     Accessible.name: "Open Preferences"
                     Accessible.role: Accessible.Button
@@ -187,7 +188,7 @@ ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            implicitHeight: 1
             color:  Material.theme === Material.Dark ? "#3c3c3c" : "#e0e0e0"
         }
 
@@ -287,7 +288,7 @@ ApplicationWindow {
         // Resize grip
         Item {
             Layout.fillWidth: true
-            height: 14
+            implicitHeight: 14
 
             DragHandler {
                 target: null
@@ -320,10 +321,10 @@ ApplicationWindow {
         onDropped: function(drop) {
             if (!drop.hasUrls) return
             try {
-                if (!_encDlgComp || _encDlgComp.status === Component.Error)
-                    _encDlgComp = Qt.createComponent("EncryptDialog.qml")
-                if (_encDlgComp.status !== Component.Ready) return
-                _encDlgComp.createObject(root, { operationMode: "encrypt" }).show()
+                if (!root._encDlgComp || root._encDlgComp.status === Component.Error)
+                    root._encDlgComp = Qt.createComponent("EncryptDialog.qml")
+                if (root._encDlgComp.status !== Component.Ready) return
+                root._encDlgComp.createObject(root, { operationMode: "encrypt" }).show()
                 var urls = []
                 for (var i = 0; i < drop.urls.length; i++)
                     urls.push(drop.urls[i].toString())
@@ -396,7 +397,7 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 1
+                implicitHeight: 1
                 color:  Material.theme === Material.Dark ? "#333333" : "#e0e0e0"
             }
 

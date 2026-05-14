@@ -19,7 +19,8 @@ $Entry    = "gfglock\__main__.py"
 $DistDir  = "dist\$AppName"
 $IssFiles = @(
     "installer\gfglock_system_installer.iss",
-    "installer\gfglock_user_installer.iss"
+    "installer\gfglock_user_installer.iss",
+    "installer\gfglock_silent_user_installer.iss"
 )
 $IsccPaths = @(
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
@@ -165,7 +166,8 @@ foreach ($iss in $IssFiles) {
 
 $Outputs = @(
     "build\installer\${AppName}_${Version}_system_installer.exe",
-    "build\installer\${AppName}_${Version}_user_installer.exe"
+    "build\installer\${AppName}_${Version}_user_installer.exe",
+    "build\installer\${AppName}_${Version}_silent_user_installer.exe"
 )
 
 Write-Host ""

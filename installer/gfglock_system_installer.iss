@@ -148,6 +148,54 @@ Type: files; Name: "{app}\*.log"
 Type: files; Name: "{app}\*.tmp"
 
 [Code]
+function UserInstallExists(): Boolean;
+var S: String;
+begin
+  Result :=
+    RegQueryStringValue(HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+      '{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}_is1', 'InstallLocation', S) or
+    RegQueryStringValue(HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+      '{C8D4E2A1-9F5B-4C3D-A7E8-987654321DEF}_is1', 'InstallLocation', S);
+end;
+
+function GetUserUninstallStr(out UninstStr: String): Boolean;
+begin
+  Result :=
+    RegQueryStringValue(HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+      '{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}_is1', 'UninstallString', UninstStr);
+  if not Result then
+    Result :=
+      RegQueryStringValue(HKCU,
+        'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+        '{C8D4E2A1-9F5B-4C3D-A7E8-987654321DEF}_is1', 'UninstallString', UninstStr);
+end;
+
+function InitializeSetup(): Boolean;
+var
+  UninstStr: String;
+  ResultCode: Integer;
+begin
+  Result := True;
+  if UserInstallExists() then
+  begin
+    if MsgBox(
+      'A per-user installation of gfgLock was found.' + #13#10#13#10 +
+      'Click Yes to remove it and continue with the system-wide installation.' + #13#10 +
+      'Click No to cancel — then use the per-user installer to update instead.',
+      mbConfirmation, MB_YESNO) = IDNO then
+    begin
+      Result := False;
+      Exit;
+    end;
+    if GetUserUninstallStr(UninstStr) then
+      Exec(RemoveQuotes(UninstStr), '/VERYSILENT /NORESTART', '',
+           SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
 procedure InitializeWizard();
 begin
   WizardForm.WelcomeLabel2.Caption :=
