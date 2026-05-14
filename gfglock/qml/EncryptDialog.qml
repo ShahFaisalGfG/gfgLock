@@ -1,3 +1,4 @@
+// qmllint disable unqualified
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -111,7 +112,7 @@ ApplicationWindow {
             encDlg._done           = true
             encDlg._failedCount    = failed
             encDlg._succeededCount = succeeded
-            currentFileLabel.text = _buildStatus(elapsed, total, succeeded, failed, skipped)
+            currentFileLabel.text = encDlg._buildStatus(elapsed, total, succeeded, failed, skipped)
             finishedLabel.text    = "100%"
             progressBar.value   = 1.0
             doneBtn.text        = "Close"
@@ -120,7 +121,7 @@ ApplicationWindow {
             var sz   = encryptController.fileModel.totalSize
             var time = new Date().toLocaleTimeString()
             appController.appendLog(
-                "[" + time + "]  " + operationMode.toUpperCase() +
+                "[" + time + "]  " + encDlg.operationMode.toUpperCase() +
                 "  —  " + total + " file(s) " + sz +
                 "  ·  " + elapsed.toFixed(1) + "s" +
                 "  ·  " + succeeded + " ok · " + failed + " failed · " + skipped + " skipped"
@@ -327,7 +328,7 @@ ApplicationWindow {
                                 Item {
                                     Layout.fillWidth:       true
                                     Layout.preferredHeight: 3
-                                    visible: operationMode === "encrypt" && passInput.text.length > 0
+                                    visible: encDlg.operationMode === "encrypt" && passInput.text.length > 0
 
                                     Rectangle {
                                         anchors.fill: parent
@@ -337,9 +338,9 @@ ApplicationWindow {
                                     Rectangle {
                                         height: parent.height
                                         radius: 2
-                                        width: parent.width * (_passStrength(passInput.text) / 4)
+                                        width: parent.width * (encDlg._passStrength(passInput.text) / 4)
                                         color: {
-                                            var s = _passStrength(passInput.text)
+                                            var s = encDlg._passStrength(passInput.text)
                                             return s <= 1 ? "#e0004f" : s <= 2 ? "#ff8c00" : s <= 3 ? "#f9c104" : "#107c10"
                                         }
                                         Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -352,7 +353,7 @@ ApplicationWindow {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 5
-                                visible: operationMode === "encrypt"
+                                visible: encDlg.operationMode === "encrypt"
 
                                 Text {
                                     text:           "Confirm Password"
@@ -423,7 +424,7 @@ ApplicationWindow {
 
                             Rectangle {
                                 Layout.fillWidth: true
-                                height: 1
+                                implicitHeight: 1
                                 color: Material.theme === Material.Dark ? "#333333" : "#e0e0e0"
                             }
 
@@ -434,7 +435,7 @@ ApplicationWindow {
                                 Layout.preferredHeight: 28
                                 topPadding:             0
                                 bottomPadding:          0
-                                visible:                operationMode === "encrypt"
+                                visible:                encDlg.operationMode === "encrypt"
                                 Accessible.name:      "Encrypt file names"
                                 Accessible.role:      Accessible.CheckBox
                                 Accessible.checkable: true
@@ -445,7 +446,7 @@ ApplicationWindow {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 4
-                                visible: operationMode === "encrypt"
+                                visible: encDlg.operationMode === "encrypt"
 
                                 Text {
                                     text:           "Encryption Algorithm"
@@ -457,7 +458,7 @@ ApplicationWindow {
                                     Layout.fillWidth:       true
                                     Layout.preferredHeight: 34
                                     font.pixelSize:         12
-                                    model:                  _algOpts.map(o => o.label)
+                                    model:                  encDlg._algOpts.map(o => o.label)
                                     Accessible.name: "Encryption algorithm"
                                     Accessible.role: Accessible.ComboBox
                                 }
@@ -503,7 +504,7 @@ ApplicationWindow {
                                     font.pixelSize:         12
                                     Layout.preferredWidth:  155
                                     Layout.preferredHeight: 34
-                                    model:                  _chunkOpts.map(o => o.label)
+                                    model:                  encDlg._chunkOpts.map(o => o.label)
                                     Accessible.name: "Chunk size"
                                     Accessible.role: Accessible.ComboBox
                                 }
@@ -526,19 +527,19 @@ ApplicationWindow {
                                     Accessible.role: Accessible.Button
                                 }
                                 Button {
-                                    text:             operationMode === "encrypt" ? "Encrypt" : "Decrypt"
+                                    text:             encDlg.operationMode === "encrypt" ? "Encrypt" : "Decrypt"
                                     highlighted:      true
                                     Layout.fillWidth: true
                                     font.pixelSize:   12
                                     Layout.preferredHeight: 48
                                     enabled: passInput.text.length > 0 &&
-                                             (operationMode === "decrypt" || passInput.text === confirmInput.text) &&
+                                             (encDlg.operationMode === "decrypt" || passInput.text === confirmInput.text) &&
                                              encryptController.fileModel.count > 0
-                                    onClicked: startOp()
+                                    onClicked: encDlg.startOp()
                                     Keys.onPressed: function(event) {
                                         if (event.key === Qt.Key_Space) event.accepted = true
                                     }
-                                    Accessible.name: operationMode === "encrypt" ? "Start encryption" : "Start decryption"
+                                    Accessible.name: encDlg.operationMode === "encrypt" ? "Start encryption" : "Start decryption"
                                     Accessible.role: Accessible.Button
                                 }
                             }
@@ -560,8 +561,8 @@ ApplicationWindow {
                         Text {
                             text: {
                                 if (!encDlg._done)
-                                    return operationMode === "encrypt" ? "Encrypting…" : "Decrypting…"
-                                var verb = operationMode === "encrypt" ? "Encryption" : "Decryption"
+                                    return encDlg.operationMode === "encrypt" ? "Encrypting…" : "Decrypting…"
+                                var verb = encDlg.operationMode === "encrypt" ? "Encryption" : "Decryption"
                                 return encDlg._failedCount > 0 ? verb + " Completed with Errors" : verb + " Complete"
                             }
                             font.pixelSize: 16
@@ -705,8 +706,8 @@ ApplicationWindow {
             } else if (encryptController.fileModel.count === 0) {
                 fileDialog.open()
             } else if (passInput.text.length > 0
-                       && (operationMode === "decrypt" || passInput.text === confirmInput.text)) {
-                startOp()
+                       && (encDlg.operationMode === "decrypt" || passInput.text === confirmInput.text)) {
+                encDlg.startOp()
             }
         }
     }
@@ -716,7 +717,7 @@ ApplicationWindow {
         id:       fileDialog
         title:    "Select Files"
         fileMode: Platform.FileDialog.OpenFiles
-        nameFilters: operationMode === "decrypt"
+        nameFilters: encDlg.operationMode === "decrypt"
             ? ["Encrypted files (*.gfglock *.gfglck *.gfgcha)", "All files (*)"]
             : ["All files (*)"]
         onAccepted: {

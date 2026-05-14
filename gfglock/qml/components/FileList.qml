@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+// qmllint disable unqualified
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -90,7 +92,7 @@ Item {
             focus: true
 
             delegate: FileItem {
-                width: listView.width - 10
+                width: ListView.view.width - 10
                 onItemClicked: function(idx, mods) { fileListRoot.handleClick(idx, mods) }
             }
 
