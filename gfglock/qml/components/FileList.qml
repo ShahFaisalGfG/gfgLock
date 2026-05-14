@@ -1,5 +1,5 @@
 pragma ComponentBehavior: Bound
-// qmllint disable unqualified
+// qmllint disable unqualified import
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
