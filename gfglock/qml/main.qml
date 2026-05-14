@@ -218,6 +218,17 @@ ApplicationWindow {
                 id: logsArea
                 readOnly:      true
                 wrapMode:      TextEdit.NoWrap
+                ContextMenu.menu: Menu {
+                    MenuItem {
+                        text:        qsTr("Copy")
+                        enabled:     logsArea.selectedText !== ""
+                        onTriggered: logsArea.copy()
+                    }
+                    MenuItem {
+                        text:        qsTr("Select All")
+                        onTriggered: logsArea.selectAll()
+                    }
+                }
                 font.pixelSize: 11
                 font.family:   "Consolas, monospace"
                 color: Material.theme === Material.Dark ? "#cccccc" : "#333333"
@@ -247,25 +258,6 @@ ApplicationWindow {
 
                 Accessible.name: "Activity log"
                 Accessible.role: Accessible.StaticText
-
-                MouseArea {
-                    anchors.fill:    parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked:       logsMenu.popup()
-                }
-
-                Menu {
-                    id: logsMenu
-                    MenuItem {
-                        text:      "Copy"
-                        enabled:   logsArea.selectedText !== ""
-                        onTriggered: logsArea.copy()
-                    }
-                    MenuItem {
-                        text:        "Select All"
-                        onTriggered: logsArea.selectAll()
-                    }
-                }
             }
         }
 

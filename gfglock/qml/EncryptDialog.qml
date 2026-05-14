@@ -631,6 +631,17 @@ ApplicationWindow {
                             id:            progressLogs
                             readOnly:      true
                             wrapMode:      TextEdit.NoWrap
+                            ContextMenu.menu: Menu {
+                                MenuItem {
+                                    text:        qsTr("Copy")
+                                    enabled:     progressLogs.selectedText !== ""
+                                    onTriggered: progressLogs.copy()
+                                }
+                                MenuItem {
+                                    text:        qsTr("Select All")
+                                    onTriggered: progressLogs.selectAll()
+                                }
+                            }
                             font.pixelSize: 11
                             font.family:   "Consolas, monospace"
                             color: Material.theme === Material.Dark ? "#cccccc" : "#333333"
@@ -648,25 +659,6 @@ ApplicationWindow {
 
                             Accessible.name: "Progress log"
                             Accessible.role: Accessible.StaticText
-
-                            MouseArea {
-                                anchors.fill:    parent
-                                acceptedButtons: Qt.RightButton
-                                onClicked:       progressMenu.popup()
-                            }
-
-                            Menu {
-                                id: progressMenu
-                                MenuItem {
-                                    text:        "Copy"
-                                    enabled:     progressLogs.selectedText !== ""
-                                    onTriggered: progressLogs.copy()
-                                }
-                                MenuItem {
-                                    text:        "Select All"
-                                    onTriggered: progressLogs.selectAll()
-                                }
-                            }
                         }
                     }
 
