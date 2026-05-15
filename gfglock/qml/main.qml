@@ -48,6 +48,13 @@ ApplicationWindow {
         }
     }
 
+    Connections {
+        target: prefsController
+        function onSettingsChanged() {
+            logsArea._wrapEnabled = prefsController.logTextWrap
+        }
+    }
+
     // ── Root layout ──────────────────────────────────────────────────────────
     ColumnLayout {
         anchors.fill: parent
@@ -212,13 +219,21 @@ ApplicationWindow {
             Layout.rightMargin:  14
             Layout.bottomMargin: 4
             clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.horizontal.policy: logsArea._wrapEnabled ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
 
             TextArea {
                 id: logsArea
+                property bool _wrapEnabled: prefsController ? prefsController.logTextWrap : true
                 readOnly:      true
-                wrapMode:      TextEdit.NoWrap
+                wrapMode:      _wrapEnabled ? TextEdit.WordWrap : TextEdit.NoWrap
+                onWrapModeChanged: {
+                    var saved = text
+                    text = ""
+                    text = saved
+                    cursorPosition = length
+                }
                 ContextMenu.menu: Menu {
+                    onAboutToShow: wrapLogsItem.checked = logsArea._wrapEnabled
                     MenuItem {
                         text:        qsTr("Copy")
                         enabled:     logsArea.selectedText !== ""
@@ -227,6 +242,13 @@ ApplicationWindow {
                     MenuItem {
                         text:        qsTr("Select All")
                         onTriggered: logsArea.selectAll()
+                    }
+                    MenuSeparator {}
+                    MenuItem {
+                        id:          wrapLogsItem
+                        text:        qsTr("Text Wrap")
+                        checkable:   true
+                        onTriggered: logsArea._wrapEnabled = checked
                     }
                 }
                 font.pixelSize: 11

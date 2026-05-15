@@ -29,6 +29,12 @@ class ThemeDefaults:
     SUPPORTED_THEMES = ["system", "light", "dark"]
 
 
+class AppearanceDefaults:
+    """Default appearance preferences."""
+
+    LOG_TEXT_WRAP = True
+
+
 class EncryptionDefaults:
     """Default encryption settings."""
 
@@ -65,10 +71,19 @@ class PerformanceDefaults:
     CLAMP_CPU_THREADS = True
 
 
+class NotificationDefaults:
+    """Default notification preferences."""
+
+    OPERATION_NOTIFICATIONS = True
+
+
 def get_default_settings() -> Dict[str, Any]:
     """Return complete default settings dictionary."""
     return {
         "theme": ThemeDefaults.DEFAULT_THEME,
+        "appearance": {
+            "log_text_wrap": AppearanceDefaults.LOG_TEXT_WRAP,
+        },
         "encryption": {
             "cpu_threads": EncryptionDefaults.DEFAULT_THREADS,
             "chunk_size": EncryptionDefaults.DEFAULT_CHUNK_SIZE,
@@ -83,5 +98,6 @@ def get_default_settings() -> Dict[str, Any]:
             "enable_logs": LoggingDefaults.ENABLE_LOGS,
             "log_level": LoggingDefaults.DEFAULT_LOG_LEVEL,
             "clamp_cpu_threads": PerformanceDefaults.CLAMP_CPU_THREADS,
+            "operation_notifications": NotificationDefaults.OPERATION_NOTIFICATIONS,
         },
     }

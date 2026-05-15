@@ -162,6 +162,51 @@ foreach ($iss in $IssFiles) {
     $IsccElapsed += (Get-Date) - $t
 }
 
+# ── Portable Exe ──────────────────────────────────────────────────────────────
+
+Write-Step "Building portable executable"
+
+$PortableName = "${AppName}_${Version}_portable"
+$PortableExe  = "build\${PortableName}.exe"
+
+foreach ($path in @("${PortableName}.spec", $PortableExe)) {
+    if (Test-Path $path) {
+        Remove-Item $path -Recurse -Force
+        Write-Host "   Removed $path" -ForegroundColor DarkGray
+    }
+}
+
+$PortableArgs = @(
+    "--name",      $PortableName,
+    "--windowed",
+    "--onefile",
+    "--icon",      "gfglock\assets\icons\gfgLock.ico",
+    "--add-data",  "$ScriptDir\gfglock\qml;gfglock\qml",
+    "--add-data",  "$ScriptDir\gfglock\assets;gfglock\assets",
+    "--add-data",  "$ScriptDir\gfglock\assets\icons\gfgLock.png;assets\icons",
+    "--add-data",  "$ScriptDir\gfglock\assets\icons\gfgLock.ico;assets\icons",
+    "--add-data",  "$ScriptDir\gfglock\assets\icons\gfgLock.png;icons",
+    "--add-data",  "$ScriptDir\screenshots;screenshots",
+    "--add-data",  "$ScriptDir\readme.html;.",
+    "--distpath",  "build",
+    "--workpath",  "build\pyinstaller",
+    "--specpath",  ".",
+    "--noconfirm",
+    "--clean",
+    $Entry
+)
+
+$PortableStart = Get-Date
+pyinstaller @PortableArgs
+
+if ($LASTEXITCODE -ne 0) {
+    Fail "PyInstaller (portable) failed (exit $LASTEXITCODE). Check output above."
+}
+if (-not (Test-Path $PortableExe)) {
+    Fail "Expected portable executable not found: $PortableExe"
+}
+$PortableElapsed = (Get-Date) - $PortableStart
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 
 $Outputs = @(
@@ -178,8 +223,15 @@ for ($i = 0; $i -lt $Outputs.Count; $i++) {
     if (Test-Path $out) {
         $Mb = [math]::Round((Get-Item $out).Length / 1MB, 1)
         $elapsed = if ($i -lt $IsccElapsed.Count) { "  ($(Format-Elapsed $IsccElapsed[$i]))" } else { "" }
-        Write-Host "Installer : $out  ($Mb MB)$elapsed" -ForegroundColor Green
+        Write-Host "Installer    : $out  ($Mb MB)$elapsed" -ForegroundColor Green
     } else {
-        Write-Host "Missing   : $out" -ForegroundColor Yellow
+        Write-Host "Missing      : $out" -ForegroundColor Yellow
     }
+}
+
+if (Test-Path $PortableExe) {
+    $PortableMb = [math]::Round((Get-Item $PortableExe).Length / 1MB, 1)
+    Write-Host "Portable Exe : $PortableExe  ($PortableMb MB)  ($(Format-Elapsed $PortableElapsed))" -ForegroundColor Green
+} else {
+    Write-Host "Missing      : $PortableExe" -ForegroundColor Yellow
 }

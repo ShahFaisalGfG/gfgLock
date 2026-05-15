@@ -6,9 +6,10 @@ from PySide6.QtCore import Property, QObject, QThreadPool, QUrl, Signal, Slot
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from gfglock.config.defaults import PerformanceDefaults
+from gfglock.config.defaults import NotificationDefaults, PerformanceDefaults
 
 from gfglock.models.file_model import FileListModel
+from gfglock.services.notifier import send_notification
 from gfglock.services.worker import EncryptDecryptWorker
 from gfglock.utils.logging import write_log, write_session_separator
 from gfglock.utils.settings import load_settings
@@ -237,7 +238,7 @@ class EncryptController(QObject):
 
 
     def _on_finished(self, elapsed, total, succeeded, failed, skipped) -> None:
-        """Handle worker completion and write a summary log entry."""
+        """Handle worker completion, write a summary log entry, and notify if enabled."""
         try:
             self._set_busy(False)
             self._worker = None
@@ -250,7 +251,27 @@ class EncryptController(QObject):
             if failed > 0:
                 write_log(summary, "critical")
             write_session_separator()
+            self._notify_complete(elapsed, succeeded, failed, skipped)
             self.operationFinished.emit(elapsed, total, succeeded, failed, skipped)
+        except Exception:
+            pass
+
+    def _notify_complete(self, elapsed: float, succeeded: int, failed: int, skipped: int) -> None:
+        """Send a desktop toast notification if the setting is enabled."""
+        try:
+            settings = load_settings()
+            if not settings.get("advanced", {}).get(
+                "operation_notifications", NotificationDefaults.OPERATION_NOTIFICATIONS
+            ):
+                return
+            is_enc = self._operation_mode == "encrypt"
+            verb = "Encryption" if is_enc else "Decryption"
+            action = "encrypted" if is_enc else "decrypted"
+            if failed == 0:
+                body = f"{succeeded} file(s) {action} in {elapsed:.1f}s."
+            else:
+                body = f"{succeeded} ok · {failed} failed · {skipped} skipped in {elapsed:.1f}s."
+            send_notification(f"gfgLock — {verb} Complete", body)
         except Exception:
             pass
 
