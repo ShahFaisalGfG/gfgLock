@@ -119,6 +119,31 @@ ApplicationWindow {
                         }
                     }
 
+                    GroupBox {
+                        Layout.fillWidth: true
+                        title: "Logs Panel"
+                        font.pixelSize: 12
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 8
+
+                            CheckBox {
+                                id: logTextWrapCheck
+                                text: "Text Wrap"
+                                font.pixelSize: 12
+                                onCheckedChanged: prefsWin._dirty = true
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "When enabled, long log lines wrap instead of scrolling horizontally."
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
+                            }
+                        }
+                    }
+
                     Item { implicitHeight: 4 }
                 }
             }
@@ -394,6 +419,31 @@ ApplicationWindow {
                         }
                     }
 
+                    GroupBox {
+                        Layout.fillWidth: true
+                        title: "Notifications"
+                        font.pixelSize: 12
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 8
+
+                            CheckBox {
+                                id: opNotificationsCheck
+                                text: "Operation Completed Notifications"
+                                font.pixelSize: 12
+                                onCheckedChanged: prefsWin._dirty = true
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Show a Windows notification when an encryption or decryption session completes."
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
+                            }
+                        }
+                    }
+
                     Item { implicitHeight: 4 }
                 }
             }
@@ -457,10 +507,12 @@ ApplicationWindow {
                 Math.max(0, prefsController.encThreads - 1), encThreadsCombo.count - 1)
             decThreadsCombo.currentIndex = Math.min(
                 Math.max(0, prefsController.decThreads - 1), decThreadsCombo.count - 1)
-            encFilenamesCheck.checked = prefsController.encFilenames
-            disableClampCheck.checked = !prefsController.clampThreads
-            enableLogsCheck.checked = prefsController.enableLogs
-            logLevelCombo.currentIndex = prefsController.logLevel === "all" ? 1 : 0
+            encFilenamesCheck.checked   = prefsController.encFilenames
+            logTextWrapCheck.checked    = prefsController.logTextWrap
+            disableClampCheck.checked   = !prefsController.clampThreads
+            enableLogsCheck.checked     = prefsController.enableLogs
+            logLevelCombo.currentIndex  = prefsController.logLevel === "all" ? 1 : 0
+            opNotificationsCheck.checked = prefsController.operationNotifications
 
             var encChunk = prefsController.encChunkSize
             for (var i = 0; i < _chunkOpts.length; i++) {
@@ -487,16 +539,18 @@ ApplicationWindow {
             var decChunkVal = _chunkOpts[decChunkCombo.currentIndex].value
 
             var updates = {
-                "theme":                          themeValues[themeCombo.currentIndex],
-                "encryption.cpu_threads":         encThreadsCombo.currentIndex + 1,
-                "encryption.chunk_size":          encChunkVal,
-                "encryption.encrypt_filenames":   encFilenamesCheck.checked,
-                "decryption.cpu_threads":         decThreadsCombo.currentIndex + 1,
-                "decryption.chunk_size":          decChunkVal,
-                "advanced.encryption_mode":       _algOpts[algCombo.currentIndex].value,
-                "advanced.enable_logs":           enableLogsCheck.checked,
-                "advanced.log_level":             logLevelCombo.currentIndex === 1 ? "all" : "critical",
-                "advanced.clamp_cpu_threads":     !disableClampCheck.checked
+                "theme":                              themeValues[themeCombo.currentIndex],
+                "appearance.log_text_wrap":           logTextWrapCheck.checked,
+                "encryption.cpu_threads":             encThreadsCombo.currentIndex + 1,
+                "encryption.chunk_size":              encChunkVal,
+                "encryption.encrypt_filenames":       encFilenamesCheck.checked,
+                "decryption.cpu_threads":             decThreadsCombo.currentIndex + 1,
+                "decryption.chunk_size":              decChunkVal,
+                "advanced.encryption_mode":           _algOpts[algCombo.currentIndex].value,
+                "advanced.enable_logs":               enableLogsCheck.checked,
+                "advanced.log_level":                 logLevelCombo.currentIndex === 1 ? "all" : "critical",
+                "advanced.clamp_cpu_threads":         !disableClampCheck.checked,
+                "advanced.operation_notifications":   opNotificationsCheck.checked
             }
             prefsController.saveSettings(updates)
             appController.applyTheme(themeValues[themeCombo.currentIndex])

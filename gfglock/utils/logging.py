@@ -80,16 +80,21 @@ def write_log(message: str, level: str = "general") -> bool:
 
 
 def write_session_separator() -> None:
-    """Append a visual session separator line to both log files (no timestamp)."""
+    """Append a visual separator to log files, respecting the log-level setting."""
     try:
         settings = load_settings()
-        if not settings.get("advanced", {}).get("enable_logs", False):
+        adv = settings.get("advanced", {})
+        if not adv.get("enable_logs", False):
             return
-        sep = "─" * 68
-        for log_file in [get_critical_log_file(), get_general_log_file()]:
+        sep = "─" * 68 + "\n\n"
+        log_level = adv.get("log_level", "critical")
+        targets = [get_critical_log_file()]
+        if log_level == "all":
+            targets.append(get_general_log_file())
+        for log_file in targets:
             try:
                 with open(log_file, "a", encoding="utf-8") as f:
-                    f.write(f"{sep}\n\n")
+                    f.write(sep)
             except Exception:
                 pass
     except Exception:

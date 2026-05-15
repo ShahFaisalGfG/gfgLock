@@ -130,6 +130,13 @@ ApplicationWindow {
     }
 
     Connections {
+        target: prefsController
+        function onSettingsChanged() {
+            progressLogs._wrapEnabled = prefsController.logTextWrap
+        }
+    }
+
+    Connections {
         target: encryptController.fileModel
         function onCountChanged(count) {
             if (count > 0 && encDlg._prevFileCount === 0)
@@ -625,13 +632,21 @@ ApplicationWindow {
                         Layout.fillWidth:  true
                         Layout.fillHeight: true
                         clip: true
-                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        ScrollBar.horizontal.policy: progressLogs._wrapEnabled ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
 
                         TextArea {
                             id:            progressLogs
+                            property bool _wrapEnabled: prefsController ? prefsController.logTextWrap : true
                             readOnly:      true
-                            wrapMode:      TextEdit.NoWrap
+                            wrapMode:      _wrapEnabled ? TextEdit.WordWrap : TextEdit.NoWrap
+                            onWrapModeChanged: {
+                                var saved = text
+                                text = ""
+                                text = saved
+                                cursorPosition = length
+                            }
                             ContextMenu.menu: Menu {
+                                onAboutToShow: wrapProgressItem.checked = progressLogs._wrapEnabled
                                 MenuItem {
                                     text:        qsTr("Copy")
                                     enabled:     progressLogs.selectedText !== ""
@@ -640,6 +655,13 @@ ApplicationWindow {
                                 MenuItem {
                                     text:        qsTr("Select All")
                                     onTriggered: progressLogs.selectAll()
+                                }
+                                MenuSeparator {}
+                                MenuItem {
+                                    id:          wrapProgressItem
+                                    text:        qsTr("Text Wrap")
+                                    checkable:   true
+                                    onTriggered: progressLogs._wrapEnabled = checked
                                 }
                             }
                             font.pixelSize: 11

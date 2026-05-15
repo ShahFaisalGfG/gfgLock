@@ -1,5 +1,8 @@
 {
   "theme": "light",
+  "appearance": {
+    "log_text_wrap": true
+  },
   "encryption": {
     "cpu_threads": 6,
     "chunk_size": 33554432,
@@ -13,7 +16,8 @@
   "advanced": {
     "encryption_mode": "aes256_gcm",
     "enable_logs": true,
-    "log_level": "critical",
-    "clamp_cpu_threads": true
+    "log_level": "all",
+    "clamp_cpu_threads": true,
+    "operation_notifications": false
   }
 }

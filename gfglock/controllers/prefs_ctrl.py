@@ -11,9 +11,11 @@ _T = TypeVar("_T")
 
 from gfglock.config.defaults import (
     AlgorithmDefaults,
-    EncryptionDefaults,
+    AppearanceDefaults,
     DecryptionDefaults,
+    EncryptionDefaults,
     LoggingDefaults,
+    NotificationDefaults,
     PerformanceDefaults,
     ThemeDefaults,
 )
@@ -110,6 +112,16 @@ class PrefsController(QObject):
     def clampThreads(self) -> bool:
         """True when one CPU thread is reserved for the OS (default on)."""
         return self._get("advanced", "clamp_cpu_threads", default=PerformanceDefaults.CLAMP_CPU_THREADS)
+
+    @Property(bool, notify=settingsChanged)
+    def logTextWrap(self) -> bool:
+        """True when the logs panel wraps long lines (default on)."""
+        return self._get("appearance", "log_text_wrap", default=AppearanceDefaults.LOG_TEXT_WRAP)
+
+    @Property(bool, notify=settingsChanged)
+    def operationNotifications(self) -> bool:
+        """True when desktop notifications fire on operation completion (default on)."""
+        return self._get("advanced", "operation_notifications", default=NotificationDefaults.OPERATION_NOTIFICATIONS)
 
     @Property(int, notify=settingsChanged)
     def maxThreads(self) -> int:
