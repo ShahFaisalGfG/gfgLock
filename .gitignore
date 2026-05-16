@@ -8,6 +8,15 @@ dist/
 dist_portable/
 *.spec
 
+# ── Native C++ build ──────────────────────────────────────────────────────────
+native/out/
+native/build/
+native/vcpkg_installed/
+*.pyd
+
+# ── vcpkg ─────────────────────────────────────────────────────────────────────
+.vcpkg/
+
 # ── Python cache ──────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
