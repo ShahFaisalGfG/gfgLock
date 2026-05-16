@@ -1,11 +1,14 @@
 <#
 .SYNOPSIS
-    Build the gfgLock Windows 11 installers (system-wide and per-user).
+    Full build: native targets, both installers, and portable exe.
 .DESCRIPTION
-    Step 1 — PyInstaller  : bundles the app into dist\gfgLock\
-    Step 2 — Inno Setup   : compiles both system and user installers into build\installer\
+    Step 1 — Native build : compiles gfglock_native.pyd and gfglock_shell.dll
+    Step 2 — PyInstaller  : bundles the app into dist\gfgLock\
+    Step 3 — Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
+    Step 4 — Inno Setup   : compiles system and user installers into build\installer\
+    Step 5 — Portable     : builds a single-file portable exe into build\
 .NOTES
-    Requirements: Python venv with pyinstaller>=6.17, Inno Setup 6
+    Requirements: Python venv with pyinstaller>=6.17, Inno Setup 6, Visual Studio Build Tools
 #>
 
 Set-StrictMode -Version Latest
@@ -14,13 +17,12 @@ $ErrorActionPreference = "Stop"
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 $AppName  = "gfgLock"
-$Version  = "2.7.5"
+$Version  = "3.0.0"
 $Entry    = "gfglock\__main__.py"
 $DistDir  = "dist\$AppName"
 $IssFiles = @(
     "installer\gfglock_system_installer.iss",
-    "installer\gfglock_user_installer.iss",
-    "installer\gfglock_silent_user_installer.iss"
+    "installer\gfglock_user_installer.iss"
 )
 $IsccPaths = @(
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
@@ -59,6 +61,15 @@ $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $BuildStart = Get-Date
 Set-Location $ScriptDir
 
+# ── Native C++ extension ──────────────────────────────────────────────────────
+
+Write-Step "Building native C++ targets (gfglock_native.pyd + gfglock_shell.dll)"
+
+& "$ScriptDir\build_native.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Fail "build_native.ps1 failed (exit $LASTEXITCODE). Check output above."
+}
+
 # ── Virtual environment ───────────────────────────────────────────────────────
 
 Write-Step "Activating virtual environment"
@@ -74,7 +85,7 @@ foreach ($v in $VenvScripts) {
     }
 }
 if (-not $VenvFound) {
-    Write-Host "   No venv found — using system Python" -ForegroundColor Yellow
+    Write-Host "   No venv found - using system Python" -ForegroundColor Yellow
 }
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
@@ -151,6 +162,17 @@ if (-not (Test-Path $ExePath)) {
 $BundleMb = [math]::Round((Get-ChildItem $DistDir -Recurse | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host "   Bundle ready : $DistDir  ($BundleMb MB)" -ForegroundColor DarkGray
 
+# ── Shell extension DLL ───────────────────────────────────────────────────────
+
+Write-Step "Copying gfglock_shell.dll to dist"
+
+$ShellDll = Join-Path $ScriptDir "build\shell\gfglock_shell.dll"
+if (-not (Test-Path $ShellDll)) {
+    Fail "gfglock_shell.dll not found at: $ShellDll - did build_native.ps1 succeed?"
+}
+Copy-Item $ShellDll (Join-Path $ScriptDir "dist\$AppName\gfglock_shell.dll") -Force
+Write-Host "   Copied gfglock_shell.dll to dist\$AppName\" -ForegroundColor DarkGray
+
 # ── Inno Setup ────────────────────────────────────────────────────────────────
 
 Write-Step "Compiling installers with Inno Setup"
@@ -211,8 +233,7 @@ $PortableElapsed = (Get-Date) - $PortableStart
 
 $Outputs = @(
     "build\installer\${AppName}_${Version}_system_installer.exe",
-    "build\installer\${AppName}_${Version}_user_installer.exe",
-    "build\installer\${AppName}_${Version}_silent_user_installer.exe"
+    "build\installer\${AppName}_${Version}_user_installer.exe"
 )
 
 Write-Host ""

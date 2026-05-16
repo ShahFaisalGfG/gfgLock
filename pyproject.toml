@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "gfglock"
-version = "2.7.5"
+version = "3.0.0"
 description = "Secure AES-256 file encryption and decryption — fast, simple, reliable"
 authors = [{ name = "Shah Faisal", email = "dev@gfgroyal.com" }]
 readme = "readme.md"
@@ -13,7 +13,7 @@ license = { text = "Proprietary" }
 dependencies = [
     "PySide6>=6.7",
     "cryptography>=46.0",
-    "pycryptodome>=3.23",
+    "pycryptodome>=3.20",
     "py-cpuinfo>=9.0",
 ]
 
@@ -21,7 +21,11 @@ dependencies = [
 gfglock = "gfglock.app:main"
 
 [project.optional-dependencies]
-dev = ["pyinstaller>=6.17"]
+dev = ["pyinstaller>=6.17", "pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
 
 [tool.setuptools.packages.find]
 where = ["."]

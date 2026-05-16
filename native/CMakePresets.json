@@ -1,0 +1,23 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "release-x64-msvc",
+            "displayName": "Release x64 (MSVC + vcpkg)",
+            "generator": "Visual Studio 18 2026",
+            "architecture": { "value": "x64", "strategy": "set" },
+            "toolchainFile": "${sourceDir}/../.vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "pybind11_DIR": "${sourceDir}/../.venv/Lib/site-packages/pybind11/share/cmake/pybind11"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "release",
+            "configurePreset": "release-x64-msvc",
+            "configuration": "Release"
+        }
+    ]
+}

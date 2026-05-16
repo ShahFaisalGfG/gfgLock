@@ -144,6 +144,7 @@ ApplicationWindow {
                         }
                     }
 
+
                     Item { implicitHeight: 4 }
                 }
             }
@@ -443,6 +444,7 @@ ApplicationWindow {
                             }
                         }
                     }
+
 
                     Item { implicitHeight: 4 }
                 }

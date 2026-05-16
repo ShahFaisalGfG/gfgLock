@@ -1,5 +1,6 @@
 PySide6>=6.7
 cryptography>=46.0
-pycryptodome>=3.23
+pycryptodome>=3.20
 pyinstaller>=6.17
 py-cpuinfo>=9.0
+pytest>=8.0

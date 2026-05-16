@@ -1,11 +1,13 @@
 # helpers.py — file/size/format utilities and cryptographic helpers
 
-import hashlib
 import os
 import sys
 from datetime import datetime
 from multiprocessing import cpu_count
 from secrets import token_hex
+
+from gfglock.core import native_bridge as _bridge
+from gfglock.utils.console import safe_print
 
 
 def resource_path(relative_path: str) -> str:
@@ -111,23 +113,8 @@ def predict_encrypted_size(file_path: str, mode: str = "GCM") -> int:
 
 
 def derive_key(password: str, salt: bytes, iterations: int = 200000) -> bytes:
-    """Derive a 256-bit key from a password using PBKDF2-HMAC-SHA256."""
-    return hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), salt, iterations, dklen=32
-    )
-
-
-def safe_print(msg: str) -> None:
-    """Write a UTF-8 message to stdout, safe for Windows console environments."""
-    try:
-        sys.stdout.buffer.write((str(msg) + "\n").encode("utf-8", errors="replace"))
-        sys.stdout.buffer.flush()
-    except Exception:
-        try:
-            sys.stdout.write(str(msg) + "\n")
-            sys.stdout.flush()
-        except Exception:
-            pass
+    """Derive a 256-bit key via PBKDF2-HMAC-SHA256 (native C++ when available)."""
+    return _bridge.derive_key(password, salt, iterations)
 
 
 def generate_encrypted_name(src_path: str, encrypt_name: bool, ext: str) -> str:

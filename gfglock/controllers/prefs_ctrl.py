@@ -19,7 +19,8 @@ from gfglock.config.defaults import (
     PerformanceDefaults,
     ThemeDefaults,
 )
-from gfglock.config.ui_config import EncryptionModes, ChunkSizeOptions
+from gfglock.config.ui_config import ChunkSizeOptions, EncryptionModes
+from gfglock.core import native_bridge
 from gfglock.utils.logging import clear_logs, get_logs_dir
 from gfglock.utils.settings import get_default_settings, load_settings, save_settings
 
@@ -141,6 +142,11 @@ class PrefsController(QObject):
             {"label": label, "value": val if val is not None else -1}
             for label, val in ChunkSizeOptions.get_options()
         ]
+
+    @Property(bool, constant=True)
+    def nativeAvailable(self) -> bool:
+        """True when the native C++ extension (.pyd) is loaded."""
+        return native_bridge.NATIVE_AVAILABLE
 
     # ── Slots ─────────────────────────────────────────────────────────────
 

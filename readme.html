@@ -375,8 +375,8 @@
 	<p><a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg"
 				alt="License: MIT"></a> <a href="https://github.com/ShahFaisalGfG/gfgLock/releases"><img
 				src="https://img.shields.io/badge/Platform-Windows-blue.svg" alt="Windows"></a> <a
-			href="https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v2.7.5"><img
-				src="https://img.shields.io/badge/Latest-v2.7.5-green" alt="Latest Release"></a></p>
+			href="https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v3.0.0"><img
+				src="https://img.shields.io/badge/Latest-v3.0.0-green" alt="Latest Release"></a></p>
 	<hr>
 	<h2 id="overview">Overview</h2>
 	<p>gfgLock is a focused Windows tool for encrypting files with modern, authenticated ciphers. It aims for a balance
@@ -390,7 +390,7 @@
 		<li>Theme support: System / Light / Dark with live Apply</li>
 		<li>PySide6 + QML framework with Material-style interface</li>
 		<li>Preferences with Apply/Save and persistent <code>settings.json</code></li>
-		<li>Hardware acceleration where available (AES-NI / platform crypto backends)</li>
+		<li>Native C++ encryption engine backed by OpenSSL (AES-256-GCM, CFB, ChaCha20-Poly1305) with transparent Python fallback</li>
 	</ul>
 	<h2 id="screenshots">screenshots</h2>
 	<h4 id="main-window-dialogs-and-progress-examples">Main window, dialogs and progress examples:</h4>
@@ -430,19 +430,19 @@
 	</ul>
 	<h2 id="quick-start">Quick Start</h2>
 	<ol>
-		<li>Download <code>gfgLock_Setup_2.7.5.exe</code> from <a
+		<li>Download <code>gfgLock_Setup_3.0.0.exe</code> from <a
 				href="https://github.com/ShahFaisalGfG/gfgLock/releases/">Releases</a> and install.</li>
 		<li>Add files/folders (drag &amp; drop supported).</li>
 		<li>Choose Encrypt or Decrypt, pick algorithm (Encrypt only), enter password, and Start.</li>
 	</ol>
 	<h3 id="portable">Portable</h3>
-	<p>Run <code><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/">gfgLock_v2.7.5_portable.exe</a></code> —
+	<p>Run <code><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/">gfgLock_v3.0.0_portable.exe</a></code> —
 		no
 		install required.
 	</p>
 	<h2 id="installation-brief">Installation (brief)</h2>
 	<ul>
-		<li>Installer: <code>gfgLock_Setup_2.7.5.exe</code> (recommended)</li>
+		<li>Installer: <code>gfgLock_Setup_3.0.0.exe</code> (recommended)</li>
 		<li>Developer: clone repo, create venv, <code>pip install -r requirements.txt</code>, run
 			<code>python -m gfglock</code>
 		</li>
@@ -453,7 +453,7 @@
 		<li>License: MIT — see <code>LICENSE</code></li>
 	</ul>
 	<hr>
-	<p>Last Updated: May 2026</p>
+	<p>Last Updated: June 2026</p>
 	<h2 id="file-extensions--compatibility">File Extensions &amp; Compatibility</h2>
 	<table>
 		<thead>
@@ -606,7 +606,7 @@
 		<li><strong>Use When:</strong> You prioritize side-channel resistance; low-power/older CPU systems</li>
 		<li><strong>Best For:</strong> High-security applications, systems without AES-NI, cryptography purists</li>
 		<li><strong>Advantage:</strong> Resistant to timing attacks; excellent on CPU without hardware AES</li>
-		<li><strong>Note:</strong> Pure software implementation (no hardware acceleration)</li>
+		<li><strong>Note:</strong> OpenSSL-backed via native C++ engine when available; pure Python (pycryptodome) otherwise</li>
 	</ul>
 	<h3 id="quick-decision-matrix">Quick Decision Matrix</h3>
 	<pre class="hljs"><code><div>├─ Need Maximum Security?
@@ -702,7 +702,15 @@
 	</ul>
 	<hr>
 	<h2 id="version-history">Version History</h2>
-	<h3 id="v275-current--may-2026">v2.7.5 (Current) — May 2026</h3>
+	<h3 id="v300-current--june-2026">v3.0.0 (Current) — June 2026</h3>
+	<ul>
+		<li>🚀 <strong>Native Engine:</strong> C++ extension (<code>gfglock_native.pyd</code>) backed by OpenSSL — AES-256-GCM, CFB, ChaCha20-Poly1305, and PBKDF2 with transparent Python fallback</li>
+		<li>🔗 <strong>Bridge:</strong> <code>native_bridge.py</code> gateway with <code>NATIVE_AVAILABLE</code> flag and typed wrappers for all cipher operations and KDF</li>
+		<li>🧪 <strong>Tests:</strong> New <code>pytest</code> suite covering native path, Python fallback, and cross-path compatibility</li>
+		<li>🔧 <strong>Build:</strong> <code>build_native.ps1</code> automates MSVC, vcpkg, OpenSSL, and CMake compilation in one command</li>
+		<li>📦 <strong>Dev:</strong> Added <code>pytest&gt;=8.0</code>; relaxed <code>pycryptodome</code> to <code>&gt;=3.20</code></li>
+	</ul>
+	<h3 id="v275--may-2026">v2.7.5 — May 2026</h3>
 	<ul>
 		<li>🔄 <strong>Framework:</strong> Complete rewrite — PyQt6 widgets replaced with PySide6 + QML and Material-style interface</li>
 		<li>📦 <strong>Package:</strong> Restructured from flat <code>src/</code> layout to <code>gfglock/</code> MVC package (controllers, models, services, utils, qml)</li>
@@ -734,8 +742,10 @@
 	<p>Future releases planned:</p>
 	<ul>
 		<li>🔮 <strong>v2.8.0</strong> — Resumable/pause operations for large files</li>
-		<li>🔮 <strong>v3.0.0</strong> — Context-Menu Fix</li>
-		<li>🔮 <strong>v3.1.1</strong> — File integrity verification (checksums)</li>
+		<li>🔮 <strong>v3.1.0</strong> — Context-Menu Fix</li>
+		<li>🔮 <strong>v3.1.0</strong> — Local Password Wallet</li>
+		<li>🔮 <strong>v3.2.0</strong> — File integrity verification (checksums)</li>
+		<li>🔮 <strong>v4.2.0</strong> — Cloud Integration for encrypted file password backup</li>
 	</ul>
 	<hr>
 	<h2 id="contributing">Contributing</h2>
@@ -773,7 +783,7 @@
 	</ul>
 	<hr>
 	<p><strong>Stay Secure. Encrypt Responsibly.</strong> 🔐</p>
-	<p>Last Updated: May 2026</p>
+	<p>Last Updated: June 2026</p>
 
 </body>
 

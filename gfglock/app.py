@@ -3,7 +3,6 @@
 import ctypes
 from ctypes import wintypes
 import os
-import shlex
 import sys
 from multiprocessing import freeze_support
 
@@ -136,18 +135,29 @@ def _handle_cli(enc_ctrl, args: list, mode: str) -> None:
 
 
 def _parse_paths(path_args: list) -> list:
-    """Reconstruct file paths that Windows may have split across argv."""
+    """Reconstruct file paths from CLI argv elements, with @responsefile support."""
     if not path_args:
         return []
+    if len(path_args) == 1 and path_args[0].startswith("@"):
+        resp = path_args[0][1:].strip("\"'")
+        try:
+            with open(resp, encoding="utf-8") as f:
+                lines = [ln.strip() for ln in f if ln.strip()]
+        except OSError:
+            # Fall back to original args so downstream code can surface a useful error
+            return path_args
+        try:
+            os.remove(resp)
+        except Exception:
+            pass
+        return lines
+    # IExplorerCommand passes each path as a correctly split argv element
+    if any(os.path.exists(p.strip("\"'")) for p in path_args):
+        return path_args
+    # Fallback: single path with spaces may have been split across elements
     combined = " ".join(path_args)
     if os.path.exists(combined):
         return [combined]
-    try:
-        parsed = shlex.split(combined)
-        if any(os.path.exists(p.strip("\"'")) for p in parsed):
-            return parsed
-    except Exception:
-        pass
     return path_args
 
 
