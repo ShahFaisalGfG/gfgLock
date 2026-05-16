@@ -1,25 +1,79 @@
-# aes256_gcm_cfb.py — AES-256 GCM and CFB encryption and decryption
+# aes256_gcm_cfb.py — AES-256 GCM and CFB encryption/decryption.
+# Native C++ path (via native_bridge) is used when the .pyd is present;
+# the Python/cryptography fallback is used otherwise.
+
+import os
+import time
+from functools import partial
+from multiprocessing import Pool, freeze_support
+from typing import Callable, Optional
+
+from gfglock.core import native_bridge
+from gfglock.utils.helpers import (
+    clamp_threads,
+    format_duration,
+    safe_print,
+)
+
+
+def encrypt_file(
+    path: str,
+    password: str,
+    encrypt_name: bool = False,
+    chunk_size=None,
+    AEAD: bool = True,
+    progress_callback: Optional[Callable] = None,
+) -> tuple[bool, str]:
+    """Encrypt a single file using AES-256 GCM (AEAD) or CFB."""
+    cs = 0 if chunk_size is None else int(chunk_size)
+    mode = "GCM" if AEAD else "CFB"
+    if native_bridge.NATIVE_AVAILABLE:
+        safe_print(f"[AES-{mode}] Encrypt: native C++ path  →  {os.path.basename(path)}")
+        fn = native_bridge.encrypt_gcm if AEAD else native_bridge.encrypt_cfb
+        ok, msg = fn(path, password, encrypt_name, cs, progress_callback)
+        if msg:
+            safe_print(msg)
+        return ok, msg
+    safe_print(f"[AES-{mode}] Encrypt: Python fallback path  →  {os.path.basename(path)}")
+    return _encrypt_file_py(path, password, encrypt_name, chunk_size, AEAD, progress_callback)
+
+
+def decrypt_file(
+    path: str,
+    password: str,
+    chunk_size=None,
+    progress_callback: Optional[Callable] = None,
+) -> tuple[bool, str]:
+    """Decrypt a single AES-256 GCM or CFB encrypted file."""
+    if native_bridge.NATIVE_AVAILABLE:
+        is_gcm = path.lower().endswith(".gfglock")
+        mode = "GCM" if is_gcm else "CFB"
+        safe_print(f"[AES-{mode}] Decrypt: native C++ path  →  {os.path.basename(path)}")
+        fn = native_bridge.decrypt_gcm if is_gcm else native_bridge.decrypt_cfb
+        ok, msg = fn(path, password, progress_callback)
+        if msg:
+            safe_print(msg)
+        return ok, msg
+    safe_print(f"[AES] Decrypt: Python fallback path  →  {os.path.basename(path)}")
+    return _decrypt_file_py(path, password, chunk_size, progress_callback)
+
+
+# ── Python fallback (used when .pyd is not available) ────────────────────────
 
 import io
-import os
 import struct
-import time
-from multiprocessing import Pool, freeze_support
 from secrets import token_bytes
-from typing import Optional, cast
+from typing import cast
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+from gfglock.core.chunk_processing import FileChunker
 from gfglock.utils.helpers import (
-    clamp_threads,
     derive_key,
-    format_duration,
     generate_encrypted_name,
     get_cpu_thread_count,
-    safe_print,
 )
-from gfglock.core.chunk_processing import FileChunker
 
 SALT_SIZE = 16
 NONCE_SIZE = 12
@@ -30,8 +84,8 @@ SMALL_FILE_THRESHOLD = 10 * 1024 * 1024
 PROGRESS_UPDATE_INTERVAL = 100 * 1024 * 1024
 
 
-def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True, progress_callback=None):
-    """Encrypt a single file using AES-256 GCM (AEAD) or CFB."""
+def _encrypt_file_py(path, password, encrypt_name, chunk_size, AEAD, progress_callback):
+    """Python-level AES-256-GCM/CFB encrypt (fallback when native is unavailable)."""
     logs = []
     out_path = None
     chunker = None
@@ -113,7 +167,7 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True,
         msg = f"Encrypted: {path} -> {out_path}"
         logs.append(msg); safe_print(msg)
         try:
-            chunker.cleanup_temp_dir()
+            chunker.cleanup_temp_dir()  # type: ignore[union-attr]
         except Exception:
             pass
         return True, "\n".join(logs)
@@ -133,8 +187,8 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, AEAD=True,
         return False, "\n".join(logs)
 
 
-def decrypt_file(path, password, chunk_size=None, progress_callback=None):
-    """Decrypt a single AES-256 GCM or CFB encrypted file."""
+def _decrypt_file_py(path, password, chunk_size, progress_callback):
+    """Python-level AES-256-GCM/CFB decrypt (fallback when native is unavailable)."""
     logs = []
     out_path = None
     try:
@@ -339,6 +393,8 @@ def decrypt_file(path, password, chunk_size=None, progress_callback=None):
         logs.append(msg); safe_print(msg)
         return False, "\n".join(logs)
 
+
+# ── Folder helpers (unchanged) ────────────────────────────────────────────────
 
 def _enc(args):
     return encrypt_file(*args)

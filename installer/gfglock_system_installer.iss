@@ -1,11 +1,11 @@
 ; =======================================================
 ; gfgLock Windows Installer
 ; Inno Setup Script
-; Version: 2.7.5
+; Version: 3.0.0
 ; =======================================================
 
 #define MyAppName "gfgLock"
-#define MyAppVersion "2.7.5"
+#define MyAppVersion "3.0.0"
 #define MyAppPublisher "gfgRoyal"
 #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
 #define MyAppExeName "gfgLock.exe"

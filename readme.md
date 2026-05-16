@@ -2,7 +2,7 @@
 
 A compact, secure Windows file-encryption GUI. Supports AES-256 GCM, AES-256 CFB and ChaCha20-Poly1305, batch processing, logging, and theme switching.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://github.com/ShahFaisalGfG/gfgLock/releases) [![Latest Release](https://img.shields.io/badge/Latest-v2.7.5-green)](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v2.7.5)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://github.com/ShahFaisalGfG/gfgLock/releases) [![Latest Release](https://img.shields.io/badge/Latest-v3.0.0-green)](https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v3.0.0)
 
 ---
 
@@ -18,7 +18,7 @@ gfgLock is a focused Windows tool for encrypting files with modern, authenticate
 - Real-time file-based logging (`%APPDATA%\\gfgLock\\logs\\`)
 - Batch processing with multi-threading and configurable chunk sizes
 - Theme support: System / Light / Dark with live Apply
-- Hardware acceleration where available (AES-NI / platform crypto backends)
+- Native C++ encryption engine backed by OpenSSL (AES-256-GCM, CFB, ChaCha20-Poly1305) with transparent Python fallback
 - PySide6 + QML framework with Material-style interface
 - Preferences with Apply/Save and persistent `settings.json`
 
@@ -60,17 +60,17 @@ gfgLock is a focused Windows tool for encrypting files with modern, authenticate
 
 ## Quick Start
 
-1. Download `gfgLock_Setup_2.7.5.exe` from Releases and install.
+1. Download `gfgLock_Setup_3.0.0.exe` from Releases and install.
 2. Add files/folders (drag & drop supported).
 3. Choose Encrypt or Decrypt, pick algorithm (Encrypt only), enter password, and Start.
 
 ### Portable
 
-Run `gfgLock_v2.7.5_portable.exe` — no install required.
+Run `gfgLock_v3.0.0_portable.exe` — no install required.
 
 ## Installation (brief)
 
-- Installer: `gfgLock_Setup_2.7.5.exe` (recommended)
+- Installer: `gfgLock_Setup_3.0.0.exe` (recommended)
 - Developer: clone repo, create venv, `pip install -r requirements.txt`, run `python -m gfglock`
 
 ## Support & License
@@ -80,7 +80,7 @@ Run `gfgLock_v2.7.5_portable.exe` — no install required.
 
 ---
 
-Last Updated: May 2026
+Last Updated: June 2026
 
 ## File Extensions & Compatibility
 
@@ -176,7 +176,7 @@ Choose the right algorithm for your security and performance needs:
 - **Use When:** You prioritize side-channel resistance; low-power/older CPU systems
 - **Best For:** High-security applications, systems without AES-NI, cryptography purists
 - **Advantage:** Resistant to timing attacks; excellent on CPU without hardware AES
-- **Note:** Pure software implementation (no hardware acceleration)
+- **Note:** OpenSSL-backed via native C++ engine when available; pure Python (pycryptodome) otherwise
 
 ### Quick Decision Matrix
 
@@ -261,7 +261,8 @@ gfgLock/
 │   ├── core/
 │   │   ├── aes256_gcm_cfb.py            # AES-256 GCM/CFB encryption
 │   │   ├── chacha20_poly1305.py         # ChaCha20-Poly1305 encryption
-│   │   └── chunk_processing.py          # Chunk-based processing helpers
+│   │   ├── chunk_processing.py          # Chunk-based processing helpers
+│   │   └── native_bridge.py             # Python/native C++ gateway
 │   ├── models/
 │   │   └── file_model.py                # File list model (QAbstractListModel)
 │   ├── qml/
@@ -272,13 +273,17 @@ gfgLock/
 │   ├── services/
 │   │   └── worker.py                    # Multi-threaded encrypt/decrypt worker
 │   └── utils/
+│       ├── console.py                   # Safe stdout writer
 │       ├── helpers.py                   # Utility helpers
 │       ├── logging.py                   # Log file management
 │       └── settings.py                  # Settings load/save
+├── native/                              # C++ extension source (CMake + OpenSSL)
+├── tests/                               # pytest test suite
 ├── installer/
 │   ├── gfglock_system_installer.iss     # System-wide installer (Inno Setup)
 │   └── gfglock_user_installer.iss       # Per-user installer (Inno Setup)
 ├── build.ps1                            # Windows build script (PyInstaller + Inno Setup)
+├── build_native.ps1                     # Native C++ extension build script
 ├── pyproject.toml                       # Project metadata & build config
 ├── requirements.txt                     # Python dependencies
 ├── README.md                            # This file
@@ -289,12 +294,12 @@ gfgLock/
 
 ## Dependencies
 
-| Package      | Purpose                  | Version |
-| ------------ | ------------------------ | ------- |
-| PySide6      | Qt6 GUI framework        | 6.7+    |
-| cryptography | AES-256 encryption       | 3.4+    |
-| pycryptodome | ChaCha20-Poly1305        | 3.4+    |
-| py-cpuinfo   | CPU feature detection    | 9.0+    |
+| Package      | Purpose                              | Version |
+| ------------ | ------------------------------------ | ------- |
+| PySide6      | Qt6 GUI framework                    | 6.7+    |
+| cryptography | AES-256 encryption (Python fallback) | 46.0+   |
+| pycryptodome | ChaCha20-Poly1305 (Python fallback)  | 3.20+   |
+| py-cpuinfo   | CPU feature detection                | 9.0+    |
 
 **Full list:** See [requirements.txt](requirements.txt)
 
@@ -326,7 +331,7 @@ Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php) and PyInstaller. Run 
 
 ```powershell
 .\build.ps1
-# Installer output: build\installer\gfgLock_2.7.5_system_installer.exe
+# Installer output: build\installer\gfgLock_3.0.0_system_installer.exe
 ```
 
 The script automatically activates the venv, runs PyInstaller, validates the bundle, and compiles the Inno Setup installer.
@@ -355,7 +360,15 @@ The script automatically activates the venv, runs PyInstaller, validates the bun
 
 ## Version History
 
-### v2.7.5 (Current) — May 2026
+### v3.0.0 (Current) — June 2026
+
+- 🚀 **Native Engine:** C++ extension (`gfglock_native.pyd`) backed by OpenSSL — AES-256-GCM, CFB, ChaCha20-Poly1305, and PBKDF2 with transparent Python fallback
+- 🔗 **Bridge:** `native_bridge.py` gateway with `NATIVE_AVAILABLE` flag and typed wrappers for all cipher operations and KDF
+- 🧪 **Tests:** New `pytest` suite covering native path, Python fallback, and cross-path compatibility
+- 🔧 **Build:** `build_native.ps1` automates MSVC, vcpkg, OpenSSL, and CMake compilation in one command
+- 📦 **Dev:** Added `pytest>=8.0`; relaxed `pycryptodome` to `>=3.20`
+
+### v2.7.5 — May 2026
 
 - 🔄 **Framework:** Complete rewrite — PyQt6 widgets replaced with PySide6 + QML and Material-style interface
 - 📦 **Package:** Restructured from flat `src/` layout to `gfglock/` MVC package (controllers, models, services, utils, qml)
@@ -395,11 +408,11 @@ The script automatically activates the venv, runs PyInstaller, validates the bun
 
 Future releases planned (Major):
 
-- 🔮 **v2.8.0** — Resumable/pause operations for large files
-- 🔮 **v3.0.0** — Context-Menu Fix
+- 🔮 **v3.1.0** — Context-Menu Fix
 - 🔮 **v3.2.0** — File integrity verification (checksums)
-- 🔮 **v4.1.0** — Add more features like auto encryption of decrypted files
-- 🔮 **v4.5.0** — Local Password Wallet
+- 🔮 **v2.8.0** — Resumable/pause operations for large files
+- 🔮 **v3.1.0** — Local Password Wallet
+- 🔮 **v4.2.0** — Cloud Integration for encrypted file password backup
 
 ---
 
@@ -451,4 +464,4 @@ This software is provided "AS IS" without warranty of any kind.
 
 **Stay Secure. Encrypt Responsibly.** 🔐
 
-Last Updated: May 2026
+Last Updated: June 2026

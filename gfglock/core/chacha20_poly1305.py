@@ -1,24 +1,70 @@
-# chacha20_poly1305.py — ChaCha20-Poly1305 encryption and decryption
+# chacha20_poly1305.py — ChaCha20-Poly1305 encryption and decryption.
+# Native C++ path (via native_bridge) is used when the .pyd is present;
+# the Python/pycryptodome fallback is used otherwise.
 
-import io
 import os
-import struct
 import time
 from multiprocessing import Pool, freeze_support
+from typing import Callable, Optional
+
+from gfglock.core import native_bridge
+from gfglock.utils.helpers import (
+    clamp_threads,
+    format_duration,
+    safe_print,
+)
+
+
+def encrypt_file(
+    path: str,
+    password: str,
+    encrypt_name: bool = False,
+    chunk_size=None,
+    progress_callback: Optional[Callable] = None,
+) -> tuple[bool, str]:
+    """Encrypt a single file using ChaCha20-Poly1305."""
+    cs = 0 if chunk_size is None else int(chunk_size)
+    if native_bridge.NATIVE_AVAILABLE:
+        safe_print(f"[ChaCha20] Encrypt: native C++ path  →  {os.path.basename(path)}")
+        ok, msg = native_bridge.encrypt_chacha(path, password, encrypt_name, cs, progress_callback)
+        if msg:
+            safe_print(msg)
+        return ok, msg
+    safe_print(f"[ChaCha20] Encrypt: Python fallback path  →  {os.path.basename(path)}")
+    return _encrypt_file_py(path, password, encrypt_name, chunk_size, progress_callback)
+
+
+def decrypt_file(
+    path: str,
+    password: str,
+    chunk_size=None,
+    progress_callback: Optional[Callable] = None,
+) -> tuple[bool, str]:
+    """Decrypt a single ChaCha20-Poly1305 encrypted file."""
+    if native_bridge.NATIVE_AVAILABLE:
+        safe_print(f"[ChaCha20] Decrypt: native C++ path  →  {os.path.basename(path)}")
+        ok, msg = native_bridge.decrypt_chacha(path, password, progress_callback)
+        if msg:
+            safe_print(msg)
+        return ok, msg
+    safe_print(f"[ChaCha20] Decrypt: Python fallback path  →  {os.path.basename(path)}")
+    return _decrypt_file_py(path, password, chunk_size, progress_callback)
+
+
+# ── Python fallback (used when .pyd is not available) ────────────────────────
+
+import io
+import struct
 from secrets import token_bytes
-from typing import Optional
 
 from Crypto.Cipher import ChaCha20_Poly1305  # type: ignore[import]
 
+from gfglock.core.chunk_processing import FileChunker
 from gfglock.utils.helpers import (
-    clamp_threads,
     derive_key,
-    format_duration,
     generate_encrypted_name,
     get_cpu_thread_count,
-    safe_print,
 )
-from gfglock.core.chunk_processing import FileChunker
 
 SALT_SIZE = 16
 NONCE_SIZE = 12
@@ -29,8 +75,14 @@ SMALL_FILE_THRESHOLD = 10 * 1024 * 1024
 PROGRESS_UPDATE_INTERVAL = 100 * 1024 * 1024
 
 
-def encrypt_file(path, password, encrypt_name=False, chunk_size=None, progress_callback=None):
-    """Encrypt a single file using ChaCha20-Poly1305."""
+def _encrypt_file_py(
+    path: str,
+    password: str,
+    encrypt_name: bool = False,
+    chunk_size=None,
+    progress_callback: Optional[Callable] = None,
+) -> tuple[bool, str]:
+    """Python fallback: encrypt a file using ChaCha20-Poly1305 via pycryptodome."""
     logs = []
     out_path = None
     chunker = None
@@ -114,8 +166,13 @@ def encrypt_file(path, password, encrypt_name=False, chunk_size=None, progress_c
         return False, "\n".join(logs)
 
 
-def decrypt_file(path, password, chunk_size=None, progress_callback=None):
-    """Decrypt a single ChaCha20-Poly1305 encrypted file."""
+def _decrypt_file_py(
+    path: str,
+    password: str,
+    chunk_size=None,
+    progress_callback: Optional[Callable] = None,
+) -> tuple[bool, str]:
+    """Python fallback: decrypt a ChaCha20-Poly1305 file via pycryptodome."""
     logs = []
     try:
         if not os.path.exists(path):
@@ -254,7 +311,7 @@ def _dec(args):
     return decrypt_file(*args)
 
 
-def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=None):
+def encrypt_folder(folder: str, password: str, encrypt_name: bool = False, threads: int = 1, chunk_size=None) -> None:
     """Encrypt all files in a folder (multi-threaded)."""
     start = time.time(); count = 0
     files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs]
@@ -274,7 +331,7 @@ def encrypt_folder(folder, password, encrypt_name=False, threads=1, chunk_size=N
     safe_print(f"{count} files encrypted successfully.\nTime elapsed: {format_duration(elapsed)}")
 
 
-def decrypt_folder(folder, password, threads=1, chunk_size=None):
+def decrypt_folder(folder: str, password: str, threads: int = 1, chunk_size=None) -> None:
     """Decrypt all files in a folder (multi-threaded)."""
     start = time.time(); count = 0
     files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs]

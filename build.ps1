@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 $AppName  = "gfgLock"
-$Version  = "2.7.5"
+$Version  = "3.0.0"
 $Entry    = "gfglock\__main__.py"
 $DistDir  = "dist\$AppName"
 $IssFiles = @(
@@ -58,6 +58,15 @@ function Format-Elapsed([TimeSpan]$ts) {
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $BuildStart = Get-Date
 Set-Location $ScriptDir
+
+# ── Native C++ extension ──────────────────────────────────────────────────────
+
+Write-Step "Building native C++ extension (gfglock_native.pyd)"
+
+& "$ScriptDir\build_native.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Fail "build_native.ps1 failed (exit $LASTEXITCODE). Check output above."
+}
 
 # ── Virtual environment ───────────────────────────────────────────────────────
 

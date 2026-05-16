@@ -8,7 +8,7 @@ class AppInfo:
     """Application information and metadata."""
 
     APP_NAME = "gfgLock"
-    APP_VERSION = "2.7.5"
+    APP_VERSION = "3.0.0"
     APP_AUTHOR = "Shah Faisal"
     APP_COMPANY = "gfgRoyal"
     APP_DESCRIPTION = "Secure AES-256 file encryption and decryption — fast, simple, reliable"

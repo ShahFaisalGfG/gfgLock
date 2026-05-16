@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 $AppName      = "gfgLock"
-$Version      = "2.7.5"
+$Version      = "3.0.0"
 $Entry        = "gfglock\__main__.py"
 $PortableName = "${AppName}_${Version}_portable"
 $OutputExe    = "build\${PortableName}.exe"

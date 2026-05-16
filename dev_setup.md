@@ -4,6 +4,7 @@
 
 - Python 3.11+
 - [Inno Setup 6](https://jrsoftware.org/isinfo.php) (for building the Windows installer)
+- Visual Studio 2022+ Build Tools with the C++ workload, CMake ≥ 3.25 (for the native C++ extension)
 
 ---
 
@@ -28,7 +29,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-This installs: `PySide6`, `cryptography`, `pycryptodome`, `pyinstaller`, `py-cpuinfo`.
+This installs: `PySide6`, `cryptography`, `pycryptodome`, `pyinstaller`, `py-cpuinfo`, `pytest`.
 
 ---
 
@@ -46,7 +47,35 @@ python -m gfglock "C:\path\to\file.txt"
 
 ---
 
-## 4. Debug Build (PyInstaller)
+## 4. Native C++ Extension
+
+Compiles the `gfglock_native.pyd` extension (OpenSSL-backed AES-256-GCM, CFB, ChaCha20-Poly1305, KDF) and places it in `gfglock/core/`.
+
+**Requirements:** Visual Studio 2022+ Build Tools (C++ workload), CMake ≥ 3.25.
+
+```powershell
+.\build_native.ps1
+```
+
+The build script bootstraps vcpkg automatically if `.vcpkg/` is missing.
+
+---
+
+## 5. Run Tests
+
+```powershell
+pytest
+```
+
+Runs tests covering:
+
+- **Native acceleration** (AES-256-GCM, CFB, ChaCha20-Poly1305)
+- **Python fallback** (all cipher modes with native C++ disabled)
+- **Cross-path compatibility** (native-encrypted files decryptable by Python fallback and vice versa)
+
+---
+
+## 6. Debug Build (PyInstaller)
 
 Produces a multi-file `dist/gfgLock/` folder — faster iteration, no compression:
 
@@ -72,7 +101,7 @@ Run the result:
 
 ---
 
-## 5. Release Build (PyInstaller)
+## 7. Release Build (PyInstaller)
 
 Adds `--optimize 2` and `--windowed` to strip bytecode assertions and suppress the console window:
 
@@ -96,7 +125,7 @@ The output directory `dist\gfgLock\` is what the Inno Setup scripts reference as
 
 ---
 
-## 6. Windows Installer (Inno Setup)
+## 8. Windows Installer (Inno Setup)
 
 Run either script with Inno Setup's command-line compiler (`iscc.exe`).
 
@@ -114,5 +143,5 @@ Run either script with Inno Setup's command-line compiler (`iscc.exe`).
 
 The compiled `.exe` installer is written to `installer\Output\`.
 
-> Build the release PyInstaller bundle first (step 5) before running the installer script,
+> Build the release PyInstaller bundle first (step 7) before running the installer script,
 > because the `.iss` files reference `dist\gfgLock\` as the source directory.
