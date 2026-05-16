@@ -38,11 +38,9 @@ if _pyd_dir not in sys.path:
 try:
     import gfglock_native as _native  # type: ignore[import]
     NATIVE_AVAILABLE: bool = True
-    _log("[native] Loaded  NATIVE_AVAILABLE=True")
 except ImportError:
     _native = None
     NATIVE_AVAILABLE = False
-    _log("[native] .pyd not found — Python fallback active")
 
 # ── KDF ───────────────────────────────────────────────────────────────────────
 
