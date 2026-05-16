@@ -93,7 +93,7 @@ def _encrypt_file_py(path, password, encrypt_name, chunk_size, AEAD, progress_ca
         if not os.path.exists(path):
             msg = f"Critical error: {path} not found"
             logs.append(msg); safe_print(msg); return False, "\n".join(logs)
-        if path.endswith(".gfglock"):
+        if path.endswith(".gfglock") or path.endswith(".gfglck"):
             msg = f"{path} is already encrypted"
             logs.append(msg); safe_print(msg); return False, "\n".join(logs)
 
