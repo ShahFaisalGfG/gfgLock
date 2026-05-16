@@ -1,0 +1,4 @@
+LIBRARY gfglock_shell
+EXPORTS
+    DllGetClassObject   PRIVATE
+    DllCanUnloadNow     PRIVATE

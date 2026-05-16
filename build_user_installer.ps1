@@ -2,10 +2,12 @@
 .SYNOPSIS
     Build the gfgLock per-user Windows installer.
 .DESCRIPTION
-    Step 1 — PyInstaller  : bundles the app into dist\gfgLock\
-    Step 2 — Inno Setup   : compiles the per-user installer into build\installer\
+    Step 1 — Native build : compiles gfglock_native.pyd and gfglock_shell.dll
+    Step 2 — PyInstaller  : bundles the app into dist\gfgLock\
+    Step 3 — Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
+    Step 4 — Inno Setup   : compiles the per-user installer into build\installer\
 .NOTES
-    Requirements: Python venv with pyinstaller>=6.17, Inno Setup 6
+    Requirements: Python venv with pyinstaller>=6.17, Inno Setup 6, Visual Studio Build Tools
 #>
 
 Set-StrictMode -Version Latest
@@ -48,6 +50,15 @@ $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $BuildStart = Get-Date
 Set-Location $ScriptDir
 
+# ── Native C++ targets ────────────────────────────────────────────────────────
+
+Write-Step "Building native C++ targets (gfglock_native.pyd + gfglock_shell.dll)"
+
+& "$ScriptDir\build_native.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Fail "build_native.ps1 failed (exit $LASTEXITCODE). Check output above."
+}
+
 # ── Virtual environment ───────────────────────────────────────────────────────
 
 Write-Step "Activating virtual environment"
@@ -63,7 +74,7 @@ foreach ($v in $VenvScripts) {
     }
 }
 if (-not $VenvFound) {
-    Write-Host "   No venv found — using system Python" -ForegroundColor Yellow
+    Write-Host "   No venv found - using system Python" -ForegroundColor Yellow
 }
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
@@ -139,6 +150,17 @@ if (-not (Test-Path $ExePath)) {
 
 $BundleMb = [math]::Round((Get-ChildItem $DistDir -Recurse | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host "   Bundle ready : $DistDir  ($BundleMb MB)" -ForegroundColor DarkGray
+
+# ── Shell extension DLL ───────────────────────────────────────────────────────
+
+Write-Step "Copying gfglock_shell.dll to dist"
+
+$ShellDll = Join-Path $ScriptDir "build\shell\gfglock_shell.dll"
+if (-not (Test-Path $ShellDll)) {
+    Fail "gfglock_shell.dll not found at: $ShellDll - run build_native.ps1 first."
+}
+Copy-Item $ShellDll (Join-Path $ScriptDir "dist\$AppName\gfglock_shell.dll") -Force
+Write-Host "   Copied gfglock_shell.dll to dist\$AppName\" -ForegroundColor DarkGray
 
 # ── Inno Setup ────────────────────────────────────────────────────────────────
 

@@ -177,9 +177,16 @@ if (-not $OutPyd) {
     Fail "Expected .pyd not found in gfglock\core\ (pattern: $OutPydGlob)"
 }
 
-$Kb = [math]::Round($OutPyd.Length / 1KB, 1)
+$ShellDll = Join-Path $ScriptDir "build\shell\gfglock_shell.dll"
+if (-not (Test-Path $ShellDll)) {
+    Fail "Expected gfglock_shell.dll not found at: $ShellDll"
+}
+
+$PydKb  = [math]::Round($OutPyd.Length / 1KB, 1)
+$DllKb  = [math]::Round((Get-Item $ShellDll).Length / 1KB, 1)
 Write-Host ""
-Write-Host "Native module ready: $($OutPyd.FullName)  ($Kb KB)" -ForegroundColor Green
+Write-Host "Native module ready : $($OutPyd.FullName)  ($PydKb KB)" -ForegroundColor Green
+Write-Host "Shell extension     : $ShellDll  ($DllKb KB)" -ForegroundColor Green
 
 # --- Quick smoke test --------------------------------------------------------
 

@@ -104,17 +104,31 @@ Root: HKCR; Subkey: "gfgLock.gfgcha\shell\open\command"; ValueType: string; Valu
 
 
 ; =============================================================================
-; Context menu: Encrypt with gfgLock (works on files + folders, any number)
+; IExplorerCommand CLSID registrations (Windows 11 first-level context menu)
+; =============================================================================
+
+; Encrypt — {{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}
+Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypt Shell Extension"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
+
+; Decrypt — {{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}
+Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Decrypt Shell Extension"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
+
+; =============================================================================
+; Context menu: Encrypt with gfgLock
+; ExplorerCommandHandler  → Windows 11 first-level menu (all files at once)
+; \command subkey         → Windows 10 fallback (single-file)
 ; =============================================================================
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt with gfgLock"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MUIVerb"; ValueData: "Encrypt with gfgLock"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-; Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt %1"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "ExplorerCommandHandler"; ValueData: "{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt ""%1"""; Flags: uninsdeletekey
-
-
 
 ; =============================================================================
 ; Context menu: Decrypt with gfgLock
@@ -124,7 +138,7 @@ Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: stri
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-; Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt %*"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "ExplorerCommandHandler"; ValueData: "{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt ""%1"""; Flags: uninsdeletekey
 
 
@@ -139,6 +153,9 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\docs\README.html"; Description: "View README"; Flags: shellexec nowait postinstall skipifsilent unchecked
+
+[UninstallRun]
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillGfgLock"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
@@ -202,6 +219,21 @@ begin
     'This wizard will guide you through the installation of {MyAppName}.'#13#13 +
     'gfgLock is a secure file encryption tool with AES-256 cryptography and a modern GUI interface.'#13#13 +
     'It is recommended that you close all other applications before continuing.';
+end;
+
+procedure RemoveStaleUserRegistryEntries();
+begin
+  // Clean up per-user CLSID and context-menu entries left by older per-user installs.
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\CLSID\{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\CLSID\{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt');
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    RemoveStaleUserRegistryEntries();
 end;
 
 // procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
