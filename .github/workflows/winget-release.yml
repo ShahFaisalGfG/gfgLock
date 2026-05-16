@@ -1,0 +1,33 @@
+name: Publish to WinGet
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-winget:
+    runs-on: windows-latest
+    steps:
+      - name: Download wingetcreate
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+      - name: Submit update to winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+        run: |
+          $version = "${{ github.event.release.tag_name }}" -replace '^v', ''
+          $base    = "https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}"
+
+          # Scope (user / machine) is auto-detected from each installer's
+          # PrivilegesRequired field: lowest → user, admin → machine.
+          $userUrl = "$base/gfgLock_${version}_user_installer.exe"
+          $sysUrl  = "$base/gfgLock_${version}_system_installer.exe"
+
+          .\wingetcreate.exe update gfgRoyal.gfgLock `
+            --version $version `
+            --urls    $userUrl $sysUrl `
+            --token   $env:WINGET_PAT `
+            --submit
