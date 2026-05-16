@@ -143,8 +143,9 @@ def _parse_paths(path_args: list) -> list:
         try:
             with open(resp, encoding="utf-8") as f:
                 lines = [ln.strip() for ln in f if ln.strip()]
-        except Exception:
-            return []
+        except OSError:
+            # Fall back to original args so downstream code can surface a useful error
+            return path_args
         try:
             os.remove(resp)
         except Exception:
