@@ -1,59 +1,56 @@
 # gfgLock v2.6.9 — Release Notes
 
-**Release Date:** December 19, 2025  
-**Version:** 2.6.9  
-**Status:** Stable  
-**Platform:** Windows 10+ (64-bit)
+**Released:** December 19, 2025 · **Status:** Stable · **Platform:** Windows 10 / 11 (64-bit)
 
 ---
 
-## Summary
+v2.6.9 is the initial public release of gfgLock — a free, open-source file encryption app for Windows. It ships multi-algorithm authenticated encryption, real-time logging, live theme switching, and a configurable batch-processing workflow.
 
-gfgLock v2.6.9 is the initial public release. It provides multi-algorithm file encryption (AES-256 GCM/CFB, ChaCha20-Poly1305), real-time file logging, theme support, and a compact, responsive GUI focused on secure batch workflows.
+---
 
-## Major Highlights
+## Added
 
-- Multi-algorithm encryption: AES-256 GCM (`.gfglock`), AES-256 CFB (`.gfglck`), ChaCha20-Poly1305 (`.gfgcha`)
-- Real-time, file-based logging with general and critical logs
-- Theme support (System/Light/Dark) and live Apply
-- Preferences with configurable threads and chunk sizes
+### Encryption
 
-## Important Notes
+- **AES-256 GCM** (`.gfglock`) — authenticated encryption, hardware-accelerated. Recommended default.
+- **AES-256 CFB** (`.gfglck`) — stream cipher; highest throughput, ideal for speed-critical batch workflows.
+- **ChaCha20-Poly1305** (`.gfgcha`) — authenticated, constant-time; suited for CPUs without AES-NI and side-channel–sensitive environments.
+- **Auto-detected decryption** — the algorithm is selected automatically from the encrypted file's extension; no manual selection required.
+- **Chunk-based processing** — configurable chunk sizes (Off / 8 MB / 16 MB / 32 MB / 64 MB / 128 MB) for large-file handling. *Off* loads the entire file into RAM for maximum speed on small files.
+- **Multi-threaded batch operations** — encrypt or decrypt entire folders using multiple CPU threads, configurable in Preferences.
 
-- Decryption selects the algorithm automatically based on file extension.
-- Logs (frozen app): `%APPDATA%\gfgLock\logs\`
-- Portable single-file executable available: `gfgLock_portable.exe` - unsigned
+### Interface
 
-## Chunk Size & Encryption Mode Quick Guide
+- **Drag & drop** — drop files or folders directly onto the window.
+- **File Explorer context menu** — right-click any file → *Encrypt with gfgLock* / *Decrypt with gfgLock*.
+- **Live theme switching** — System, Light, and Dark themes with instant preview.
+- **Real-time progress** — per-file progress bar during active operations.
 
-**Chunk Sizes:**
+### Logging
 
-- **Off (no chunking):** Fastest for small files (<10 MB); loads entire file in RAM
-- **8 MB (default):** Balanced; recommended for most users
-- **16-32 MB:** Better for large files (>100 MB) on modern systems
-- **64+ MB:** Enterprise setups with high-speed NVMe storage
+- **File-based logging** — all operations recorded to `%APPDATA%\gfgLock\logs\`.
+- **Two log levels** — *Full* (all operations) and *Critical* (errors only), selectable in **Preferences → Advanced**.
+- **Log management** — clear logs or open the logs folder directly from Preferences.
 
-**Encryption Modes:**
+### Preferences
 
-- **AES-256 GCM** (`.gfglock`): **Recommended**—authenticated, secure, hardware-accelerated
-- **AES-256 CFB** (`.gfglck`): **Fastest**—aauthentication, ideal for speed-critical use
-- **ChaCha20-Poly1305** (`.gfgcha`): Side-channel resistant, excellent for high-security scenarios
+- **CPU threads** — 1 to *(cores − 1)*; balance raw speed against system responsiveness.
+- **Chunk size** — select from Off to 128 MB depending on file sizes and available RAM.
+- **Default algorithm** — pre-select the cipher at startup.
+- **Encrypt filenames** — optionally randomise output filenames.
 
-## Installation (brief)
-
-Download `gfgLock_2.6.9_installer.exe` from Releases and run the installer.
-
-## Changelog (condensed)
-
-- Added: AES-256 GCM, AES-256 CFB, ChaCha20-Poly1305
-- Added: File-based logging and log management
-- Improved: Theme handling and Preferences UX
+---
 
 ## Known Issues
 
-- Context menu may behave unexpectedly when many files are selected; use drag & drop or place files in a folder as a workaround.
+- The context menu may behave unexpectedly when a large number of files are selected simultaneously. As a workaround, place files in a folder and use **Add Folder** or drag the folder onto the window.
 
 ---
 
-Last Updated: December 19, 2025  
-For full usage and screenshots, see [`README.md`](readme.md) in the repository.
+## Installation
+
+Download `gfgLock_2.6.9_installer.exe` from the [Releases](https://github.com/ShahFaisalGfG/gfgLock/releases) page and run the installer. A portable executable (`gfgLock_portable.exe`) is also available for environments where installation is not possible — note that the portable build is unsigned.
+
+---
+
+*Stay secure. Encrypt responsibly.*
