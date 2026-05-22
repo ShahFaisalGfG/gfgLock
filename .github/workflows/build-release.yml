@@ -1,0 +1,187 @@
+name: Build and Release
+
+# Triggered by pushing a version tag, e.g.: git tag v3.1.0 && git push origin v3.1.0
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+# Needed so gh release create can upload assets
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      # Single source of truth: all metadata comes from pyproject.toml
+      - name: Read app metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $json = python scripts/read_meta.py
+          $m    = $json | ConvertFrom-Json
+          "VER=$($m.Version)"         | Out-File $env:GITHUB_OUTPUT -Append
+          "APP_NAME=$($m.AppName)"    | Out-File $env:GITHUB_OUTPUT -Append
+          "PUBLISHER=$($m.Publisher)" | Out-File $env:GITHUB_OUTPUT -Append
+          "URL=$($m.Url)"             | Out-File $env:GITHUB_OUTPUT -Append
+          "EXE_NAME=$($m.ExeName)"    | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: pip install -r requirements.txt
+
+      # Cache the vcpkg binary + installed OpenSSL/pybind11 packages.
+      # Key tied to native/vcpkg.json so a dependency change busts the cache.
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            .vcpkg
+            native/vcpkg_installed
+            native/build/vcpkg_installed
+          key: vcpkg-${{ hashFiles('native/vcpkg.json') }}
+
+      # Compiles gfglock_native.pyd and gfglock_shell.dll using MSVC + CMake.
+      - name: Build native extension
+        shell: pwsh
+        run: .\scripts\build_native.ps1
+
+      - name: Create build output directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path build\installer -Force | Out-Null
+
+      # Bundles the Python app into dist\gfgLock\ (onedir — used by both installers)
+      - name: Build PyInstaller bundle
+        shell: pwsh
+        run: |
+          $appName = "${{ steps.meta.outputs.APP_NAME }}"
+          pyinstaller `
+            --name $appName --windowed --onedir `
+            --icon           "gfglock\assets\icons\gfgLock.ico" `
+            --add-data       "gfglock\qml;gfglock\qml" `
+            --add-data       "gfglock\assets;gfglock\assets" `
+            --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `
+            --add-data       "gfglock\assets\icons\gfgLock.ico;assets\icons" `
+            --add-data       "gfglock\assets\icons\gfgLock.png;icons" `
+            --add-data       "screenshots;screenshots" `
+            --add-data       "readme.html;." `
+            --distpath dist  --workpath build\pyinstaller --specpath . `
+            --noconfirm --clean `
+            gfglock\__main__.py
+
+      - name: Copy shell DLL into bundle
+        shell: pwsh
+        run: Copy-Item build\shell\gfglock_shell.dll dist\${{ steps.meta.outputs.APP_NAME }}\ -Force
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      # /D flags override the #ifndef defaults in the ISS files
+      - name: Build system installer
+        shell: pwsh
+        run: |
+          $ver       = "${{ steps.meta.outputs.VER }}"
+          $appName   = "${{ steps.meta.outputs.APP_NAME }}"
+          $publisher = "${{ steps.meta.outputs.PUBLISHER }}"
+          $url       = "${{ steps.meta.outputs.URL }}"
+          $iscc      = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc `
+            "/DMyAppName=$appName" `
+            "/DMyAppVersion=$ver" `
+            "/DMyAppPublisher=$publisher" `
+            "/DMyAppURL=$url" `
+            installer\gfglock_system_installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "System installer build failed (exit $LASTEXITCODE)" }
+
+      - name: Build user installer
+        shell: pwsh
+        run: |
+          $ver       = "${{ steps.meta.outputs.VER }}"
+          $appName   = "${{ steps.meta.outputs.APP_NAME }}"
+          $publisher = "${{ steps.meta.outputs.PUBLISHER }}"
+          $url       = "${{ steps.meta.outputs.URL }}"
+          $iscc      = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc `
+            "/DMyAppName=$appName" `
+            "/DMyAppVersion=$ver" `
+            "/DMyAppPublisher=$publisher" `
+            "/DMyAppURL=$url" `
+            installer\gfglock_user_installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "User installer build failed (exit $LASTEXITCODE)" }
+
+      # Single-file portable exe
+      - name: Build portable exe
+        shell: pwsh
+        run: |
+          $ver     = "${{ steps.meta.outputs.VER }}"
+          $appName = "${{ steps.meta.outputs.APP_NAME }}"
+          pyinstaller `
+            --name "${appName}_${ver}_portable" --windowed --onefile `
+            --icon           "gfglock\assets\icons\gfgLock.ico" `
+            --add-data       "gfglock\qml;gfglock\qml" `
+            --add-data       "gfglock\assets;gfglock\assets" `
+            --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `
+            --add-data       "gfglock\assets\icons\gfgLock.ico;assets\icons" `
+            --add-data       "gfglock\assets\icons\gfgLock.png;icons" `
+            --add-data       "screenshots;screenshots" `
+            --add-data       "readme.html;." `
+            --distpath build --workpath build\pyinstaller --specpath . `
+            --noconfirm --clean `
+            gfglock\__main__.py
+
+      # Pack all three EXEs into .7z archives for users who prefer compressed downloads.
+      # The portable .7z also bundles the onedir app for direct-run without temp extraction.
+      - name: Create 7z archives
+        shell: pwsh
+        run: |
+          $ver     = "${{ steps.meta.outputs.VER }}"
+          $appName = "${{ steps.meta.outputs.APP_NAME }}"
+          $7z      = "C:\Program Files\7-Zip\7z.exe"
+
+          & $7z a -t7z -mx=9 `
+            "build\installer\${appName}_${ver}_system_installer.7z" `
+            "build\installer\${appName}_${ver}_system_installer.exe"
+          if ($LASTEXITCODE -ne 0) { throw "7z: system installer archive failed" }
+
+          & $7z a -t7z -mx=9 `
+            "build\installer\${appName}_${ver}_user_installer.7z" `
+            "build\installer\${appName}_${ver}_user_installer.exe"
+          if ($LASTEXITCODE -ne 0) { throw "7z: user installer archive failed" }
+
+          # Portable .7z is the full onedir bundle — faster launch, no temp extraction
+          & $7z a -t7z -mx=9 `
+            "build\${appName}_${ver}_portable.7z" `
+            "dist\${appName}\*"
+          if ($LASTEXITCODE -ne 0) { throw "7z: portable bundle archive failed" }
+
+      # Creates + publishes the GitHub Release, uploads all six assets.
+      # Publishing fires winget-release.yml automatically via the release:published event.
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver     = "${{ steps.meta.outputs.VER }}"
+          $appName = "${{ steps.meta.outputs.APP_NAME }}"
+          $tag     = "${{ github.ref_name }}"
+          gh release create $tag `
+            --title "$appName v$ver" `
+            --notes-file "release_notes/release_notes_v${ver}.md" `
+            "build\installer\${appName}_${ver}_system_installer.exe" `
+            "build\installer\${appName}_${ver}_system_installer.7z" `
+            "build\installer\${appName}_${ver}_user_installer.exe" `
+            "build\installer\${appName}_${ver}_user_installer.7z" `
+            "build\${appName}_${ver}_portable.exe" `
+            "build\${appName}_${ver}_portable.7z"

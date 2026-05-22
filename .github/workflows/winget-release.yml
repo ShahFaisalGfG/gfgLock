@@ -5,8 +5,9 @@ on:
     types: [published]
 
 jobs:
-  publish-winget:
+  publish:
     runs-on: windows-latest
+    if: github.event.release.prerelease == false
     steps:
       - name: Download wingetcreate
         shell: pwsh
@@ -21,8 +22,6 @@ jobs:
           $version = "${{ github.event.release.tag_name }}" -replace '^v', ''
           $base    = "https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}"
 
-          # Scope (user / machine) is auto-detected from each installer's
-          # PrivilegesRequired field: lowest → user, admin → machine.
           $userUrl = "$base/gfgLock_${version}_user_installer.exe"
           $sysUrl  = "$base/gfgLock_${version}_system_installer.exe"
 
