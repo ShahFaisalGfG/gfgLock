@@ -167,11 +167,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "7z: portable bundle archive failed" }
 
       # Creates + publishes the GitHub Release, uploads all six assets.
-      # Publishing fires winget-release.yml automatically via the release:published event.
+      # Must use RELEASE_PAT (not GITHUB_TOKEN) — events fired by GITHUB_TOKEN
+      # do not cascade into other workflows, so winget-release.yml would never trigger.
       - name: Create GitHub Release
         shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           $ver     = "${{ steps.meta.outputs.VER }}"
           $appName = "${{ steps.meta.outputs.APP_NAME }}"
