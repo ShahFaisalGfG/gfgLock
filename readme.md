@@ -244,7 +244,7 @@ PBKDF2-HMAC-SHA256  (200 000 iterations)
 | **Performance** | CPU Thread Clamping [Disable Clamping for performance mode] |
 | **Log Level** | Full (all operations) or Critical (errors only) |
 | **Log Actions** | Clear all logs or open the logs folder |
-| **Notification** | Operation Completed alerts via Windows 11 style notification |
+| **Notifications** | Operation Completed alerts via Windows 11 style notification |
 
 ---
 
