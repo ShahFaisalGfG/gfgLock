@@ -6,7 +6,7 @@ build-backend = "setuptools.backends.legacy:build"
 name = "gfglock"
 version = "3.0.0"
 description = "Secure AES-256 file encryption and decryption — fast, simple, reliable"
-authors = [{ name = "Shah Faisal", email = "dev@gfgroyal.com" }]
+authors = [{ name = "Shah Faisal", email = "shahfaisalgfg@gmail.com" }]
 readme = "readme.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary" }
@@ -38,3 +38,10 @@ gfglock = [
     "qml/*.qml",
     "qml/components/*.qml",
 ]
+
+[tool.gfglock]
+display_name = "gfgLock"
+publisher    = "gfgRoyal"
+url          = "https://shahfaisalgfg.github.io/shahfaisal/"
+exe_name     = "gfgLock.exe"
+winget_id    = "gfgRoyal.gfgLock"

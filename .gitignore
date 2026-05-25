@@ -40,7 +40,9 @@ trash/
 *.bkp
 *.pdf
 
-release*.md
+# release*.md
 optimization*.md
 benchmark*.md
 context*.md
+winget-publish.md
+release.sh

@@ -1,0 +1,38 @@
+name: Publish to WinGet
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to submit (e.g. v3.0.0)'
+        required: true
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    steps:
+      - name: Download wingetcreate
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+      - name: Submit update to winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+        run: |
+          $tag     = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ github.event.inputs.tag }}" } else { "${{ github.event.release.tag_name }}" }
+          $version = $tag -replace '^v', ''
+          $base    = "https://github.com/${{ github.repository }}/releases/download/$tag"
+
+          $userUrl = "$base/gfgLock_${version}_user_installer.exe"
+          $sysUrl  = "$base/gfgLock_${version}_system_installer.exe"
+
+          .\wingetcreate.exe update gfgRoyal.gfgLock `
+            --version $version `
+            --urls    "${userUrl}|x64|inno|user" "${sysUrl}|x64|inno|machine" `
+            --token   $env:WINGET_PAT `
+            --submit

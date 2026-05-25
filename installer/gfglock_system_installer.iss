@@ -4,11 +4,21 @@
 ; Version: 3.0.0
 ; =======================================================
 
-#define MyAppName "gfgLock"
-#define MyAppVersion "3.0.0"
-#define MyAppPublisher "gfgRoyal"
-#define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
-#define MyAppExeName "gfgLock.exe"
+#ifndef MyAppName
+  #define MyAppName "gfgLock"
+#endif
+#ifndef MyAppVersion
+  #define MyAppVersion "3.0.0"
+#endif
+#ifndef MyAppPublisher
+  #define MyAppPublisher "gfgRoyal"
+#endif
+#ifndef MyAppURL
+  #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
+#endif
+#ifndef MyAppExeName
+  #define MyAppExeName "gfgLock.exe"
+#endif
 #define SourceDir "..\dist\gfgLock"
 #define IconsDir "..\gfglock\assets\icons"
 #define ScreenshotsDir "..\screenshots"
@@ -59,10 +69,11 @@ Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: 
 [Files]
 ; Main application files (compiled executable and dependencies)
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Shell extension DLL — restartreplace schedules replacement on reboot if Explorer holds a lock
+Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 ; Icon for the application
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 ; Documentation
-Source: "..\README.html"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -73,7 +84,6 @@ Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignorever
 ; Start Menu
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{group}\Documentation"; Filename: "{app}\docs\README.html"
 
 ; Desktop
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"; Tasks: desktopicon
@@ -152,17 +162,14 @@ Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\docs\README.html"; Description: "View README"; Flags: shellexec nowait postinstall skipifsilent unchecked
+Filename: "https://github.com/ShahFaisalGfG/gfgLock"; Description: "View README on GitHub"; Flags: shellexec nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillGfgLock"
+Filename: "{sys}\regsvr32.exe"; Parameters: "/s /u ""{app}\gfglock_shell.dll"""; Flags: runhidden; RunOnceId: "UnregShellExt"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
-Type: filesandordirs; Name: "{app}\logs"
-Type: filesandordirs; Name: "{app}\temp"
-Type: files; Name: "{app}\*.log"
-Type: files; Name: "{app}\*.tmp"
 
 [Code]
 function UserInstallExists(): Boolean;
@@ -231,9 +238,18 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  DllPath: String;
+  ResultCode: Integer;
 begin
   if CurStep = ssInstall then
+  begin
+    DllPath := ExpandConstant('{app}\gfglock_shell.dll');
+    if FileExists(DllPath) then
+      Exec(ExpandConstant('{sys}\regsvr32.exe'), '/s /u "' + DllPath + '"',
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     RemoveStaleUserRegistryEntries();
+  end;
 end;
 
 // procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
