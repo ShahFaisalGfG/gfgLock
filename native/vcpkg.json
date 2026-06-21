@@ -2,6 +2,7 @@
     "name": "gfglock-native",
     "version": "1.0.0",
     "dependencies": [
-        "openssl"
+        "openssl",
+        "pybind11"
     ]
 }
