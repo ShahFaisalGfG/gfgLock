@@ -1,4 +1,4 @@
-# native_bridge.py — Python gateway to the gfglock_native C++ extension.
+# native_bridge.py - Python gateway to the gfglock_native C++ extension.
 # Provides typed wrappers with transparent CPU fallback when the .pyd is absent.
 
 import hashlib

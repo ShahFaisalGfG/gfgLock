@@ -1,4 +1,4 @@
-# defaults.py — default application preferences and settings for gfgLock
+# defaults.py - default application preferences and settings for gfgLock
 
 import os
 from typing import Any, Dict
@@ -11,7 +11,7 @@ class AppInfo:
     APP_VERSION = "3.0.0"
     APP_AUTHOR = "Shah Faisal"
     APP_COMPANY = "gfgRoyal"
-    APP_DESCRIPTION = "Secure AES-256 file encryption and decryption — fast, simple, reliable"
+    APP_DESCRIPTION = "Secure AES-256 file encryption and decryption - fast, simple, reliable"
 
 
 def _get_cpu_thread_count() -> int:

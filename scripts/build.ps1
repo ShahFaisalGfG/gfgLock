@@ -2,11 +2,11 @@
 .SYNOPSIS
     Full build: native targets, both installers, and portable exe.
 .DESCRIPTION
-    Step 1 — Native build : compiles gfglock_native.pyd and gfglock_shell.dll
-    Step 2 — PyInstaller  : bundles the app into dist\gfgLock\
-    Step 3 — Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
-    Step 4 — Inno Setup   : compiles system and user installers into build\installer\
-    Step 5 — Portable     : builds a single-file portable exe into build\
+    Step 1 - Native build : compiles gfglock_native.pyd and gfglock_shell.dll
+    Step 2 - PyInstaller  : bundles the app into dist\gfgLock\
+    Step 3 - Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
+    Step 4 - Inno Setup   : compiles system and user installers into build\installer\
+    Step 5 - Portable     : builds a single-file portable exe into build\
 .NOTES
     Requirements: Python venv with pyinstaller>=6.17, Inno Setup 6, Visual Studio Build Tools
 #>

@@ -1,4 +1,4 @@
-# worker.py — background encryption/decryption worker (PySide6)
+# worker.py - background encryption/decryption worker (PySide6)
 
 import os
 import time
@@ -20,7 +20,7 @@ class WorkerSignals(QObject):
     file_changed = Signal(str)
     status = Signal(str)
     error = Signal(str)
-    # file_result: (success, message) — emitted once per file on completion
+    # file_result: (success, message) - emitted once per file on completion
     file_result = Signal(bool, str)
     # finished: (elapsed_time, total_files, succeeded, failed, skipped)
     finished = Signal(float, int, int, int, int)
@@ -169,7 +169,7 @@ class EncryptDecryptWorker(QRunnable):
         except Exception:
             pass
         elapsed = time.time() - start_time
-        self.signals.status.emit(f"Completed in {elapsed:.2f} sec")
+        self.signals.status.emit(f"Completed in {elapsed:.1f}s")
         self.signals.finished.emit(elapsed, total, succeeded, failed, skipped_already_encrypted)
 
     def _build_job(self, p: str, progress_cb: Callable) -> Callable:

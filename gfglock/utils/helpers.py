@@ -1,4 +1,4 @@
-# helpers.py — file/size/format utilities and cryptographic helpers
+# helpers.py - file/size/format utilities and cryptographic helpers
 
 import os
 import sys

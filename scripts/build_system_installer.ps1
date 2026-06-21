@@ -2,10 +2,10 @@
 .SYNOPSIS
     Build the gfgLock system-wide Windows installer.
 .DESCRIPTION
-    Step 1 — Native build : compiles gfglock_native.pyd and gfglock_shell.dll
-    Step 2 — PyInstaller  : bundles the app into dist\gfgLock\
-    Step 3 — Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
-    Step 4 — Inno Setup   : compiles the system-wide installer into build\installer\
+    Step 1 - Native build : compiles gfglock_native.pyd and gfglock_shell.dll
+    Step 2 - PyInstaller  : bundles the app into dist\gfgLock\
+    Step 3 - Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
+    Step 4 - Inno Setup   : compiles the system-wide installer into build\installer\
 .NOTES
     Requirements: Python venv with pyinstaller>=6.17, Inno Setup 6, Visual Studio Build Tools
 #>

@@ -1,4 +1,4 @@
-# notifier.py — Windows toast notification utility
+# notifier.py - Windows toast notification utility
 
 import subprocess
 import sys

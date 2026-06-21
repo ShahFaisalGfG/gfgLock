@@ -3,7 +3,7 @@
     Build the gfgLock portable single-file executable.
 .DESCRIPTION
     Bundles the app into one self-contained exe: build\gfgLock_<version>_portable.exe
-    No installer is produced — the exe runs directly without installation.
+    No installer is produced - the exe runs directly without installation.
 .NOTES
     Requirements: Python venv with pyinstaller>=6.17
 #>
@@ -64,7 +64,7 @@ foreach ($v in $VenvScripts) {
     }
 }
 if (-not $VenvFound) {
-    Write-Host "   No venv found — using system Python" -ForegroundColor Yellow
+    Write-Host "   No venv found - using system Python" -ForegroundColor Yellow
 }
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────

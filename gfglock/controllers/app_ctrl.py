@@ -1,4 +1,4 @@
-# app_ctrl.py — main window controller (theme, logs, about, updates)
+# app_ctrl.py - main window controller (theme, logs, about, updates)
 
 import os
 import subprocess

@@ -1,4 +1,4 @@
-// shell_extension.cpp — IExplorerCommand COM in-process server
+// shell_extension.cpp - IExplorerCommand COM in-process server
 // Provides "Encrypt with gfgLock" and "Decrypt with gfgLock" in the
 // Windows 11 first-level context menu via ExplorerCommandHandler.
 
@@ -20,8 +20,8 @@ static LONG    g_refCount = 0;
 
 // ---------------------------------------------------------------------------
 // CLSIDs
-// {E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}  — Encrypt
-// {F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}  — Decrypt
+// {E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}  - Encrypt
+// {F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}  - Decrypt
 // ---------------------------------------------------------------------------
 
 static const GUID CLSID_GfgLockEncrypt = {
@@ -84,7 +84,7 @@ static std::wstring writeTempFile(const std::vector<std::wstring>& paths)
 }
 
 // ---------------------------------------------------------------------------
-// GfgLockCommand — IExplorerCommand + IUnknown
+// GfgLockCommand - IExplorerCommand + IUnknown
 // ---------------------------------------------------------------------------
 
 class GfgLockCommand : public IExplorerCommand
@@ -251,7 +251,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// GfgLockClassFactory — IClassFactory
+// GfgLockClassFactory - IClassFactory
 // ---------------------------------------------------------------------------
 
 class GfgLockClassFactory : public IClassFactory

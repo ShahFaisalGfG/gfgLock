@@ -1,1 +1,1 @@
-# models — QAbstractListModel implementations for QML bindings
+# models - QAbstractListModel implementations for QML bindings

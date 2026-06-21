@@ -1,4 +1,4 @@
-# benchmark.py — CPU encryption throughput benchmark.
+# benchmark.py - CPU encryption throughput benchmark.
 # Usage: python tests/benchmark.py
 
 import os
@@ -154,7 +154,7 @@ def _bench_cpu_mode(
 def _bench_all_cpu(suite: BenchSuite) -> None:
     """Run all CPU mode benchmarks and append results to suite."""
     if not native_bridge.NATIVE_AVAILABLE:
-        print("[CPU] native .pyd not available — skipping CPU benchmarks")
+        print("[CPU] native .pyd not available - skipping CPU benchmarks")
         return
 
     modes = [
@@ -183,7 +183,7 @@ def _bench_all_cpu(suite: BenchSuite) -> None:
 def main() -> None:
     """Run the CPU benchmark suite and print the results table."""
     print("=" * 70)
-    print("  gfgLock  —  Performance Benchmark")
+    print("  gfgLock  -  Performance Benchmark")
     print(f"  File sizes: {FILE_SIZES_MB} MB")
     print("=" * 70)
 

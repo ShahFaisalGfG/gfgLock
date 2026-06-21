@@ -1,4 +1,4 @@
-# aes256_gcm_cfb.py — AES-256 GCM and CFB encryption/decryption.
+# aes256_gcm_cfb.py - AES-256 GCM and CFB encryption/decryption.
 # Native C++ path (via native_bridge) is used when the .pyd is present;
 # the Python/cryptography fallback is used otherwise.
 

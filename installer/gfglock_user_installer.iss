@@ -69,7 +69,7 @@ Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: 
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Shell extension DLL — restartreplace schedules replacement on reboot if Explorer holds a lock
+; Shell extension DLL - restartreplace schedules replacement on reboot if Explorer holds a lock
 Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
@@ -101,15 +101,15 @@ Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha\DefaultIcon"; ValueType: st
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
 ; =============================================================================
-; IExplorerCommand CLSID registrations — per-user (HKCU, no admin required)
+; IExplorerCommand CLSID registrations - per-user (HKCU, no admin required)
 ; =============================================================================
 
-; Encrypt — {{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}
+; Encrypt - {{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}
 Root: HKCU; Subkey: "Software\Classes\CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypt Shell Extension"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
 
-; Decrypt — {{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}
+; Decrypt - {{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}
 Root: HKCU; Subkey: "Software\Classes\CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Decrypt Shell Extension"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey

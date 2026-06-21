@@ -1,4 +1,4 @@
-# chacha20_poly1305.py — ChaCha20-Poly1305 encryption and decryption.
+# chacha20_poly1305.py - ChaCha20-Poly1305 encryption and decryption.
 # Native C++ path (via native_bridge) is used when the .pyd is present;
 # the Python/pycryptodome fallback is used otherwise.
 

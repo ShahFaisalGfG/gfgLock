@@ -1,4 +1,4 @@
-# prefs_ctrl.py — preferences (settings) controller
+# prefs_ctrl.py - preferences (settings) controller
 
 import os
 import subprocess

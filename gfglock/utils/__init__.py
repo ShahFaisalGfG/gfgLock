@@ -1,4 +1,4 @@
-# utils — public API for gfglock utility modules
+# utils - public API for gfglock utility modules
 
 from gfglock.utils.helpers import (
     resource_path,

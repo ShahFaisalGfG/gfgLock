@@ -1,4 +1,4 @@
-# logging.py — log file management utilities
+# logging.py - log file management utilities
 
 import os
 import sys

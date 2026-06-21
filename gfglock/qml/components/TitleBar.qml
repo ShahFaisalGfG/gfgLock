@@ -15,7 +15,7 @@ Item {
     readonly property color _bgColor: Material.theme === Material.Dark ? "#1c1c1c" : "#e8e8e8"
     readonly property color _fgColor: Material.theme === Material.Dark ? "#e0e0e0" : "#202020"
 
-    // Manual maximize state — window.visibility is unreliable for frameless windows
+    // Manual maximize state - window.visibility is unreliable for frameless windows
     property bool _maximized:     false
     property rect _savedGeometry: Qt.rect(0, 0, 800, 600)
 
@@ -47,7 +47,7 @@ Item {
         color: titleBar._bgColor
     }
 
-    // Drag-to-move — disabled while maximized
+    // Drag-to-move - disabled while maximized
     DragHandler {
         target: null
         enabled: !titleBar._maximized

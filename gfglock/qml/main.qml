@@ -67,7 +67,7 @@ ApplicationWindow {
             showMaximize: true
         }
 
-        // Header — icon + title + description
+        // Header - icon + title + description
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 96
@@ -284,7 +284,7 @@ ApplicationWindow {
             }
         }
 
-        // Clear log button — below logs area, right-aligned (mirrors Cancel/Close in EncryptDialog)
+        // Clear log button - below logs area, right-aligned (mirrors Cancel/Close in EncryptDialog)
         RowLayout {
             Layout.alignment:    Qt.AlignRight
             Layout.rightMargin:  14

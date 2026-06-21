@@ -1,4 +1,4 @@
-// aes_cpu.cpp — AES-256-GCM / AES-256-CFB / ChaCha20-Poly1305 via OpenSSL EVP.
+// aes_cpu.cpp - AES-256-GCM / AES-256-CFB / ChaCha20-Poly1305 via OpenSSL EVP.
 // C++ owns the full file I/O loop; Python overhead = one function call per file.
 
 #include "aes_cpu.hpp"

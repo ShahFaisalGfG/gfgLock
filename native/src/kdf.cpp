@@ -1,4 +1,4 @@
-// kdf.cpp — PBKDF2-HMAC-SHA256 key derivation via OpenSSL EVP
+// kdf.cpp - PBKDF2-HMAC-SHA256 key derivation via OpenSSL EVP
 
 #include "kdf.hpp"
 #include <openssl/evp.h>

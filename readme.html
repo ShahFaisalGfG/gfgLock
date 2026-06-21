@@ -436,7 +436,7 @@
 		<li>Choose Encrypt or Decrypt, pick algorithm (Encrypt only), enter password, and Start.</li>
 	</ol>
 	<h3 id="portable">Portable</h3>
-	<p>Run <code><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/">gfgLock_v3.0.0_portable.exe</a></code> —
+	<p>Run <code><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/">gfgLock_v3.0.0_portable.exe</a></code> -
 		no
 		install required.
 	</p>
@@ -450,7 +450,7 @@
 	<h2 id="support--license">Support &amp; License</h2>
 	<ul>
 		<li>Issues: <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">gfgLock - Issues</a></li>
-		<li>License: MIT — see <code>LICENSE</code></li>
+		<li>License: MIT - see <code>LICENSE</code></li>
 	</ul>
 	<hr>
 	<p>Last Updated: June 2026</p>
@@ -469,7 +469,7 @@
 				<td>AES-256 GCM</td>
 				<td><code>.gfglock</code></td>
 				<td>AEAD</td>
-				<td><strong>Recommended</strong> — Modern standard</td>
+				<td><strong>Recommended</strong> - Modern standard</td>
 			</tr>
 			<tr>
 				<td>AES-256 CFB</td>
@@ -502,8 +502,8 @@
 	</ul>
 	<h3 id="encryption-tab">Encryption Tab</h3>
 	<ul>
-		<li><strong>CPU Threads:</strong> 1 to (cores - 1) — balance speed vs. responsiveness</li>
-		<li><strong>Chunk Size:</strong> 8 MB (default) to 128 MB — memory vs. speed tradeoff</li>
+		<li><strong>CPU Threads:</strong> 1 to (cores - 1) - balance speed vs. responsiveness</li>
+		<li><strong>Chunk Size:</strong> 8 MB (default) to 128 MB - memory vs. speed tradeoff</li>
 		<li><strong>Encrypt Filenames:</strong> Optional filename randomization</li>
 	</ul>
 	<h3 id="decryption-tab">Decryption Tab</h3>
@@ -650,9 +650,9 @@
 		<li>✅ <strong>Unique Passwords:</strong> Use different passwords for different file sets</li>
 		<li>✅ <strong>Choose the Right Algorithm:</strong>
 			<ul>
-				<li><strong>AES-256 GCM</strong> (recommended) — Balanced security and speed</li>
-				<li><strong>AES-256 CFB</strong> — Maximum speed, use when simplicity is preferred</li>
-				<li><strong>ChaCha20-Poly1305</strong> — Best for high-security applications</li>
+				<li><strong>AES-256 GCM</strong> (recommended) - Balanced security and speed</li>
+				<li><strong>AES-256 CFB</strong> - Maximum speed, use when simplicity is preferred</li>
+				<li><strong>ChaCha20-Poly1305</strong> - Best for high-security applications</li>
 			</ul>
 		</li>
 		<li>✅ <strong>Secure Storage:</strong> Keep encrypted files in safe locations with proper backups</li>
@@ -695,40 +695,40 @@
 	</table>
 	<h3 id="getting-help">Getting Help</h3>
 	<ul>
-		<li>📝 <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">GitHub Issues</a> — Report bugs</li>
-		<li>💬 <a href="https://github.com/ShahFaisalGfG/gfgLock/discussions">GitHub Discussions</a> — Ask questions
+		<li>📝 <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">GitHub Issues</a> - Report bugs</li>
+		<li>💬 <a href="https://github.com/ShahFaisalGfG/gfgLock/discussions">GitHub Discussions</a> - Ask questions
 		</li>
-		<li>📧 <a href="mailto:shahfaisalgfg@outlook.com">Email</a> — Direct contact</li>
+		<li>📧 <a href="mailto:shahfaisalgfg@outlook.com">Email</a> - Direct contact</li>
 	</ul>
 	<hr>
 	<h2 id="version-history">Version History</h2>
-	<h3 id="v300-current--june-2026">v3.0.0 (Current) — June 2026</h3>
+	<h3 id="v300-current--june-2026">v3.0.0 (Current) - June 2026</h3>
 	<ul>
-		<li>🚀 <strong>Native Engine:</strong> C++ extension (<code>gfglock_native.pyd</code>) backed by OpenSSL — AES-256-GCM, CFB, ChaCha20-Poly1305, and PBKDF2 with transparent Python fallback</li>
+		<li>🚀 <strong>Native Engine:</strong> C++ extension (<code>gfglock_native.pyd</code>) backed by OpenSSL - AES-256-GCM, CFB, ChaCha20-Poly1305, and PBKDF2 with transparent Python fallback</li>
 		<li>🔗 <strong>Bridge:</strong> <code>native_bridge.py</code> gateway with <code>NATIVE_AVAILABLE</code> flag and typed wrappers for all cipher operations and KDF</li>
 		<li>🧪 <strong>Tests:</strong> New <code>pytest</code> suite covering native path, Python fallback, and cross-path compatibility</li>
 		<li>🔧 <strong>Build:</strong> <code>build_native.ps1</code> automates MSVC, vcpkg, OpenSSL, and CMake compilation in one command</li>
 		<li>📦 <strong>Dev:</strong> Added <code>pytest&gt;=8.0</code>; relaxed <code>pycryptodome</code> to <code>&gt;=3.20</code></li>
 	</ul>
-	<h3 id="v275--may-2026">v2.7.5 — May 2026</h3>
+	<h3 id="v275--may-2026">v2.7.5 - May 2026</h3>
 	<ul>
-		<li>🔄 <strong>Framework:</strong> Complete rewrite — PyQt6 widgets replaced with PySide6 + QML and Material-style interface</li>
+		<li>🔄 <strong>Framework:</strong> Complete rewrite - PyQt6 widgets replaced with PySide6 + QML and Material-style interface</li>
 		<li>📦 <strong>Package:</strong> Restructured from flat <code>src/</code> layout to <code>gfglock/</code> MVC package (controllers, models, services, utils, qml)</li>
 		<li>⏱️ <strong>Time Estimation:</strong> Remaining time calculation displayed during encryption/decryption</li>
 		<li>🎨 <strong>UI/UX:</strong> Animated floating labels on password fields, compacted checkboxes, keyboard shortcuts (Enter, Delete, Ctrl+A, Ctrl+C)</li>
 		<li>🔑 <strong>Focus Flow:</strong> Auto-focus password field when files are added; Enter key starts operation or closes dialog when done</li>
 		<li>📊 <strong>Progress:</strong> Real-time file-by-file progress with bytes and file count tracking</li>
-		<li>🪵 <strong>Logging:</strong> Fixed log routing — critical and general log levels now correctly applied</li>
+		<li>🪵 <strong>Logging:</strong> Fixed log routing - critical and general log levels now correctly applied</li>
 		<li>🏗️ <strong>Build:</strong> Added <code>build.ps1</code> one-command Windows installer build script (PyInstaller + Inno Setup)</li>
 	</ul>
-	<h3 id="v270--december-21-2025">v2.7.0 — December 21, 2025</h3>
+	<h3 id="v270--december-21-2025">v2.7.0 - December 21, 2025</h3>
 	<ul>
 		<li>✨ Multi-algorithm support (AES-256 GCM/CFB, ChaCha20-Poly1305)</li>
 		<li>✨ Comprehensive logging system</li>
 		<li>✨ Dynamic theme support (System/Light/Dark)</li>
 		<li>✨ Smart file filtering by mode</li>
 	</ul>
-	<h3 id="v100-pre-release--december-11-2025-deprecated">v1.0.0 (Pre-release) — December 11, 2025 [DEPRECATED]</h3>
+	<h3 id="v100-pre-release--december-11-2025-deprecated">v1.0.0 (Pre-release) - December 11, 2025 [DEPRECATED]</h3>
 	<ul>
 		<li>Initial packaged Windows GUI build</li>
 		<li>AES-256 CFB only</li>
@@ -741,11 +741,11 @@
 	<h2 id="roadmap">Roadmap</h2>
 	<p>Future releases planned:</p>
 	<ul>
-		<li>🔮 <strong>v2.8.0</strong> — Resumable/pause operations for large files</li>
-		<li>🔮 <strong>v3.1.0</strong> — Context-Menu Fix</li>
-		<li>🔮 <strong>v3.1.0</strong> — Local Password Wallet</li>
-		<li>🔮 <strong>v3.2.0</strong> — File integrity verification (checksums)</li>
-		<li>🔮 <strong>v4.2.0</strong> — Cloud Integration for encrypted file password backup</li>
+		<li>🔮 <strong>v2.8.0</strong> - Resumable/pause operations for large files</li>
+		<li>🔮 <strong>v3.1.0</strong> - Context-Menu Fix</li>
+		<li>🔮 <strong>v3.1.0</strong> - Local Password Wallet</li>
+		<li>🔮 <strong>v3.2.0</strong> - File integrity verification (checksums)</li>
+		<li>🔮 <strong>v4.2.0</strong> - Cloud Integration for encrypted file password backup</li>
 	</ul>
 	<hr>
 	<h2 id="contributing">Contributing</h2>

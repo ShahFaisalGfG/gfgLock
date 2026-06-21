@@ -77,7 +77,7 @@ Runs tests covering:
 
 ## 6. Debug Build (PyInstaller)
 
-Produces a multi-file `dist/gfgLock/` folder — faster iteration, no compression:
+Produces a multi-file `dist/gfgLock/` folder - faster iteration, no compression:
 
 ```powershell
 pyinstaller `

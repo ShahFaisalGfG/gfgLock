@@ -1,4 +1,4 @@
-// bindings.cpp — pybind11 module: exposes all native functions to Python.
+// bindings.cpp - pybind11 module: exposes all native functions to Python.
 // GIL is released before every file I/O operation; re-acquired for callbacks.
 
 #include <pybind11/functional.h>

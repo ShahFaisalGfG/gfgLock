@@ -1,4 +1,4 @@
-# app.py — application entry point: QApplication + QQmlApplicationEngine
+# app.py - application entry point: QApplication + QQmlApplicationEngine
 
 import ctypes
 from ctypes import wintypes

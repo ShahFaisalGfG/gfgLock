@@ -1,4 +1,4 @@
-# gfgLock v2.7.0 — Release Notes
+# gfgLock v2.7.0 - Release Notes
 
 **Released:** December 21, 2025 · **Status:** Stable · **Platform:** Windows 10 / 11 (64-bit)
 
@@ -16,12 +16,12 @@ None. All files encrypted with v2.6.9 are fully compatible with v2.7.0.
 
 ## Added
 
-- **Stream mode (`chunk_size: Off`)** — processes the entire file in a single pass without chunk buffers. Fastest option for files under ~10 MB; loads the full file into RAM. Select *Off* in **Preferences → Chunk Size**.
-- **AES-NI hardware detection** — detects whether the host CPU supports AES-NI at startup and routes encryption through the hardware-accelerated code path automatically when available.
+- **Stream mode (`chunk_size: Off`)** - processes the entire file in a single pass without chunk buffers. Fastest option for files under ~10 MB; loads the full file into RAM. Select *Off* in **Preferences → Chunk Size**.
+- **AES-NI hardware detection** - detects whether the host CPU supports AES-NI at startup and routes encryption through the hardware-accelerated code path automatically when available.
 
 ## Changed
 
-- **Optimised cipher performance** — internal encryption and decryption routines reworked for improved throughput and lower CPU overhead across all three supported algorithms.
+- **Optimised cipher performance** - internal encryption and decryption routines reworked for improved throughput and lower CPU overhead across all three supported algorithms.
 
 ## Fixed
 

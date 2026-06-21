@@ -5,7 +5,7 @@ build-backend = "setuptools.backends.legacy:build"
 [project]
 name = "gfglock"
 version = "3.0.0"
-description = "Secure AES-256 file encryption and decryption — fast, simple, reliable"
+description = "Secure AES-256 file encryption and decryption - fast, simple, reliable"
 authors = [{ name = "Shah Faisal", email = "shahfaisalgfg@gmail.com" }]
 readme = "readme.md"
 requires-python = ">=3.11"
