@@ -91,6 +91,24 @@ if ($VsInstallPath) {
     Write-Host "   VS path: $VsInstallPath" -ForegroundColor DarkGray
 }
 
+# Locate the Ninja bundled with VS - its relative layout is stable across
+# editions/versions, but the VS install root itself is not (differs between
+# machines and between GitHub-hosted runner images), so this must be resolved
+# fresh each run rather than hardcoded anywhere.
+$NinjaExe = $null
+if ($VsInstallPath) {
+    $Candidate = Join-Path $VsInstallPath "Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
+    if (Test-Path $Candidate) { $NinjaExe = $Candidate }
+}
+if (-not $NinjaExe) {
+    $SystemNinja = Get-Command ninja -ErrorAction SilentlyContinue
+    if ($SystemNinja) { $NinjaExe = $SystemNinja.Source }
+}
+if (-not $NinjaExe) {
+    Fail "Could not find ninja.exe (checked VS install and PATH). Install the C++ CMake tools for Windows workload."
+}
+Write-Host "   Ninja: $NinjaExe" -ForegroundColor DarkGray
+
 # --- Virtual environment -----------------------------------------------------
 
 Write-Step "Activating virtual environment"
@@ -160,6 +178,7 @@ $CmakeArgs = @(
     "--preset", $Preset,
     "-S", $NativeDir,
     "-B", $BuildDir,
+    "-DCMAKE_MAKE_PROGRAM=$NinjaExe",
     "-Dpybind11_DIR=$Pybind11Dir",
     "-DPython3_EXECUTABLE=$PythonExe",
     "-DPython_EXECUTABLE=$PythonExe"
