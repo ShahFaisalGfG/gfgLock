@@ -8,6 +8,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 _SERVER_NAME = "gfgLock_AppServer_v3"
 _CONNECT_MS = 300
 _RETRY_MS = 500
+_ACK_MS = 500
 
 
 class SingleInstance(QObject):
@@ -43,7 +44,13 @@ class SingleInstance(QObject):
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _send(self, mode: str, paths: list, timeout_ms: int) -> bool:
-        """Connect to the primary and write mode+paths as JSON. Returns True on success."""
+        """Connect to the primary, write mode+paths as JSON, and wait for its ack.
+
+        Waiting (briefly) for the primary's ack before disconnecting closes a race where
+        the primary's event loop hadn't yet dispatched readyRead when the secondary hung
+        up, which could silently drop the message. If no ack arrives in time this still
+        disconnects and reports success, preserving the prior best-effort contract.
+        """
         try:
             sock = QLocalSocket()
             sock.connectToServer(_SERVER_NAME)
@@ -53,6 +60,7 @@ class SingleInstance(QObject):
             sock.write(data.encode("utf-8"))
             sock.flush()
             sock.waitForBytesWritten(300)
+            sock.waitForReadyRead(_ACK_MS)
             sock.disconnectFromServer()
             return True
         except Exception:
@@ -81,7 +89,7 @@ class SingleInstance(QObject):
             pass
 
     def _readMessage(self, sock: QLocalSocket) -> None:
-        """Parse incoming JSON message and emit filesReceived."""
+        """Parse incoming JSON message, emit filesReceived, and ack the sender."""
         try:
             raw = sock.readAll().toStdString().strip()
             payload = json.loads(raw)
@@ -89,5 +97,8 @@ class SingleInstance(QObject):
             paths = payload.get("paths", [])
             if mode and paths:
                 self.filesReceived.emit(mode, paths)
+            sock.write(b"OK")
+            sock.flush()
+            sock.waitForBytesWritten(300)
         except Exception:
             pass

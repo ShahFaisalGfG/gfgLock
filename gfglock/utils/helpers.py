@@ -55,15 +55,17 @@ def format_bytes(bytes_val: float, strip_zeros: bool = False) -> str:
     bytes_val = float(bytes_val)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if bytes_val < 1024.0:
-            result = f"{bytes_val:.1f} {unit}"
-            if strip_zeros:
-                result = result.rstrip("0").rstrip(".")
-            return result
+            return _format_size(bytes_val, unit, strip_zeros)
         bytes_val /= 1024.0
-    result = f"{bytes_val:.1f} PB"
+    return _format_size(bytes_val, "PB", strip_zeros)
+
+
+def _format_size(value: float, unit: str, strip_zeros: bool) -> str:
+    """Format one (value, unit) pair, stripping a trailing '.0' when requested."""
+    number = f"{value:.1f}"
     if strip_zeros:
-        result = result.rstrip("0").rstrip(".")
-    return result
+        number = number.rstrip("0").rstrip(".")
+    return f"{number} {unit}"
 
 
 def format_time(seconds: float) -> str:
