@@ -53,7 +53,8 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
   - [Contributing](#contributing)
   - [Roadmap](#roadmap)
   - [Changelog](#changelog)
-    - [v3.0.0 - June 2026 *(current)*](#v300--june-2026-current)
+    - [v3.0.1 - July 2026 *(current)*](#v301--july-2026-current)
+    - [v3.0.0 - June 2026](#v300--june-2026)
     - [v2.7.5 - May 2026](#v275--may-2026)
     - [v2.7.0 - December 2025](#v270--december-2025)
     - [v2.6.9 - December 2025](#v269--december-2025)
@@ -117,9 +118,9 @@ winget install gfgRoyal.gfgLock
 
 | Package | Admin Required | Best For |
 | --- | :---: | --- |
-| [`gfgLock_3.0.0_system_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ✅ | Shared / corporate machines |
-| [`gfgLock_3.0.0_user_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | Personal machines - recommended |
-| [`gfgLock_3.0.0_portable.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | USB drives, no-install environments |
+| [`gfgLock_3.0.1_system_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ✅ | Shared / corporate machines |
+| [`gfgLock_3.0.1_user_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | Personal machines - recommended |
+| [`gfgLock_3.0.1_portable.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | USB drives, no-install environments |
 
 Compressed `.7z` archives for all three variants are also available on the [Releases](https://github.com/ShahFaisalGfG/gfgLock/releases) page.
 
@@ -333,7 +334,12 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 
 ## Changelog
 
-### v3.0.0 - June 2026 *(current)*
+### v3.0.1 - July 2026 *(current)*
+- 🖼️ **Startup splash screen:** live dependency-loading progress shown while the app boots
+- 🐛 **Fixed:** unified system/user installer AppIds - resolves duplicate Add/Remove Programs entries
+- 🐛 **Fixed:** user (non-admin) installer no longer schedules a reboot-time file replacement for the shell extension DLL, which required admin rights it doesn't have
+
+### v3.0.0 - June 2026
 - 🚀 **Native engine:** C++ extension backed by OpenSSL - hardware-accelerated AES-256 GCM/CFB and ChaCha20-Poly1305 with seamless Python fallback
 - 🧪 **Test suite:** Full `pytest` coverage - native path, Python fallback, and cross-path round-trip compatibility
 - 🔧 **Build:** `scripts/build_native.ps1` automates MSVC + vcpkg + CMake compilation in one command
