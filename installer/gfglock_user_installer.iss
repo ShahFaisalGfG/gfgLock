@@ -27,7 +27,7 @@
 
 
 [Setup]
-AppId={{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}}
+AppId={{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName}
@@ -69,8 +69,12 @@ Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: 
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Shell extension DLL - restartreplace schedules replacement on reboot if Explorer holds a lock
-Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
+; Shell extension DLL - no restartreplace/uninsrestartdelete here: those need
+; MOVEFILE_DELAY_UNTIL_REBOOT, which Windows restricts to admin processes, and
+; this is the no-admin user installer. If Explorer has the DLL locked at
+; uninstall time it's simply left behind as a harmless orphan (its registry
+; entries are already removed via uninsdeletekey).
+Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
