@@ -32,6 +32,9 @@ function Fail([string]$Msg) {
 }
 
 function Format-Elapsed([TimeSpan]$ts) {
+    # $ts.Minutes/.Seconds are sub-hour remainders (0-59) - the hours branch must
+    # come first, or any run past 60 minutes silently drops its hour component.
+    if ($ts.TotalHours -ge 1)   { return "{0}h {1:D2}m {2:D2}s" -f [int]$ts.TotalHours, $ts.Minutes, $ts.Seconds }
     if ($ts.TotalMinutes -ge 1) { return "{0}m {1:D2}s" -f [int]$ts.Minutes, $ts.Seconds }
     return "{0}s" -f [int]$ts.TotalSeconds
 }
