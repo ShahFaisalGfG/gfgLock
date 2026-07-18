@@ -7,6 +7,7 @@ import sys
 from multiprocessing import freeze_support
 from typing import Optional
 
+from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -25,8 +26,13 @@ class _Startup:
     def __init__(self, app: QApplication) -> None:
         self._app = app
         self._engine: Optional[QQmlApplicationEngine] = None
+        self._app_ctrl = None
+        self._enc_ctrl = None
+        self._prefs_ctrl = None
 
-        logo = resource_path("gfglock/assets/icons/gfgLock.png")
+        logo = resource_path(
+            "gfglock/assets/icons/Square310x310Logo.scale-100.png"
+        )
         self._splash = SplashScreen(logo)
         self._splash.show()
 
@@ -43,9 +49,14 @@ class _Startup:
             from gfglock.controllers.encrypt_ctrl import EncryptController
             from gfglock.controllers.prefs_ctrl import PrefsController
 
-            self._app.setWindowIcon(
-                QIcon(resource_path("gfglock/assets/icons/gfgLock.png"))
-            )
+            icon = QIcon()
+            for size in (16, 32, 48, 256):
+                name = f"Square44x44Logo.targetsize-{size}.png"
+                path = resource_path(f"gfglock/assets/icons/{name}")
+                if os.path.isfile(path):
+                    icon.addFile(path, QSize(size, size))
+            if not icon.isNull():
+                self._app.setWindowIcon(icon)
 
             app_ctrl = AppController()
             enc_ctrl = EncryptController()
@@ -68,7 +79,13 @@ class _Startup:
                 self._on_failed("The user interface failed to load.")
                 return
 
-            self._engine = engine  # kept alive for the app's lifetime
+            # Kept alive for the app's lifetime - QML's context properties hold
+            # only a weak reference, so a garbage-collected controller here
+            # would leave bound QML text empty.
+            self._engine = engine
+            self._app_ctrl = app_ctrl
+            self._enc_ctrl = enc_ctrl
+            self._prefs_ctrl = prefs_ctrl
             _handle_cli(enc_ctrl, sys.argv[1:], cli_mode)
             self._splash.close()
         except Exception as e:
@@ -84,8 +101,11 @@ class _Startup:
         self._app.exit(-1)
 
     def shutdown(self) -> None:
-        """Release the QML scene on exit."""
+        """Release the QML scene before the controllers it referenced."""
         self._engine = None
+        self._app_ctrl = None
+        self._enc_ctrl = None
+        self._prefs_ctrl = None
 
 
 def main() -> None:

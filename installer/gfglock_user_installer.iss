@@ -74,7 +74,7 @@ Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#IconsDir}\Square150x150Logo.scale-100.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion
 
 
 [Icons]

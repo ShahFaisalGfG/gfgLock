@@ -1,6 +1,6 @@
 <div align="center">
 
-![gfgLock Logo](gfglock/assets/icons/gfgLock.png)
+![gfgLock Logo](gfglock/assets/icons/Square150x150Logo.scale-100.png)
 
 # gfgLock
 

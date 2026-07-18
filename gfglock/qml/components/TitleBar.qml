@@ -78,7 +78,7 @@ Item {
         anchors.leftMargin:     10
         anchors.verticalCenter: parent.verticalCenter
         width: 16; height: 16
-        source: "../../assets/icons/gfgLock.png"
+        source: "../../assets/icons/Square44x44Logo.targetsize-16.png"
         fillMode: Image.PreserveAspectFit
         smooth: true
         visible: status === Image.Ready

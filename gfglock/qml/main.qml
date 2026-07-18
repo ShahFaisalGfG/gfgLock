@@ -82,7 +82,7 @@ ApplicationWindow {
                 Image {
                     Layout.preferredWidth:  52
                     Layout.preferredHeight: 52
-                    source:   "../assets/icons/gfgLock.png"
+                    source:   "../assets/icons/Square44x44Logo.targetsize-48.png"
                     fillMode: Image.PreserveAspectFit
                     smooth:   true
 
@@ -380,7 +380,7 @@ ApplicationWindow {
                 Layout.alignment:       Qt.AlignHCenter
                 Layout.preferredWidth:  64
                 Layout.preferredHeight: 64
-                source:      "../assets/icons/gfgLock.png"
+                source:      "../assets/icons/Square71x71Logo.scale-100.png"
                 sourceSize:  Qt.size(64, 64)
                 fillMode:    Image.PreserveAspectFit
                 smooth:      true
