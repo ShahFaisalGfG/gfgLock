@@ -28,6 +28,11 @@ ApplicationWindow {
             openEncryptDialog(cliLaunchMode)
     }
 
+    // quitOnLastWindowClosed is disabled app-wide (see app.py) since it can
+    // misfire while a QML window is still open, so closing the main window
+    // must quit explicitly.
+    onClosing: Qt.quit()
+
     // ── Background ──────────────────────────────────────────────────────────
     Rectangle {
         anchors.fill: parent

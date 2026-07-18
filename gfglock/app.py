@@ -144,6 +144,11 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
+    # Qt's automatic quit-on-last-window-closed can misfire the instant the
+    # splash (a QWidget) closes while a QML window is the only one left open -
+    # main.qml's root window quits explicitly on close instead (see main.qml).
+    app.setQuitOnLastWindowClosed(False)
+
     startup = _Startup(app)
     code = app.exec()
     startup.shutdown()
