@@ -32,12 +32,22 @@ class FileChunker:
     def __del__(self):
         self.cleanup_temp_dir()
 
+    @staticmethod
+    def _resolve_chunk_size(chunk_size) -> int:
+        """Resolve a chunk_size argument to a byte count (1-128 is treated as megabytes).
+
+        Raises ValueError for a non-positive size, since 0 silently reads nothing and a
+        negative value reads the whole file at once, neither of which chunks as requested.
+        """
+        if not isinstance(chunk_size, (int, float)) or chunk_size <= 0:
+            raise ValueError(f"chunk_size must be a positive number, got {chunk_size!r}")
+        if isinstance(chunk_size, int) and chunk_size <= 128:
+            return int(chunk_size * 1024 * 1024)
+        return int(chunk_size)
+
     def split_file(self, file_path, chunk_size: int) -> list:
         """Split a file into chunk files and return their paths."""
-        if isinstance(chunk_size, int) and 0 < chunk_size <= 128:
-            chunk_size_bytes = int(chunk_size * 1024 * 1024)
-        else:
-            chunk_size_bytes = int(chunk_size)
+        chunk_size_bytes = self._resolve_chunk_size(chunk_size)
 
         chunk_paths = []
         isolated_temp = self._ensure_isolated_temp_dir()
@@ -72,10 +82,7 @@ class FileChunker:
 
     def stream_chunks(self, fileobj, total_bytes=None, chunk_size=64 * 1024):
         """Yield chunks from fileobj; avoids temp files for true streaming."""
-        if isinstance(chunk_size, int) and 0 < chunk_size <= 128:
-            chunk_size_bytes = chunk_size * 1024 * 1024
-        else:
-            chunk_size_bytes = int(chunk_size)
+        chunk_size_bytes = self._resolve_chunk_size(chunk_size)
 
         if total_bytes is None:
             while True:
