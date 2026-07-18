@@ -137,13 +137,12 @@ Write-Host "   pybind11 cmake dir: $Pybind11Dir" -ForegroundColor DarkGray
 $PythonExe = python -c "import sys; print(sys.executable)"
 Write-Host "   Python executable : $PythonExe" -ForegroundColor DarkGray
 
-# vcpkg ships its own python3 port for build-time tooling (e.g. meson), and
-# registers a CMake find-module wrapper that hijacks find_package(Python ...)
-# to resolve Development headers/libs from that vcpkg-internal copy instead of
-# the interpreter we actually target. Pre-supplying the real include dir and
-# import lib bypasses that wrapper's search and pins Development.Module to the
-# Python this extension must actually load under (sys.base_prefix survives
-# being called from inside a venv, where it differs from sys.prefix).
+# vcpkg's bundled python3 port registers a find-module wrapper that searches
+# its own tree for Development headers/libs before FindPython ever sees our
+# -DPython_INCLUDE_DIR hint, so that hint alone arrives too late to matter.
+# Presetting its private (underscore) result variables directly makes its
+# search a no-op instead, letting the real target Python's files through.
+# sys.base_prefix (not sys.prefix) so this also resolves correctly in a venv.
 $PyDevPaths = python -c "import sys, sysconfig, os; print(sysconfig.get_path('include')); print(os.path.join(sys.base_prefix, 'libs', 'python' + sysconfig.get_config_var('py_version_nodot') + '.lib'))"
 $PyIncludeDir, $PyLibrary = $PyDevPaths
 if (-not (Test-Path $PyIncludeDir) -or -not (Test-Path $PyLibrary)) {
@@ -197,7 +196,9 @@ $CmakeArgs = @(
     "-Dpybind11_DIR=$Pybind11Dir",
     "-DPython_EXECUTABLE=$PythonExe",
     "-DPython_INCLUDE_DIR=$PyIncludeDir",
-    "-DPython_LIBRARY=$PyLibrary"
+    "-DPython_LIBRARY=$PyLibrary",
+    "-D_Python_INCLUDE_DIR=$PyIncludeDir",
+    "-D_Python_LIBRARY_RELEASE=$PyLibrary"
 )
 
 cmake @CmakeArgs
