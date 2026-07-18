@@ -137,6 +137,21 @@ Write-Host "   pybind11 cmake dir: $Pybind11Dir" -ForegroundColor DarkGray
 $PythonExe = python -c "import sys; print(sys.executable)"
 Write-Host "   Python executable : $PythonExe" -ForegroundColor DarkGray
 
+# vcpkg ships its own python3 port for build-time tooling (e.g. meson), and
+# registers a CMake find-module wrapper that hijacks find_package(Python ...)
+# to resolve Development headers/libs from that vcpkg-internal copy instead of
+# the interpreter we actually target. Pre-supplying the real include dir and
+# import lib bypasses that wrapper's search and pins Development.Module to the
+# Python this extension must actually load under (sys.base_prefix survives
+# being called from inside a venv, where it differs from sys.prefix).
+$PyDevPaths = python -c "import sys, sysconfig, os; print(sysconfig.get_path('include')); print(os.path.join(sys.base_prefix, 'libs', 'python' + sysconfig.get_config_var('py_version_nodot') + '.lib'))"
+$PyIncludeDir, $PyLibrary = $PyDevPaths
+if (-not (Test-Path $PyIncludeDir) -or -not (Test-Path $PyLibrary)) {
+    Fail "Could not locate Python development headers/library ($PyIncludeDir / $PyLibrary). Install the full Python distribution (not just the interpreter)."
+}
+Write-Host "   Python include     : $PyIncludeDir" -ForegroundColor DarkGray
+Write-Host "   Python import lib  : $PyLibrary" -ForegroundColor DarkGray
+
 # --- vcpkg bootstrap ---------------------------------------------------------
 
 Write-Step "Checking vcpkg"
@@ -180,8 +195,9 @@ $CmakeArgs = @(
     "-B", $BuildDir,
     "-DCMAKE_MAKE_PROGRAM=$NinjaExe",
     "-Dpybind11_DIR=$Pybind11Dir",
-    "-DPython3_EXECUTABLE=$PythonExe",
-    "-DPython_EXECUTABLE=$PythonExe"
+    "-DPython_EXECUTABLE=$PythonExe",
+    "-DPython_INCLUDE_DIR=$PyIncludeDir",
+    "-DPython_LIBRARY=$PyLibrary"
 )
 
 cmake @CmakeArgs
