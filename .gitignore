@@ -11,7 +11,13 @@ dist_portable/
 # ── Native C++ build ──────────────────────────────────────────────────────────
 native/out/
 native/build/
-native/vcpkg_installed/
+vcpkg_installed/
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/
+build.ninja
+cmake_install.cmake
+*.slnx
 *.pyd
 
 # ── vcpkg ─────────────────────────────────────────────────────────────────────

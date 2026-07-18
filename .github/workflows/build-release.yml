@@ -61,7 +61,7 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Path build\installer -Force | Out-Null
 
-      # Bundles the Python app into dist\gfgLock\ (onedir — used by both installers)
+      # Bundles the Python app into dist\gfgLock\ (onedir - used by both installers)
       - name: Build PyInstaller bundle
         shell: pwsh
         run: |
@@ -160,14 +160,14 @@ jobs:
             "build\installer\${appName}_${ver}_user_installer.exe"
           if ($LASTEXITCODE -ne 0) { throw "7z: user installer archive failed" }
 
-          # Portable .7z is the full onedir bundle — faster launch, no temp extraction
+          # Portable .7z is the full onedir bundle - faster launch, no temp extraction
           & $7z a -t7z -mx=9 `
             "build\${appName}_${ver}_portable.7z" `
             "dist\${appName}\*"
           if ($LASTEXITCODE -ne 0) { throw "7z: portable bundle archive failed" }
 
       # Creates + publishes the GitHub Release, uploads all six assets.
-      # Must use RELEASE_PAT (not GITHUB_TOKEN) — events fired by GITHUB_TOKEN
+      # Must use RELEASE_PAT (not GITHUB_TOKEN) - events fired by GITHUB_TOKEN
       # do not cascade into other workflows, so winget-release.yml would never trigger.
       - name: Create GitHub Release
         shell: pwsh

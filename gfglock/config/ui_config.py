@@ -1,4 +1,4 @@
-# ui_config.py — centralized UI size constants and DPI utilities for gfgLock
+# ui_config.py - centralized UI size constants and DPI utilities for gfgLock
 # QML owns all visual styling; this file provides size/spacing data and DPI helpers.
 
 from typing import Tuple

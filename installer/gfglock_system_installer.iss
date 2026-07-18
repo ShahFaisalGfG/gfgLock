@@ -47,7 +47,7 @@ SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=110,120
 
-; Privileges — require admin (force system-wide install)
+; Privileges - require admin (force system-wide install)
 PrivilegesRequired=admin
 
 ; Architectures
@@ -69,14 +69,14 @@ Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: 
 [Files]
 ; Main application files (compiled executable and dependencies)
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Shell extension DLL — restartreplace schedules replacement on reboot if Explorer holds a lock
+; Shell extension DLL - restartreplace schedules replacement on reboot if Explorer holds a lock
 Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 ; Icon for the application
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 ; Documentation
 Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#IconsDir}\gfgLock.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#IconsDir}\Square150x150Logo.scale-100.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion
 
 
 
@@ -117,12 +117,12 @@ Root: HKCR; Subkey: "gfgLock.gfgcha\shell\open\command"; ValueType: string; Valu
 ; IExplorerCommand CLSID registrations (Windows 11 first-level context menu)
 ; =============================================================================
 
-; Encrypt — {{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}
+; Encrypt - {{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}
 Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypt Shell Extension"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
 
-; Decrypt — {{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}
+; Decrypt - {{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}
 Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Decrypt Shell Extension"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
@@ -208,7 +208,7 @@ begin
     if MsgBox(
       'A per-user installation of gfgLock was found.' + #13#10#13#10 +
       'Click Yes to remove it and continue with the system-wide installation.' + #13#10 +
-      'Click No to cancel — then use the per-user installer to update instead.',
+      'Click No to cancel - then use the per-user installer to update instead.',
       mbConfirmation, MB_YESNO) = IDNO then
     begin
       Result := False;

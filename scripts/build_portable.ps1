@@ -3,7 +3,7 @@
     Build the gfgLock portable single-file executable.
 .DESCRIPTION
     Bundles the app into one self-contained exe: build\gfgLock_<version>_portable.exe
-    No installer is produced — the exe runs directly without installation.
+    No installer is produced - the exe runs directly without installation.
 .NOTES
     Requirements: Python venv with pyinstaller>=6.17
 #>
@@ -29,6 +29,9 @@ function Fail([string]$Msg) {
 }
 
 function Format-Elapsed([TimeSpan]$ts) {
+    # $ts.Minutes/.Seconds are sub-hour remainders (0-59) - the hours branch must
+    # come first, or any run past 60 minutes silently drops its hour component.
+    if ($ts.TotalHours -ge 1)   { return "{0}h {1:D2}m {2:D2}s" -f [int]$ts.TotalHours, $ts.Minutes, $ts.Seconds }
     if ($ts.TotalMinutes -ge 1) { return "{0}m {1:D2}s" -f [int]$ts.Minutes, $ts.Seconds }
     return "{0}s" -f [int]$ts.TotalSeconds
 }
@@ -64,7 +67,7 @@ foreach ($v in $VenvScripts) {
     }
 }
 if (-not $VenvFound) {
-    Write-Host "   No venv found — using system Python" -ForegroundColor Yellow
+    Write-Host "   No venv found - using system Python" -ForegroundColor Yellow
 }
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────

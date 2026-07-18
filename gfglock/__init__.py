@@ -1,1 +1,1 @@
-# gfglock — secure file encryption utility
+# gfglock - secure file encryption utility

@@ -1,4 +1,4 @@
-# settings.py — settings file load, save, and merge utilities
+# settings.py - settings file load, save, and merge utilities
 
 import json
 import os

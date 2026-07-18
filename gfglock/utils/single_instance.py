@@ -1,4 +1,4 @@
-# single_instance.py — single-instance guard via QLocalServer / QLocalSocket
+# single_instance.py - single-instance guard via QLocalServer / QLocalSocket
 
 import json
 
@@ -26,7 +26,7 @@ class SingleInstance(QObject):
                 return True
             if self._startServer():
                 return False
-            # Race: another instance just won the listen — retry as client
+            # Race: another instance just won the listen - retry as client
             return self._send(mode, paths, _RETRY_MS)
         except Exception:
             return False

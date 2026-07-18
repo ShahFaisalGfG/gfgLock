@@ -1,4 +1,4 @@
-# config — centralized UI constants and application defaults
+# config - centralized UI constants and application defaults
 
 from gfglock.config.defaults import (
     AppInfo,

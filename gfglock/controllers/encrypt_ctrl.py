@@ -1,4 +1,4 @@
-# encrypt_ctrl.py — file management and encrypt/decrypt operation controller
+# encrypt_ctrl.py - file management and encrypt/decrypt operation controller
 
 import os
 
@@ -244,7 +244,7 @@ class EncryptController(QObject):
             self._worker = None
             mode = self._operation_mode.upper()
             summary = (
-                f"[{mode}] Done in {elapsed:.1f}s — "
+                f"[{mode}] Done in {elapsed:.1f}s - "
                 f"{succeeded} ok · {failed} failed · {skipped} skipped"
             )
             write_log(summary, "general")
@@ -271,7 +271,7 @@ class EncryptController(QObject):
                 body = f"{succeeded} file(s) {action} in {elapsed:.1f}s."
             else:
                 body = f"{succeeded} ok · {failed} failed · {skipped} skipped in {elapsed:.1f}s."
-            send_notification(f"gfgLock — {verb} Complete", body)
+            send_notification(f"gfgLock - {verb} Complete", body)
         except Exception:
             pass
 

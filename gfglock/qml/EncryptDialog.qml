@@ -14,6 +14,7 @@ ApplicationWindow {
     property var    _algOpts:         prefsController.encryptionModeOptions
     property var    _chunkOpts:       prefsController.chunkSizeOptions
     property real   _elapsed:         0.0
+    property real   _startMs:         0.0
     property bool   _done:            false
     property int    _prevFileCount:   0
     property int    _failedCount:     0
@@ -57,7 +58,7 @@ ApplicationWindow {
         id:       elapsedTimer
         interval: 100
         repeat:   true
-        onTriggered: encDlg._elapsed = parseFloat((encDlg._elapsed + 0.1).toFixed(1))
+        onTriggered: encDlg._elapsed = (Date.now() - encDlg._startMs) / 1000.0
     }
 
     // ── Background ────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ ApplicationWindow {
         function onOperationStarted() {
             stackView.currentIndex = 1
             encDlg._done           = false
+            encDlg._startMs        = Date.now()
             encDlg._elapsed        = 0.0
             encDlg._failedCount    = 0
             encDlg._succeededCount = 0
@@ -109,6 +111,7 @@ ApplicationWindow {
         }
         function onOperationFinished(elapsed, total, succeeded, failed, skipped) {
             elapsedTimer.stop()
+            encDlg._elapsed        = elapsed
             encDlg._done           = true
             encDlg._failedCount    = failed
             encDlg._succeededCount = succeeded
@@ -122,7 +125,7 @@ ApplicationWindow {
             var time = new Date().toLocaleTimeString()
             appController.appendLog(
                 "[" + time + "]  " + encDlg.operationMode.toUpperCase() +
-                "  —  " + total + " file(s) " + sz +
+                "  -  " + total + " file(s) " + sz +
                 "  ·  " + elapsed.toFixed(1) + "s" +
                 "  ·  " + succeeded + " ok · " + failed + " failed · " + skipped + " skipped"
             )
@@ -175,7 +178,7 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         spacing: 16
 
-                        // Left column — file list
+                        // Left column - file list
                         ColumnLayout {
                             Layout.preferredWidth: Math.max(300, Math.round((encDlg.width - 48) * 0.54))
                             Layout.fillHeight: true
@@ -267,7 +270,7 @@ ApplicationWindow {
                             }
                         }
 
-                        // Right column — form
+                        // Right column - form
                         ColumnLayout {
                             Layout.fillWidth:  true
                             Layout.fillHeight: true

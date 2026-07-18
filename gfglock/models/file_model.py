@@ -1,4 +1,4 @@
-# file_model.py — QAbstractListModel backing the QML file list
+# file_model.py - QAbstractListModel backing the QML file list
 
 import os
 
@@ -249,7 +249,7 @@ class FileListModel(QAbstractListModel):
 
     @Property(int, notify=countChanged)
     def count(self) -> int:
-        """Total number of files — bindable QML property."""
+        """Total number of files - bindable QML property."""
         return len(self._files)
 
     @Property(str, notify=totalSizeChanged)
@@ -262,7 +262,7 @@ class FileListModel(QAbstractListModel):
 
     @Property(int, notify=selectionChanged)
     def selectedCount(self) -> int:
-        """Number of currently selected items — bindable QML property."""
+        """Number of currently selected items - bindable QML property."""
         return len(self._selected)
 
     @Slot(result=list)

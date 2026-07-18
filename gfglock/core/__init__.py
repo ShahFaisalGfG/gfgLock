@@ -1,4 +1,4 @@
-# core — encryption algorithm implementations
+# core - encryption algorithm implementations
 
 from gfglock.core import native_bridge
 

@@ -170,7 +170,7 @@ class TestNativeAcceleration:
 
 
 class TestPythonFallback:
-    """Round-trip tests with native C++ disabled — exercises the pure-Python path."""
+    """Round-trip tests with native C++ disabled - exercises the pure-Python path."""
 
     def test_gcm_roundtrip(self, make_file, password, sample_data, monkeypatch):
         """AES-256-GCM Python fallback encrypt → decrypt must recover original bytes."""

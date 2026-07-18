@@ -2,11 +2,11 @@
 .SYNOPSIS
     Full build: native targets, both installers, and portable exe.
 .DESCRIPTION
-    Step 1 — Native build : compiles gfglock_native.pyd and gfglock_shell.dll
-    Step 2 — PyInstaller  : bundles the app into dist\gfgLock\
-    Step 3 — Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
-    Step 4 — Inno Setup   : compiles system and user installers into build\installer\
-    Step 5 — Portable     : builds a single-file portable exe into build\
+    Step 1 - Native build : compiles gfglock_native.pyd and gfglock_shell.dll
+    Step 2 - PyInstaller  : bundles the app into dist\gfgLock\
+    Step 3 - Shell DLL    : copies gfglock_shell.dll into dist\gfgLock\
+    Step 4 - Inno Setup   : compiles system and user installers into build\installer\
+    Step 5 - Portable     : builds a single-file portable exe into build\
 .NOTES
     Requirements: Python venv with pyinstaller>=6.17, Inno Setup 6, Visual Studio Build Tools
 #>
@@ -54,6 +54,9 @@ function Invoke-Iscc([string]$IssPath) {
 }
 
 function Format-Elapsed([TimeSpan]$ts) {
+    # $ts.Minutes/.Seconds are sub-hour remainders (0-59) - the hours branch must
+    # come first, or any run past 60 minutes silently drops its hour component.
+    if ($ts.TotalHours -ge 1)   { return "{0}h {1:D2}m {2:D2}s" -f [int]$ts.TotalHours, $ts.Minutes, $ts.Seconds }
     if ($ts.TotalMinutes -ge 1) { return "{0}m {1:D2}s" -f [int]$ts.Minutes, $ts.Seconds }
     return "{0}s" -f [int]$ts.TotalSeconds
 }

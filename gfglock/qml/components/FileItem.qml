@@ -94,7 +94,7 @@ Rectangle {
             }
         }
 
-        // Size label — hidden while hovering (X button takes that slot)
+        // Size label - hidden while hovering (X button takes that slot)
         Text {
             text: fileItem.fileSize
             color: Material.theme === Material.Dark ? "#aaaaaa" : "#555555"
@@ -111,7 +111,7 @@ Rectangle {
         }
     }
 
-    // Click-to-select — declared before removeBtn so removeBtn wins on overlap
+    // Click-to-select - declared before removeBtn so removeBtn wins on overlap
     MouseArea {
         id: itemMouse
         anchors.fill: parent
@@ -150,7 +150,7 @@ Rectangle {
         }
     }
 
-    // Quick remove — declared AFTER itemMouse so it stacks above it and grabs clicks
+    // Quick remove - declared AFTER itemMouse so it stacks above it and grabs clicks
     Rectangle {
         id: removeBtn
         width: 26; height: 26

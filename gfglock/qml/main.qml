@@ -67,7 +67,7 @@ ApplicationWindow {
             showMaximize: true
         }
 
-        // Header — icon + title + description
+        // Header - icon + title + description
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 96
@@ -82,7 +82,7 @@ ApplicationWindow {
                 Image {
                     Layout.preferredWidth:  52
                     Layout.preferredHeight: 52
-                    source:   "../assets/icons/gfgLock.png"
+                    source:   "../assets/icons/Square44x44Logo.targetsize-48.png"
                     fillMode: Image.PreserveAspectFit
                     smooth:   true
 
@@ -284,7 +284,7 @@ ApplicationWindow {
             }
         }
 
-        // Clear log button — below logs area, right-aligned (mirrors Cancel/Close in EncryptDialog)
+        // Clear log button - below logs area, right-aligned (mirrors Cancel/Close in EncryptDialog)
         RowLayout {
             Layout.alignment:    Qt.AlignRight
             Layout.rightMargin:  14
@@ -380,7 +380,7 @@ ApplicationWindow {
                 Layout.alignment:       Qt.AlignHCenter
                 Layout.preferredWidth:  64
                 Layout.preferredHeight: 64
-                source:      "../assets/icons/gfgLock.png"
+                source:      "../assets/icons/Square71x71Logo.scale-100.png"
                 sourceSize:  Qt.size(64, 64)
                 fillMode:    Image.PreserveAspectFit
                 smooth:      true

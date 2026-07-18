@@ -1,4 +1,4 @@
-# console.py — safe stdout writer (stdlib only, no gfglock imports)
+# console.py - safe stdout writer (stdlib only, no gfglock imports)
 
 import sys
 
