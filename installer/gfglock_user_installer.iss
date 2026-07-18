@@ -1,7 +1,7 @@
 ; =======================================================
 ; gfgLock Windows Installer
 ; Inno Setup Script
-; Version: 3.0.0
+; Version: 3.0.1
 ; =======================================================
 ; gfgLock per-user installer (non-admin)
 ; Use this script to create a per-user installer that does not require elevated privileges
@@ -10,7 +10,7 @@
   #define MyAppName "gfgLock"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "3.0.0"
+  #define MyAppVersion "3.0.1"
 #endif
 #ifndef MyAppPublisher
   #define MyAppPublisher "gfgRoyal"
