@@ -19,6 +19,9 @@ build.ninja
 cmake_install.cmake
 *.slnx
 *.pyd
+# vcpkg applocal-deploy copies these runtime DLLs next to gfglock_native.pyd
+gfglock/core/*.dll
+gfglock/core/Release/
 
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 .vcpkg/
