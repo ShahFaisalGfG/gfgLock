@@ -71,6 +71,8 @@ jobs:
             --icon           "gfglock\assets\icons\gfgLock.ico" `
             --paths          "gfglock\core" `
             --hidden-import  gfglock_native `
+            --additional-hooks-dir "hooks" `
+            --runtime-hook   "hooks\pyi_rth_qt_dll_dirs.py" `
             --add-data       "gfglock\qml;gfglock\qml" `
             --add-data       "gfglock\assets;gfglock\assets" `
             --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `
@@ -136,6 +138,8 @@ jobs:
             --icon           "gfglock\assets\icons\gfgLock.ico" `
             --paths          "gfglock\core" `
             --hidden-import  gfglock_native `
+            --additional-hooks-dir "hooks" `
+            --runtime-hook   "hooks\pyi_rth_qt_dll_dirs.py" `
             --add-data       "gfglock\qml;gfglock\qml" `
             --add-data       "gfglock\assets;gfglock\assets" `
             --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `

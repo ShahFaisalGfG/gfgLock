@@ -2,7 +2,7 @@
 
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from functools import partial
 from typing import Callable
 
@@ -114,52 +114,68 @@ class EncryptDecryptWorker(QRunnable):
         try:
             with ThreadPoolExecutor(max_workers=self.threads) as executor:
                 future_to_path: dict = {}
-                for file_index, p in enumerate(self.paths):
+
+                next_path = iter(enumerate(self.paths))
+
+                def submit_next() -> bool:
                     if self._cancelled:
-                        break
+                        return False
+                    try:
+                        file_index, p = next(next_path)
+                    except StopIteration:
+                        return False
                     progress_cb = self._make_progress_callback(file_index, len(self.paths))
                     job = self._build_job(p, progress_cb)
                     fut = executor.submit(job)
                     future_to_path[fut] = p
+                    return True
 
-                for fut in as_completed(future_to_path):
+                for _ in range(min(self.threads, total)):
                     if self._cancelled:
                         break
-                    p = future_to_path.get(fut, "")
-                    try:
-                        result = fut.result()
-                        success, msg = result if isinstance(result, tuple) else (bool(result), "")
-                        if msg:
-                            self.signals.status.emit(msg)
-                        if success:
-                            succeeded += 1
+                    if not submit_next():
+                        break
+
+                while future_to_path and not self._cancelled:
+                    completed, _ = wait(future_to_path, return_when=FIRST_COMPLETED)
+                    for fut in completed:
+                        if self._cancelled:
+                            break
+                        p = future_to_path.pop(fut, "")
+                        try:
+                            result = fut.result()
+                            success, msg = result if isinstance(result, tuple) else (bool(result), "")
                             if msg:
-                                self.signals.file_result.emit(True, msg)
-                        else:
-                            if self._is_skip(p, msg):
-                                skipped_already_encrypted += 1
+                                self.signals.status.emit(msg)
+                            if success:
+                                succeeded += 1
                                 if msg:
                                     self.signals.file_result.emit(True, msg)
                             else:
-                                failed += 1
-                                failed_files.append(p)
-                                if msg:
-                                    self.signals.file_result.emit(False, msg)
-                    except Exception as e:
-                        failed += 1
-                        failed_files.append(p)
-                        err_msg = f"Critical error while processing {p}: {e}"
-                        self.signals.error.emit(str(e))
-                        self.signals.file_result.emit(False, err_msg)
+                                if self._is_skip(p, msg):
+                                    skipped_already_encrypted += 1
+                                    if msg:
+                                        self.signals.file_result.emit(True, msg)
+                                else:
+                                    failed += 1
+                                    failed_files.append(p)
+                                    if msg:
+                                        self.signals.file_result.emit(False, msg)
+                        except Exception as e:
+                            failed += 1
+                            failed_files.append(p)
+                            err_msg = f"Critical error while processing {p}: {e}"
+                            self.signals.error.emit(str(e))
+                            self.signals.file_result.emit(False, err_msg)
 
-                    done += 1
-                    self._files_completed += 1
-                    try:
-                        self.signals.progress.emit(self.processed_bytes, self.total_bytes)
-                        self.signals.files_progress.emit(self._files_completed, total)
-                    except Exception:
-                        pass
-                    self.signals.file_changed.emit(p)
+                        self._files_completed += 1
+                        try:
+                            self.signals.progress.emit(self.processed_bytes, self.total_bytes)
+                            self.signals.files_progress.emit(self._files_completed, total)
+                        except Exception:
+                            pass
+                        self.signals.file_changed.emit(p)
+                        submit_next()
 
         except Exception as e:
             self.signals.error.emit(str(e))

@@ -6,6 +6,7 @@ from gfglock.utils.helpers import format_bytes
 from PySide6.QtCore import (
     QAbstractListModel,
     QModelIndex,
+    QPersistentModelIndex,
     Property,
     Qt,
     Signal,
@@ -16,11 +17,11 @@ from PySide6.QtCore import (
 class FileListModel(QAbstractListModel):
     """List model that exposes file metadata to QML via named roles."""
 
-    NameRole = Qt.UserRole + 1
-    PathRole = Qt.UserRole + 2
-    SizeRole = Qt.UserRole + 3
-    ExtRole = Qt.UserRole + 4
-    SelectedRole = Qt.UserRole + 5
+    NameRole = Qt.ItemDataRole.UserRole + 1
+    PathRole = Qt.ItemDataRole.UserRole + 2
+    SizeRole = Qt.ItemDataRole.UserRole + 3
+    ExtRole = Qt.ItemDataRole.UserRole + 4
+    SelectedRole = Qt.ItemDataRole.UserRole + 5
 
     countChanged = Signal(int)
     totalSizeChanged = Signal()
@@ -29,15 +30,20 @@ class FileListModel(QAbstractListModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._files: list[dict] = []
+        self._path_keys: set[str] = set()
         self._selected: set[int] = set()
         self._total_bytes: int = 0
 
     # ── QAbstractListModel interface ─────────────────────────────────────────
 
-    def rowCount(self, parent=QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()) -> int:
         return len(self._files)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+    def data(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ):
         if not index.isValid() or index.row() >= len(self._files):
             return None
         item = self._files[index.row()]
@@ -51,7 +57,7 @@ class FileListModel(QAbstractListModel):
             return item["ext"]
         if role == self.SelectedRole:
             return index.row() in self._selected
-        if role == Qt.DisplayRole:
+        if role == Qt.ItemDataRole.DisplayRole:
             return item["name"]
         return None
 
@@ -69,30 +75,66 @@ class FileListModel(QAbstractListModel):
     @Slot(str)
     def addFile(self, path: str) -> None:
         """Add a file by path if not already in the list."""
+        self.addFiles([path])
+
+    @Slot(list)
+    def addFiles(self, paths: list) -> None:
+        """Add existing paths in one model update, skipping duplicates."""
+        additions = []
+        pending_keys: set[str] = set()
         try:
-            path = os.path.normpath(path)
-            if any(f["path"] == path for f in self._files):
-                return
-            if not os.path.exists(path):
-                return
-            item = self._make_item(path)
-            self.beginInsertRows(QModelIndex(), len(self._files), len(self._files))
-            self._files.append(item)
-            self._total_bytes += item["bytes"]
-            self.endInsertRows()
-            self.countChanged.emit(len(self._files))
-            self.totalSizeChanged.emit()
+            for raw_path in paths:
+                try:
+                    path = os.path.normpath(str(raw_path))
+                    key = os.path.normcase(path)
+                    if key in self._path_keys or key in pending_keys:
+                        continue
+                    if not os.path.exists(path):
+                        continue
+                    item = self._make_item(path)
+                    additions.append(item)
+                    pending_keys.add(key)
+                except Exception:
+                    continue
+            self._insert_items(additions)
         except Exception:
             pass
 
     @Slot(list)
-    def addFiles(self, paths: list) -> None:
-        """Add multiple files, skipping duplicates."""
-        for path in paths:
-            try:
-                self.addFile(str(path))
-            except Exception:
-                pass
+    def addFileItems(self, items: list) -> None:
+        """Insert pre-scanned file metadata without doing filesystem work on the UI thread."""
+        additions = []
+        pending_keys: set[str] = set()
+        try:
+            for item in items:
+                try:
+                    path = os.path.normpath(str(item["path"]))
+                    key = os.path.normcase(path)
+                    if key in self._path_keys or key in pending_keys:
+                        continue
+                    normalized_item = dict(item)
+                    normalized_item["path"] = path
+                    additions.append(normalized_item)
+                    pending_keys.add(key)
+                except (KeyError, TypeError, ValueError):
+                    continue
+            self._insert_items(additions)
+        except Exception:
+            pass
+
+    def _insert_items(self, items: list[dict]) -> None:
+        """Append prepared file rows and emit one contiguous model update."""
+        if not items:
+            return
+        first = len(self._files)
+        last = first + len(items) - 1
+        self.beginInsertRows(QModelIndex(), first, last)
+        self._files.extend(items)
+        self._path_keys.update(os.path.normcase(item["path"]) for item in items)
+        self._total_bytes += sum(item["bytes"] for item in items)
+        self.endInsertRows()
+        self.countChanged.emit(len(self._files))
+        self.totalSizeChanged.emit()
 
     @Slot(int)
     def removeAt(self, row: int) -> None:
@@ -101,6 +143,7 @@ class FileListModel(QAbstractListModel):
             if 0 <= row < len(self._files):
                 self.beginRemoveRows(QModelIndex(), row, row)
                 removed = self._files.pop(row)
+                self._path_keys.discard(os.path.normcase(removed["path"]))
                 self._total_bytes -= removed["bytes"]
                 self._selected.discard(row)
                 self._selected = {i if i < row else i - 1 for i in self._selected if i != row}
@@ -120,6 +163,7 @@ class FileListModel(QAbstractListModel):
                 if 0 <= row < len(self._files):
                     self.beginRemoveRows(QModelIndex(), row, row)
                     removed = self._files.pop(row)
+                    self._path_keys.discard(os.path.normcase(removed["path"]))
                     self._total_bytes -= removed["bytes"]
                     self.endRemoveRows()
             self._selected.clear()
@@ -135,6 +179,7 @@ class FileListModel(QAbstractListModel):
         try:
             self.beginResetModel()
             self._files.clear()
+            self._path_keys.clear()
             self._selected.clear()
             self._total_bytes = 0
             self.endResetModel()

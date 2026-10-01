@@ -4,11 +4,12 @@ import os
 from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QThreadPool, Qt, QUrl
 from PySide6.QtWidgets import QApplication
 
 from gfglock.controllers import encrypt_ctrl
 from gfglock.controllers.encrypt_ctrl import EncryptController
+from gfglock.models.file_model import FileListModel
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -108,7 +109,7 @@ class TestFileManagementSlots:
         except Exception as exc:
             pytest.fail(f"addFiles() must not raise: {exc}")
 
-    def test_add_folder_walks_and_filters(self, controller, tmp_path):
+    def test_add_folder_walks_and_filters(self, controller, tmp_path, qt_app):
         """addFolder() must walk the directory and keep only mode-allowed files."""
         controller.setMode("encrypt")
         (tmp_path / "a.txt").write_text("x")
@@ -116,12 +117,14 @@ class TestFileManagementSlots:
         sub.mkdir()
         (sub / "b.gfglock").write_text("x")
         (sub / "c.txt").write_text("x")
-        controller._file_model = MagicMock()
+        controller._file_model = FileListModel()
         folder_url = QUrl.fromLocalFile(str(tmp_path)).toString()
 
         controller.addFolder(folder_url)
+        assert QThreadPool.globalInstance().waitForDone(5000)
+        qt_app.processEvents()
 
-        called = {os.path.normpath(p) for p in controller._file_model.addFiles.call_args[0][0]}
+        called = {os.path.normpath(p) for p in controller._file_model.getPaths()}
         assert os.path.normpath(str(tmp_path / "a.txt")) in called
         assert os.path.normpath(str(sub / "c.txt")) in called
         assert os.path.normpath(str(sub / "b.gfglock")) not in called

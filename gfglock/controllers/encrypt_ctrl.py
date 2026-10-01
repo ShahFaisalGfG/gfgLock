@@ -10,6 +10,7 @@ from gfglock.config.defaults import NotificationDefaults, PerformanceDefaults
 
 from gfglock.models.file_model import FileListModel
 from gfglock.services.notifier import send_notification
+from gfglock.services.folder_scanner import FolderScanWorker
 from gfglock.services.worker import EncryptDecryptWorker
 from gfglock.utils.logging import write_log, write_session_separator
 from gfglock.utils.settings import load_settings
@@ -40,6 +41,8 @@ class EncryptController(QObject):
         self._file_model = FileListModel(self)
         self._threadpool = QThreadPool.globalInstance()
         self._worker: EncryptDecryptWorker | None = None
+        self._folder_scans: dict[int, FolderScanWorker] = {}
+        self._next_folder_scan_id = 0
         self._busy = False
         self._operation_mode = "encrypt"
 
@@ -76,20 +79,32 @@ class EncryptController(QObject):
 
     @Slot(str)
     def addFolder(self, url: str) -> None:
-        """Walk a folder URL and add all files to the model."""
+        """Scan a folder in the background and add results in model batches."""
         try:
             folder = self._url_to_path(url)
             if not folder or not os.path.isdir(folder):
                 return
-            paths = [
-                os.path.join(root, f)
-                for root, _, files in os.walk(folder)
-                for f in files
-                if self._isAllowed(os.path.join(root, f))
-            ]
-            self._file_model.addFiles(paths)
+            self._next_folder_scan_id += 1
+            scan_id = self._next_folder_scan_id
+            worker = FolderScanWorker(
+                folder=folder,
+                scan_id=scan_id,
+                encrypted_extensions=_ENC_EXTS,
+                include_encrypted=self._operation_mode == "decrypt",
+            )
+            queued = Qt.ConnectionType.QueuedConnection
+            worker.signals.items_found.connect(self._file_model.addFileItems, queued)
+            worker.signals.error.connect(self.errorOccurred, queued)
+            worker.signals.finished.connect(self._on_folder_scan_finished, queued)
+            self._folder_scans[scan_id] = worker
+            self._threadpool.start(worker)
         except Exception:
             pass
+
+    @Slot(int)
+    def _on_folder_scan_finished(self, scan_id: int) -> None:
+        """Release the completed scan worker reference."""
+        self._folder_scans.pop(scan_id, None)
 
     @Slot(str)
     def addPath(self, path: str) -> None:

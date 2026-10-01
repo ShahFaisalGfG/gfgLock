@@ -80,6 +80,13 @@ Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#IconsDir}\Square150x150Logo.scale-100.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion
 
+[InstallDelete]
+; Remove Qt WebEngine files left by older builds that bundled every QML plugin.
+Type: files; Name: "{app}\_internal\PySide6\Qt6WebEngineCore.dll"
+Type: files; Name: "{app}\_internal\PySide6\Qt6WebEngineQuick.dll"
+Type: files; Name: "{app}\_internal\PySide6\Qt6WebEngineQuickDelegatesQml.dll"
+Type: filesandordirs; Name: "{app}\_internal\PySide6\qml\QtWebEngine"
+
 
 [Icons]
 Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"
