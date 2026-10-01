@@ -69,6 +69,8 @@ jobs:
           pyinstaller `
             --name $appName --windowed --onedir `
             --icon           "gfglock\assets\icons\gfgLock.ico" `
+            --paths          "gfglock\core" `
+            --hidden-import  gfglock_native `
             --add-data       "gfglock\qml;gfglock\qml" `
             --add-data       "gfglock\assets;gfglock\assets" `
             --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `
@@ -79,6 +81,8 @@ jobs:
             --distpath dist  --workpath build\pyinstaller --specpath . `
             --noconfirm --clean `
             gfglock\__main__.py
+
+          python scripts/verify_native_bundle.py "dist\$appName"
 
       - name: Copy shell DLL into bundle
         shell: pwsh
@@ -130,6 +134,8 @@ jobs:
           pyinstaller `
             --name "${appName}_${ver}_portable" --windowed --onefile `
             --icon           "gfglock\assets\icons\gfgLock.ico" `
+            --paths          "gfglock\core" `
+            --hidden-import  gfglock_native `
             --add-data       "gfglock\qml;gfglock\qml" `
             --add-data       "gfglock\assets;gfglock\assets" `
             --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `

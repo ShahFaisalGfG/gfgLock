@@ -148,6 +148,8 @@ $PyArgs = @(
     "--windowed",
     "--onedir",
     "--icon",      "gfglock\assets\icons\gfgLock.ico",
+    "--paths",     "$ProjectRoot\gfglock\core",
+    "--hidden-import", "gfglock_native",
     "--add-data",  "$ProjectRoot\gfglock\qml;gfglock\qml",
     "--add-data",  "$ProjectRoot\gfglock\assets;gfglock\assets",
     "--add-data",  "$ProjectRoot\gfglock\assets\icons\gfgLock.png;assets\icons",
@@ -172,6 +174,11 @@ if ($LASTEXITCODE -ne 0) {
 $ExePath = "$DistDir\$AppName.exe"
 if (-not (Test-Path $ExePath)) {
     Fail "Expected executable not found: $ExePath"
+}
+
+python scripts/verify_native_bundle.py $DistDir
+if ($LASTEXITCODE -ne 0) {
+    Fail "Native extension verification failed for $DistDir."
 }
 
 $BundleMb = [math]::Round((Get-ChildItem $DistDir -Recurse | Measure-Object Length -Sum).Sum / 1MB, 1)
@@ -218,6 +225,8 @@ $PortableArgs = @(
     "--windowed",
     "--onefile",
     "--icon",      "gfglock\assets\icons\gfgLock.ico",
+    "--paths",     "$ProjectRoot\gfglock\core",
+    "--hidden-import", "gfglock_native",
     "--add-data",  "$ProjectRoot\gfglock\qml;gfglock\qml",
     "--add-data",  "$ProjectRoot\gfglock\assets;gfglock\assets",
     "--add-data",  "$ProjectRoot\gfglock\assets\icons\gfgLock.png;assets\icons",

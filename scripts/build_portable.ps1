@@ -106,6 +106,8 @@ $PyArgs = @(
     "--windowed",
     "--onefile",
     "--icon",      "gfglock\assets\icons\gfgLock.ico",
+    "--paths",     "$ProjectRoot\gfglock\core",
+    "--hidden-import", "gfglock_native",
     "--add-data",  "$ProjectRoot\gfglock\qml;gfglock\qml",
     "--add-data",  "$ProjectRoot\gfglock\assets;gfglock\assets",
     "--add-data",  "$ProjectRoot\gfglock\assets\icons\gfgLock.png;assets\icons",
