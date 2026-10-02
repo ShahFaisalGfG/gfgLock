@@ -57,35 +57,34 @@ jobs:
         shell: pwsh
         run: .\scripts\build_native.ps1
 
+      # Runs after the native build so the native cipher, the Python fallback, and
+      # cross-path decryption are all covered.
+      - name: Run tests
+        shell: pwsh
+        run: python -m pytest -q
       - name: Create build output directory
         shell: pwsh
         run: New-Item -ItemType Directory -Path build\installer -Force | Out-Null
 
-      # Bundles the Python app into dist\gfgLock\ (onedir - used by both installers)
+      # Bundles the Python app into dist\gfgLock\ (onedir - used by both installers).
+      # scripts/bundle.ps1 holds the PyInstaller arguments shared with the local build scripts.
       - name: Build PyInstaller bundle
         shell: pwsh
         run: |
+          . .\scripts\bundle.ps1
+          $pyArgs = Get-PyInstallerArgs -Name "${{ steps.meta.outputs.APP_NAME }}" -Mode onedir -DistPath "dist"
+          pyinstaller @pyArgs
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
+
+      # Runs the frozen exe with --self-test: loads the native extension and its OpenSSL DLLs,
+      # encrypts and decrypts with every algorithm (native and Python fallback, both directions),
+      # and compiles all QML. Anything missing from the bundle fails the release here.
+      - name: Verify PyInstaller bundle
+        shell: pwsh
+        run: |
+          . .\scripts\bundle.ps1
           $appName = "${{ steps.meta.outputs.APP_NAME }}"
-          pyinstaller `
-            --name $appName --windowed --onedir `
-            --icon           "gfglock\assets\icons\gfgLock.ico" `
-            --paths          "gfglock\core" `
-            --hidden-import  gfglock_native `
-            --additional-hooks-dir "hooks" `
-            --runtime-hook   "hooks\pyi_rth_qt_dll_dirs.py" `
-            --add-data       "gfglock\qml;gfglock\qml" `
-            --add-data       "gfglock\assets;gfglock\assets" `
-            --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `
-            --add-data       "gfglock\assets\icons\gfgLock.ico;assets\icons" `
-            --add-data       "gfglock\assets\icons\gfgLock.png;icons" `
-            --add-data       "screenshots;screenshots" `
-            --add-data       "readme.html;." `
-            --distpath dist  --workpath build\pyinstaller --specpath . `
-            --noconfirm --clean `
-            gfglock\__main__.py
-
-          python scripts/verify_native_bundle.py "dist\$appName"
-
+          if (-not (Test-Bundle "dist\$appName\$appName.exe")) { throw "Bundle self-test failed" }
       - name: Copy shell DLL into bundle
         shell: pwsh
         run: Copy-Item build\shell\gfglock_shell.dll dist\${{ steps.meta.outputs.APP_NAME }}\ -Force
@@ -127,30 +126,16 @@ jobs:
             installer\gfglock_user_installer.iss
           if ($LASTEXITCODE -ne 0) { throw "User installer build failed (exit $LASTEXITCODE)" }
 
-      # Single-file portable exe
+      # Single-file portable exe, verified the same way as the onedir bundle
       - name: Build portable exe
         shell: pwsh
         run: |
-          $ver     = "${{ steps.meta.outputs.VER }}"
-          $appName = "${{ steps.meta.outputs.APP_NAME }}"
-          pyinstaller `
-            --name "${appName}_${ver}_portable" --windowed --onefile `
-            --icon           "gfglock\assets\icons\gfgLock.ico" `
-            --paths          "gfglock\core" `
-            --hidden-import  gfglock_native `
-            --additional-hooks-dir "hooks" `
-            --runtime-hook   "hooks\pyi_rth_qt_dll_dirs.py" `
-            --add-data       "gfglock\qml;gfglock\qml" `
-            --add-data       "gfglock\assets;gfglock\assets" `
-            --add-data       "gfglock\assets\icons\gfgLock.png;assets\icons" `
-            --add-data       "gfglock\assets\icons\gfgLock.ico;assets\icons" `
-            --add-data       "gfglock\assets\icons\gfgLock.png;icons" `
-            --add-data       "screenshots;screenshots" `
-            --add-data       "readme.html;." `
-            --distpath build --workpath build\pyinstaller --specpath . `
-            --noconfirm --clean `
-            gfglock\__main__.py
-
+          . .\scripts\bundle.ps1
+          $portable = "${{ steps.meta.outputs.APP_NAME }}_${{ steps.meta.outputs.VER }}_portable"
+          $pyArgs = Get-PyInstallerArgs -Name $portable -Mode onefile -DistPath "build"
+          pyinstaller @pyArgs
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller (portable) failed (exit $LASTEXITCODE)" }
+          if (-not (Test-Bundle "build\$portable.exe")) { throw "Portable self-test failed" }
       # Pack all three EXEs into .7z archives for users who prefer compressed downloads.
       # The portable .7z also bundles the onedir app for direct-run without temp extraction.
       - name: Create 7z archives

@@ -10,9 +10,13 @@ ApplicationWindow {
     id: root
 
     width:       700
-    height:      460
+    height:      _collapsedHeight
     minimumWidth:  580
-    minimumHeight: 400
+    minimumHeight: logHeader.expanded ? 420 : _collapsedHeight
+
+    // Height of everything except the (collapsed) log, plus the 1 px window border.
+    readonly property int _collapsedHeight: rootLayout.implicitHeight + 2
+    property int _unseenLogEntries: 0
     visible: typeof cliLaunchMode === "undefined" || cliLaunchMode === ""
     title:   "gfgLock"
     flags:   Qt.FramelessWindowHint | Qt.Window
@@ -47,9 +51,11 @@ ApplicationWindow {
         function onLogAppended(message) {
             logsArea.append(message)
             logsArea.cursorPosition = logsArea.length
+            if (!logHeader.expanded) root._unseenLogEntries++
         }
         function onLogsCleared() {
             logsArea.clear()
+            root._unseenLogEntries = 0
         }
     }
 
@@ -61,7 +67,15 @@ ApplicationWindow {
     }
 
     // ── Root layout ──────────────────────────────────────────────────────────
+    // ── Keyboard shortcuts ───────────────────────────────────────────────────
+    Shortcut { sequence: "Ctrl+E"; onActivated: root.openEncryptDialog("encrypt") }
+    Shortcut { sequence: "Ctrl+D"; onActivated: root.openEncryptDialog("decrypt") }
+    Shortcut { sequence: "Ctrl+,"; onActivated: root.openPreferences() }
+    Shortcut { sequence: "Ctrl+L"; onActivated: logHeader.expanded = !logHeader.expanded }
+    Shortcut { sequence: "F1"; onActivated: aboutDialog.open() }
+
     ColumnLayout {
+        id: rootLayout
         anchors.fill: parent
         spacing: 0
 
@@ -161,9 +175,11 @@ ApplicationWindow {
                     Layout.preferredHeight: 48
                     font.pixelSize: 13
                     onClicked: root.openEncryptDialog("encrypt")
-
                     Accessible.name: "Encrypt files"
                     Accessible.role: Accessible.Button
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Protect files or folders with a password (Ctrl+E)"
+                    ToolTip.delay: 500
                 }
                 Button {
                     text:      "🔓  Decrypt"
@@ -171,9 +187,11 @@ ApplicationWindow {
                     Layout.preferredHeight: 48
                     font.pixelSize: 13
                     onClicked: root.openEncryptDialog("decrypt")
-
                     Accessible.name: "Decrypt files"
                     Accessible.role: Accessible.Button
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Unlock .gfglock, .gfglck, or .gfgcha files with their password (Ctrl+D)"
+                    ToolTip.delay: 500
                 }
                 Button {
                     text:      "⚙  Preferences"
@@ -181,9 +199,11 @@ ApplicationWindow {
                     Layout.preferredHeight: 48
                     font.pixelSize: 13
                     onClicked: root.openPreferences()
-
                     Accessible.name: "Open Preferences"
                     Accessible.role: Accessible.Button
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Theme, default algorithm, performance, and logging (Ctrl+,)"
+                    ToolTip.delay: 500
                 }
                 Button {
                     text:      "ℹ  About"
@@ -191,9 +211,11 @@ ApplicationWindow {
                     Layout.preferredHeight: 48
                     font.pixelSize: 13
                     onClicked: aboutDialog.open()
-
                     Accessible.name: "About gfgLock"
                     Accessible.role: Accessible.Button
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Version information and updates (F1)"
+                    ToolTip.delay: 500
                 }
             }
         }
@@ -204,20 +226,42 @@ ApplicationWindow {
             color:  Material.theme === Material.Dark ? "#3c3c3c" : "#e0e0e0"
         }
 
-        // Logs header row
+        // First-glance guidance: what the two main buttons do and that drag-and-drop works.
         Text {
-            text:                "Activity Log"
-            font.pixelSize:      12
-            font.weight:         Font.Medium
-            color:               Material.theme === Material.Dark ? "#aaaaaa" : "#555555"
             Layout.fillWidth:    true
-            Layout.leftMargin:   18
-            Layout.topMargin:    7
-            Layout.bottomMargin: 2
+            Layout.leftMargin:   28
+            Layout.rightMargin:  28
+            Layout.topMargin:    10
+            text: "Choose Encrypt to lock files with a password, or Decrypt to open files ending in "
+                + ".gfglock, .gfglck, or .gfgcha. You can also drag files or folders onto this window."
+            font.pixelSize: 12
+            wrapMode:       Text.WordWrap
+            color: Material.theme === Material.Dark ? "#aaaaaa" : "#555555"
+        }
+
+        // Activity log, collapsed by default (Ctrl+L)
+        CollapsibleHeader {
+            id: logHeader
+            Layout.fillWidth:    true
+            Layout.leftMargin:   14
+            Layout.rightMargin:  14
+            Layout.topMargin:    8
+            Layout.bottomMargin: 4
+            title: "Activity log"
+            badge: root._unseenLogEntries > 0 ? root._unseenLogEntries + " new" : ""
+            onExpandedChanged: {
+                if (expanded) {
+                    root._unseenLogEntries = 0
+                    if (root.height < 460) root.height = 460
+                } else {
+                    root.height = root._collapsedHeight
+                }
+            }
         }
 
         // Logs area
         ScrollView {
+            visible:             logHeader.expanded
             Layout.fillWidth:    true
             Layout.fillHeight:   true
             Layout.leftMargin:   14
@@ -291,6 +335,7 @@ ApplicationWindow {
 
         // Clear log button - below logs area, right-aligned (mirrors Cancel/Close in EncryptDialog)
         RowLayout {
+            visible:             logHeader.expanded
             Layout.alignment:    Qt.AlignRight
             Layout.rightMargin:  14
             Layout.bottomMargin: 6
@@ -299,10 +344,19 @@ ApplicationWindow {
                 text:           "🧹  Clear"
                 font.pixelSize: 13
                 Layout.preferredHeight: 48
+                enabled:        logsArea.text.length > 0
                 onClicked:      appController.clearLogs()
-
                 Accessible.name: "Clear activity log"
+                ToolTip.visible: hovered
+                ToolTip.text: "Clear this log (your files are not affected)"
+                ToolTip.delay: 500
             }
+        }
+
+        // Keeps the bottom edge in place if the window is enlarged while the log is collapsed.
+        Item {
+            visible: !logHeader.expanded
+            Layout.fillHeight: true
         }
 
         // Resize grip
@@ -344,10 +398,15 @@ ApplicationWindow {
                 if (!root._encDlgComp || root._encDlgComp.status === Component.Error)
                     root._encDlgComp = Qt.createComponent("EncryptDialog.qml")
                 if (root._encDlgComp.status !== Component.Ready) return
-                root._encDlgComp.createObject(root, { operationMode: "encrypt" }).show()
                 var urls = []
-                for (var i = 0; i < drop.urls.length; i++)
-                    urls.push(drop.urls[i].toString())
+                var allEncrypted = drop.urls.length > 0
+                for (var i = 0; i < drop.urls.length; i++) {
+                    var url = drop.urls[i].toString()
+                    urls.push(url)
+                    if (!/\.(gfglock|gfglck|gfgcha)$/i.test(url)) allEncrypted = false
+                }
+                // Dropping only encrypted files opens Decrypt; anything else opens Encrypt.
+                root._encDlgComp.createObject(root, { operationMode: allEncrypted ? "decrypt" : "encrypt" }).show()
                 encryptController.addFiles(urls)
             } catch(e) {
                 console.error("onDropped:", e)
@@ -362,6 +421,10 @@ ApplicationWindow {
             border.width: 2
             radius:       0
         }
+    }
+
+    ResizeHandles {
+        window: root
     }
 
     // ── About dialog ─────────────────────────────────────────────────────────

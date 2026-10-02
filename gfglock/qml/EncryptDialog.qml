@@ -24,6 +24,12 @@ ApplicationWindow {
     readonly property color _colorPartial: Material.theme === Material.Dark ? "#ff9800" : "#e65100"
     readonly property color _colorFailure: Material.theme === Material.Dark ? "#ef5350" : "#c62828"
 
+    // Progress page height with the details hidden: content plus title bar, margins, and border.
+    readonly property int _compactProgressHeight: Math.ceil(progressLayout.implicitHeight)
+        + dlgTitleBar.height + 2 * progressLayout.anchors.margins + 2
+    on_CompactProgressHeightChanged: {
+        if (stackView.currentIndex === 1 && !detailsHeader.expanded) _fitProgressPage()
+    }
     width: 920
     height: 640
     minimumWidth: 720
@@ -84,10 +90,9 @@ ApplicationWindow {
             var sz = encryptController.fileModel.totalSize
             filesLabel.text = "0 / " + encryptController.fileModel.count
                             + " files" + (sz ? "  ·  " + sz : "")
-            encDlg.minimumWidth  = 480
-            encDlg.minimumHeight = 347
-            encDlg.width  = 614
-            encDlg.height = 427
+            encDlg.minimumWidth = 480
+            encDlg.width        = 614
+            encDlg._fitProgressPage()
             encDlg.x = Screen.virtualX + Math.round((Screen.desktopAvailableWidth  - encDlg.width)  / 2)
             encDlg.y = Screen.virtualY + Math.round((Screen.desktopAvailableHeight - encDlg.height) / 2)
         }
@@ -97,6 +102,7 @@ ApplicationWindow {
         }
         function onErrorOccurred(msg) {
             progressLogs.append("ERROR: " + msg)
+            detailsHeader.expanded = true
         }
         function onCurrentFileChanged(path) {
             currentFileLabel.text = path
@@ -120,7 +126,8 @@ ApplicationWindow {
             progressBar.value   = 1.0
             doneBtn.text        = "Close"
             doneBtn.highlighted = true
-
+            // Per-file failures arrive as status lines, so open the details to show which files failed.
+            if (failed > 0) detailsHeader.expanded = true
             var sz   = encryptController.fileModel.totalSize
             var time = new Date().toLocaleTimeString()
             appController.appendLog(
@@ -154,6 +161,7 @@ ApplicationWindow {
         spacing: 0
 
         TitleBar {
+            id: dlgTitleBar
             Layout.fillWidth: true
             window: encDlg
             title:  encDlg.title
@@ -218,6 +226,10 @@ ApplicationWindow {
                                     onClicked:            fileDialog.open()
                                     Accessible.name: "Add files"
                                     Accessible.role: Accessible.Button
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: encDlg.operationMode === "encrypt"
+                                        ? "Choose files to encrypt" : "Choose encrypted files to decrypt"
+                                    ToolTip.delay: 500
                                 }
                                 Button {
                                     text:                 "+ Folder"
@@ -227,15 +239,24 @@ ApplicationWindow {
                                     onClicked:            folderDialog.open()
                                     Accessible.name: "Add folder"
                                     Accessible.role: Accessible.Button
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: encDlg.operationMode === "encrypt"
+                                        ? "Add every file in a folder and its subfolders"
+                                        : "Add every encrypted file in a folder and its subfolders"
+                                    ToolTip.delay: 500
                                 }
                                 Button {
                                     text:                 "Select All"
                                     flat:                 true
                                     font.pixelSize:       11
                                     Layout.preferredHeight: 30
+                                    enabled:              encryptController.fileModel.count > 0
                                     onClicked:            encryptController.fileModel.selectAll()
                                     Accessible.name: "Select all files"
                                     Accessible.role: Accessible.Button
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Select every file in the list"
+                                    ToolTip.delay: 500
                                 }
                                 Button {
                                     text: {
@@ -246,9 +267,13 @@ ApplicationWindow {
                                     font.pixelSize:       11
                                     Layout.preferredHeight: 30
                                     Material.foreground:  "#e0004f"
+                                    enabled:              encryptController.fileModel.selectedCount > 0
                                     onClicked:            encryptController.removeSelected()
                                     Accessible.name: "Remove selected files"
                                     Accessible.role: Accessible.Button
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Take the selected files off this list (nothing is deleted from disk)"
+                                    ToolTip.delay: 500
                                 }
                             }
 
@@ -265,6 +290,7 @@ ApplicationWindow {
                                 FileList {
                                     anchors.fill:    parent
                                     anchors.margins: 2
+                                    mode:            encDlg.operationMode
                                     onEmptyPanelClicked: fileDialog.open()
                                 }
                             }
@@ -357,8 +383,13 @@ ApplicationWindow {
                                         Behavior on color { ColorAnimation { duration: 200 } }
                                     }
                                 }
+                                Text {
+                                    visible: encDlg.operationMode === "encrypt" && passInput.text.length > 0
+                                    text: "Strength: " + ["", "Weak", "Fair", "Good", "Strong"][encDlg._passStrength(passInput.text)]
+                                    font.pixelSize: 11
+                                    color: Material.theme === Material.Dark ? "#aaaaaa" : "#555555"
+                                }
                             }
-
                             // Confirm password (encrypt only)
                             ColumnLayout {
                                 Layout.fillWidth: true
@@ -417,6 +448,12 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                                Text {
+                                    visible: confirmInput.text.length > 0 && confirmInput.text !== passInput.text
+                                    text: "Passwords don't match"
+                                    font.pixelSize: 11
+                                    color: encDlg._colorFailure
+                                }
                             }
 
                             CheckBox {
@@ -430,8 +467,10 @@ ApplicationWindow {
                                 Accessible.role:      Accessible.CheckBox
                                 Accessible.checkable: true
                                 Accessible.checked:   checked
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Show the typed password so you can check it"
+                                ToolTip.delay: 500
                             }
-
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: 1
@@ -450,6 +489,9 @@ ApplicationWindow {
                                 Accessible.role:      Accessible.CheckBox
                                 Accessible.checkable: true
                                 Accessible.checked:   checked
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Also hide each file's name; the original name comes back when you decrypt"
+                                ToolTip.delay: 500
                             }
 
                             // Algorithm
@@ -471,6 +513,9 @@ ApplicationWindow {
                                     model:                  encDlg._algOpts.map(o => o.label)
                                     Accessible.name: "Encryption algorithm"
                                     Accessible.role: Accessible.ComboBox
+                                    ToolTip.visible: hovered && !popup.visible
+                                    ToolTip.text: "AES-256 GCM is recommended: strong and detects tampering. Decrypting picks the right algorithm automatically."
+                                    ToolTip.delay: 500
                                 }
                             }
 
@@ -496,6 +541,9 @@ ApplicationWindow {
                                     }
                                     Accessible.name: "CPU threads"
                                     Accessible.role: Accessible.ComboBox
+                                    ToolTip.visible: hovered && !popup.visible
+                                    ToolTip.text: "How many files are processed at the same time"
+                                    ToolTip.delay: 500
                                 }
                             }
 
@@ -517,10 +565,27 @@ ApplicationWindow {
                                     model:                  encDlg._chunkOpts.map(o => o.label)
                                     Accessible.name: "Chunk size"
                                     Accessible.role: Accessible.ComboBox
+                                    ToolTip.visible: hovered && !popup.visible
+                                    ToolTip.text: "How much of each file is read at once. Larger chunks can speed up big files but use more memory."
+                                    ToolTip.delay: 500
                                 }
                             }
 
                             Item { Layout.fillHeight: true }
+
+                            Text {
+                                Layout.fillWidth: true
+                                // Wrap to the column instead of widening it, so the panel split stays fixed as the hint changes.
+                                Layout.preferredWidth: 0
+                                text: encDlg._readinessHint()
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                                color: encDlg._canStart()
+                                    ? (Material.theme === Material.Dark ? "#aaaaaa" : "#555555")
+                                    : (Material.theme === Material.Dark ? "#ffb74d" : "#a65a00")
+                                Accessible.role: Accessible.StaticText
+                                Accessible.name: text
+                            }
 
                             // Action buttons
                             RowLayout {
@@ -535,6 +600,9 @@ ApplicationWindow {
                                     onClicked:        encDlg.close()
                                     Accessible.name: "Cancel"
                                     Accessible.role: Accessible.Button
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Close without changing any files"
+                                    ToolTip.delay: 500
                                 }
                                 Button {
                                     text:             encDlg.operationMode === "encrypt" ? "Encrypt" : "Decrypt"
@@ -542,15 +610,12 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     font.pixelSize:   12
                                     Layout.preferredHeight: 48
-                                    // Starting mid-scan would only process the files found so far.
-                                    enabled: passInput.text.length > 0 &&
-                                             (encDlg.operationMode === "decrypt" || passInput.text === confirmInput.text) &&
-                                             encryptController.fileModel.count > 0 &&
-                                             !encryptController.scanning
+                                    enabled: encDlg._canStart()
                                     onClicked: encDlg.startOp()
-                                    ToolTip.visible: hovered && encryptController.scanning
-                                    ToolTip.text: "Wait for the folder scan to finish, or stop it"
-                                    ToolTip.delay: 300
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: (encDlg.operationMode === "encrypt" ? "Encrypt " : "Decrypt ")
+                                        + encDlg._fileStr(encryptController.fileModel.count) + " (Enter)"
+                                    ToolTip.delay: 500
                                     Keys.onPressed: function(event) {
                                         if (event.key === Qt.Key_Space) event.accepted = true
                                     }
@@ -566,10 +631,10 @@ ApplicationWindow {
             // ── PAGE 1: progress view ─────────────────────────────────────
             Item {
                 ColumnLayout {
+                    id: progressLayout
                     anchors.fill:    parent
                     anchors.margins: 22
                     spacing: 14
-
                     RowLayout {
                         Layout.fillWidth: true
 
@@ -636,12 +701,21 @@ ApplicationWindow {
                         }
                     }
 
+                    // Per-file messages, collapsed by default; opens on its own when a file fails.
+                    CollapsibleHeader {
+                        id: detailsHeader
+                        Layout.leftMargin: -8
+                        title: "Details"
+                        badge: encDlg._failedCount > 0 ? encDlg._fileStr(encDlg._failedCount) + " failed" : ""
+                        onExpandedChanged: encDlg._fitProgressPage()
+                    }
+
                     ScrollView {
+                        visible: detailsHeader.expanded
                         Layout.fillWidth:  true
                         Layout.fillHeight: true
                         clip: true
                         ScrollBar.horizontal.policy: progressLogs._wrapEnabled ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
-
                         TextArea {
                             id:            progressLogs
                             property bool _wrapEnabled: prefsController ? prefsController.logTextWrap : true
@@ -693,6 +767,12 @@ ApplicationWindow {
                         }
                     }
 
+                    // Keeps the buttons at the bottom when the details are hidden.
+                    Item {
+                        visible: !detailsHeader.expanded
+                        Layout.fillHeight: true
+                    }
+
                     RowLayout {
                         Layout.alignment: Qt.AlignRight
 
@@ -700,8 +780,11 @@ ApplicationWindow {
                             id:             doneBtn
                             text:           "Cancel"
                             font.pixelSize: 12
-                            Accessible.name: "Cancel operation"
+                            Accessible.name: doneBtn.text === "Close" ? "Close" : "Cancel operation"
                             Accessible.role: Accessible.Button
+                            ToolTip.visible: hovered && doneBtn.text === "Cancel"
+                            ToolTip.text: "Stop once the files in progress finish; files not started yet stay unchanged"
+                            ToolTip.delay: 500
                             onClicked: {
                                 if (doneBtn.text === "Close") {
                                     encDlg.close()
@@ -784,6 +867,41 @@ ApplicationWindow {
         } catch(e) {
             console.error("_buildStatus:", e)
             return ""
+        }
+    }
+
+    function _canStart() {
+        /** True when the form is complete. Starting mid-scan would only process the files found so far. */
+        return encryptController.fileModel.count > 0 && !encryptController.scanning
+            && passInput.text.length > 0
+            && (operationMode === "decrypt" || passInput.text === confirmInput.text)
+    }
+
+    function _readinessHint() {
+        /** Says what is still missing, or what will happen once the operation starts. Empty when a field shows the problem itself. */
+        if (encryptController.scanning)
+            return "Wait for the folder scan to finish, or stop it."
+        if (encryptController.fileModel.count === 0)
+            return operationMode === "encrypt" ? "Add files or a folder to encrypt." : "Add encrypted files or a folder to decrypt."
+        if (passInput.text.length === 0)
+            return "Enter the password."
+        if (operationMode === "decrypt")
+            return "Each file is restored under its original name and the encrypted copy is removed."
+        if (confirmInput.text.length === 0)
+            return "Type the password again to confirm it."
+        if (confirmInput.text !== passInput.text)
+            return ""  // The confirm field already shows "Passwords don't match".
+        return "The original files are replaced by encrypted ones. Keep the password safe: without it the files can't be recovered."
+    }
+
+    function _fitProgressPage() {
+        /** Sizes the progress window to its content: compact while the details are hidden. */
+        if (detailsHeader.expanded) {
+            minimumHeight = Math.max(347, _compactProgressHeight + 120)
+            if (height < 427) height = 427
+        } else {
+            minimumHeight = _compactProgressHeight
+            height = _compactProgressHeight
         }
     }
 

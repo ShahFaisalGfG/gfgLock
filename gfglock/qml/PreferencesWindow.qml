@@ -346,14 +346,14 @@ ApplicationWindow {
                             spacing: 8
 
                             CheckBox {
-                                id: disableClampCheck
-                                text: "Disable CPU thread clamping"
+                                id: reserveThreadCheck
+                                text: "Keep one CPU thread free for Windows"
                                 font.pixelSize: 12
                                 onCheckedChanged: prefsWin._dirty = true
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "When enabled, one CPU thread is reserved for the OS. Disabling allows all threads to be used."
+                                text: "Keeps the computer responsive during large jobs. Turn it off to use every thread."
                                 font.pixelSize: 11
                                 wrapMode: Text.WordWrap
                                 color: Material.theme === Material.Dark ? "#888888" : "#777777"
@@ -396,7 +396,13 @@ ApplicationWindow {
                                     onCurrentIndexChanged: prefsWin._dirty = true
                                 }
                             }
-
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Critical records only errors. Full also records each operation."
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
+                            }
                             RowLayout {
                                 spacing: 10
 
@@ -409,12 +415,18 @@ ApplicationWindow {
                                         prefsController.clearLogs()
                                         appController.clearLogs()
                                     }
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Empty the log files and the activity log (your files are not affected)"
+                                    ToolTip.delay: 500
                                 }
                                 Button {
                                     text: "Open Logs Folder"
                                     flat: true
                                     font.pixelSize: 11
                                     onClicked: prefsController.openLogsFolder()
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Show the log files in File Explorer"
+                                    ToolTip.delay: 500
                                 }
                             }
                         }
@@ -474,6 +486,9 @@ ApplicationWindow {
                     prefsWin.loadValues()
                     prefsWin._dirty = false
                 }
+                ToolTip.visible: hovered
+                ToolTip.text: "Restore every setting on all tabs to its default and save right away"
+                ToolTip.delay: 500
             }
             Item { Layout.fillWidth: true }
             Button {
@@ -481,6 +496,9 @@ ApplicationWindow {
                 font.pixelSize: 12
                 Layout.preferredHeight: 48
                 onClicked: prefsWin.close()
+                ToolTip.visible: hovered
+                ToolTip.text: "Close and discard changes that were not applied"
+                ToolTip.delay: 500
             }
             Button {
                 text: "Apply"
@@ -488,6 +506,9 @@ ApplicationWindow {
                 Layout.preferredHeight: 48
                 enabled: prefsWin._dirty
                 onClicked: prefsWin.applyValues()
+                ToolTip.visible: hovered
+                ToolTip.text: "Save changes and keep this window open"
+                ToolTip.delay: 500
             }
             Button {
                 text: "Save"
@@ -495,6 +516,9 @@ ApplicationWindow {
                 font.pixelSize: 12
                 Layout.preferredHeight: 48
                 onClicked: { prefsWin.applyValues(); prefsWin.close() }
+                ToolTip.visible: hovered
+                ToolTip.text: "Save changes and close"
+                ToolTip.delay: 500
             }
         }
     }
@@ -511,7 +535,7 @@ ApplicationWindow {
                 Math.max(0, prefsController.decThreads - 1), decThreadsCombo.count - 1)
             encFilenamesCheck.checked   = prefsController.encFilenames
             logTextWrapCheck.checked    = prefsController.logTextWrap
-            disableClampCheck.checked   = !prefsController.clampThreads
+            reserveThreadCheck.checked  = prefsController.clampThreads
             enableLogsCheck.checked     = prefsController.enableLogs
             logLevelCombo.currentIndex  = prefsController.logLevel === "all" ? 1 : 0
             opNotificationsCheck.checked = prefsController.operationNotifications
@@ -551,7 +575,7 @@ ApplicationWindow {
                 "advanced.encryption_mode":           _algOpts[algCombo.currentIndex].value,
                 "advanced.enable_logs":               enableLogsCheck.checked,
                 "advanced.log_level":                 logLevelCombo.currentIndex === 1 ? "all" : "critical",
-                "advanced.clamp_cpu_threads":         !disableClampCheck.checked,
+                "advanced.clamp_cpu_threads":         reserveThreadCheck.checked,
                 "advanced.operation_notifications":   opNotificationsCheck.checked
             }
             prefsController.saveSettings(updates)

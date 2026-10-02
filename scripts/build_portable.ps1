@@ -11,10 +11,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-$Entry = "gfglock\__main__.py"
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 function Write-Step([string]$Msg) {
@@ -46,6 +42,7 @@ Set-Location $ProjectRoot
 # ── App metadata ──────────────────────────────────────────────────────────────
 
 . "$ScriptDir\app_meta.ps1"
+. "$ScriptDir\bundle.ps1"
 $Meta         = Get-AppMeta
 $AppName      = $Meta.AppName
 $Version      = $Meta.Version
@@ -101,29 +98,7 @@ New-Item -ItemType Directory -Path "build" -Force | Out-Null
 
 Write-Step "Running PyInstaller  (this may take several minutes)"
 
-$PyArgs = @(
-    "--name",      $PortableName,
-    "--windowed",
-    "--onefile",
-    "--icon",      "gfglock\assets\icons\gfgLock.ico",
-    "--paths",     "$ProjectRoot\gfglock\core",
-    "--hidden-import", "gfglock_native",
-    "--additional-hooks-dir", "$ProjectRoot\hooks",
-    "--runtime-hook", "$ProjectRoot\hooks\pyi_rth_qt_dll_dirs.py",
-    "--add-data",  "$ProjectRoot\gfglock\qml;gfglock\qml",
-    "--add-data",  "$ProjectRoot\gfglock\assets;gfglock\assets",
-    "--add-data",  "$ProjectRoot\gfglock\assets\icons\gfgLock.png;assets\icons",
-    "--add-data",  "$ProjectRoot\gfglock\assets\icons\gfgLock.ico;assets\icons",
-    "--add-data",  "$ProjectRoot\gfglock\assets\icons\gfgLock.png;icons",
-    "--add-data",  "$ProjectRoot\screenshots;screenshots",
-    "--add-data",  "$ProjectRoot\readme.html;.",
-    "--distpath",  "build",
-    "--workpath",  "build\pyinstaller",
-    "--specpath",  ".",
-    "--noconfirm",
-    "--clean",
-    $Entry
-)
+$PyArgs = Get-PyInstallerArgs -Name $PortableName -Mode onefile -DistPath "build"
 
 pyinstaller @PyArgs
 
@@ -133,6 +108,14 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not (Test-Path $OutputExe)) {
     Fail "Expected portable executable not found: $OutputExe"
+}
+
+# ── Bundle self-test ──────────────────────────────────────────────────────────
+
+Write-Step "Verifying the bundle can encrypt, decrypt, and load every QML module"
+
+if (-not (Test-Bundle $OutputExe)) {
+    Fail "Bundle self-test failed - a module, DLL, or data file is missing from the build. See the report above."
 }
 
 # ── Done ──────────────────────────────────────────────────────────────────────

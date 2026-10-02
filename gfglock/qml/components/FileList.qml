@@ -8,6 +8,8 @@ import QtQuick.Layouts
 Item {
     id: fileListRoot
 
+    // "encrypt" or "decrypt": which files a folder add keeps, shown in the empty state.
+    property string mode: "encrypt"
     property int _anchor: -1
     property int _cursor: -1
 
@@ -143,7 +145,9 @@ Item {
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "supports all file types"
+                text: fileListRoot.mode === "decrypt"
+                    ? "Only .gfglock, .gfglck, and .gfgcha files are added"
+                    : "Any file type; files that are already encrypted are skipped"
                 color: Material.theme === Material.Dark ? "#444444" : "#aaaaaa"
                 font.pixelSize: 11
             }

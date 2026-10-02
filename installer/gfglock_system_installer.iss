@@ -79,11 +79,11 @@ Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignorev
 Source: "{#IconsDir}\Square150x150Logo.scale-100.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion
 
 [InstallDelete]
-; Remove Qt WebEngine files left by older builds that bundled every QML plugin.
-Type: files; Name: "{app}\_internal\PySide6\Qt6WebEngineCore.dll"
-Type: files; Name: "{app}\_internal\PySide6\Qt6WebEngineQuick.dll"
-Type: files; Name: "{app}\_internal\PySide6\Qt6WebEngineQuickDelegatesQml.dll"
-Type: filesandordirs; Name: "{app}\_internal\PySide6\qml\QtWebEngine"
+; Remove the previous version's bundled runtime before copying the new one. Files a newer
+; build no longer ships (old package metadata, dropped libraries) would otherwise stay behind
+; and can break imports at startup. Only bundled program files live in _internal; settings
+; and logs are stored in %APPDATA% and are kept.
+Type: filesandordirs; Name: "{app}\_internal"
 
 
 

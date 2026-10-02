@@ -17,6 +17,11 @@ from Crypto.Cipher import ChaCha20_Poly1305  # type: ignore[import]
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+try:
+    # cryptography moved CFB to its "decrepit" namespace and is removing the old location.
+    from cryptography.hazmat.decrepit.ciphers.modes import CFB
+except ImportError:  # releases from before the move
+    from cryptography.hazmat.primitives.ciphers.modes import CFB
 from gfglock.utils.helpers import derive_key
 
 SALT_SIZE = 16
@@ -44,7 +49,7 @@ class _StreamCipher:
             self._chacha = ChaCha20_Poly1305.new(key=key, nonce=iv)
             self._encrypt = encrypt
             return
-        mode = modes.GCM(iv) if algorithm == "gcm" else modes.CFB(iv)
+        mode = modes.GCM(iv) if algorithm == "gcm" else CFB(iv)
         cipher = Cipher(algorithms.AES(key), mode)
         self._ctx = cipher.encryptor() if encrypt else cipher.decryptor()
 

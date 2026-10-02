@@ -16,9 +16,11 @@ from gfglock.ui.boot_thread import BootThread
 from gfglock.ui.splash_screen import SplashScreen
 from gfglock.utils.helpers import resource_path
 from gfglock.utils.logging import write_log
+from gfglock.utils.self_test import run_self_test
 
 _ENC_EXTS = (".gfglock", ".gfglck", ".gfgcha")
 _SHUTDOWN_WAIT_MS = 2000
+_SELF_TEST_FLAG = "--self-test"
 
 
 class _Startup:
@@ -142,8 +144,12 @@ def main() -> None:
         except Exception:
             pass
 
-    os.environ.setdefault("QT_QPA_PLATFORM", "windows")
+    # `--self-test [REPORT_PATH]` verifies the build and exits 0 or 1 (used by the release workflow).
+    if _SELF_TEST_FLAG in sys.argv:
+        index = sys.argv.index(_SELF_TEST_FLAG)
+        sys.exit(run_self_test(sys.argv[index + 1] if index + 1 < len(sys.argv) else None))
 
+    os.environ.setdefault("QT_QPA_PLATFORM", "windows")
     # High-DPI: let Qt handle scaling automatically
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 

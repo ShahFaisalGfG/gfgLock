@@ -242,7 +242,7 @@ PBKDF2-HMAC-SHA256  (200 000 iterations)
 
 | Setting | Description |
 |---|---|
-| **Performance** | CPU Thread Clamping [Disable Clamping for performance mode] |
+| **Performance** | Keep one CPU thread free for Windows (on by default; turn off to use every thread) |
 | **Log Level** | Full (all operations) or Critical (errors only) |
 | **Log Actions** | Clear all logs or open the logs folder |
 | **Notifications** | Operation Completed alerts via Windows 11 style notification |
@@ -342,6 +342,9 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 - 🐛 **Fixed:** encrypting a file named like `A.GFGLOCK` could delete it; dropping a folder added the folder itself instead of its files.
 - ⚡ **Large folders:** folders are scanned in the background (also from the Explorer context menu) with a live count and a Stop button; removing thousands of files from the list is instant.
 - 🧩 **Context menu:** "Decrypt with gfgLock" only appears when the selection contains encrypted files or folders, and launch failures are reported instead of being ignored.
+- 🧭 **Easier to use:** tooltips on every button and option; the Encrypt/Decrypt dialog says what is missing before it can start, shows password strength and mismatches, and warns that originals are replaced. Progress details and the activity log are collapsed until needed and open on their own when a file fails. Shortcuts: **Ctrl+E** encrypt, **Ctrl+D** decrypt, **Ctrl+,** preferences, **Ctrl+L** activity log, **F1** about. Dropping only encrypted files opens Decrypt.
+- 🧪 **Release checks:** every build runs the frozen app with `--self-test` (native engine, all algorithms on both the native and Python paths, and every QML screen), so a missing module or DLL fails the build instead of reaching users. The release workflow also runs the test suite.
+- 🔧 The Python fallback uses AES-CFB from its new location in `cryptography`, so future `cryptography` releases keep opening `.gfglck` files.
 - 🔧 The native engine (`gfglock_native`) now exposes API version 2; an outdated module is ignored in favour of the Python fallback. Files from earlier versions decrypt unchanged.
 
 ### v3.0.1 - July 2026 *(current)*
