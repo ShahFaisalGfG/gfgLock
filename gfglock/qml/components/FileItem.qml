@@ -8,6 +8,8 @@ Rectangle {
     id: fileItem
 
     signal itemClicked(int idx, int modifiers)
+    // The list owns one shared context menu; a Menu per row made large lists slow to scroll.
+    signal contextMenuRequested(int idx)
 
     required property int    index
     required property string name
@@ -121,32 +123,10 @@ Rectangle {
             if (mouse.button === Qt.RightButton) {
                 if (!fileItem.isSelected)
                     fileItem.itemClicked(fileItem.index, Qt.NoModifier)
-                contextMenu.popup()
+                fileItem.contextMenuRequested(fileItem.index)
             } else {
                 fileItem.itemClicked(fileItem.index, mouse.modifiers)
             }
-        }
-    }
-
-    Menu {
-        id: contextMenu
-        MenuItem {
-            text:           "Copy file name(s)"
-            height:         32
-            font.pixelSize: 12
-            onTriggered: encryptController.copySelectedNames()
-        }
-        MenuItem {
-            text:           "Copy full path(s)"
-            height:         32
-            font.pixelSize: 12
-            onTriggered: encryptController.copySelectedPaths()
-        }
-        MenuItem {
-            text:           "Remove selected"
-            height:         32
-            font.pixelSize: 12
-            onTriggered: encryptController.fileModel.removeSelected()
         }
     }
 
@@ -178,6 +158,10 @@ Rectangle {
             hoverEnabled: true
             onClicked: encryptController.fileModel.removeAt(fileItem.index)
         }
+
+        ToolTip.visible: removeMouse.containsMouse
+        ToolTip.text: "Remove from the list (the file itself is not deleted)"
+        ToolTip.delay: 600
     }
 
     Accessible.name:      "File: " + fileName + ", " + fileSize

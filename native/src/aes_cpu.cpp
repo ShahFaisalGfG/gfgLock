@@ -1,42 +1,71 @@
-// aes_cpu.cpp - AES-256-GCM / AES-256-CFB / ChaCha20-Poly1305 via OpenSSL EVP.
-// C++ owns the full file I/O loop; Python overhead = one function call per file.
+// aes_cpu.cpp - AES-256-GCM / AES-256-CFB / ChaCha20-Poly1305 file transforms via OpenSSL EVP.
+//
+// These functions only turn one file into another. The Python caller (gfglock/core/file_ops.py)
+// picks a fresh output path, validates the decrypted file name, moves the finished file into
+// place, and deletes the source. Keeping naming and deletion in that one shared layer means the
+// native and Python fallback paths can never disagree about which file is safe to remove.
+//
+// File layout (identical to the Python fallback):
+//   salt(16) | nonce(12) or iv(16) | chunk_size u32 BE | E(original_name + NUL + data) | tag(16, AEAD only)
 
 #include "aes_cpu.hpp"
 #include "kdf.hpp"
 
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
-#include <array>
-#include <cstring>
+#include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
-#include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace fs = std::filesystem;
 namespace gfglock {
 
-// ── Constants (match Python exactly) ─────────────────────────────────────────
-
 namespace {
-constexpr int    SALT_SIZE          = 16;
-constexpr int    NONCE_SIZE         = 12;
-constexpr int    IV_SIZE            = 16;
-constexpr int    TAG_SIZE           = 16;
-constexpr size_t BUFFER_SIZE        = 512  * 1024;
-constexpr size_t SMALL_THRESHOLD    = 10   * 1024 * 1024;
-constexpr size_t PROGRESS_INTERVAL  = 100  * 1024 * 1024;
-constexpr int    KDF_ITERATIONS     = 200000;
-constexpr int    KEY_SIZE           = 32;
+constexpr size_t SALT_SIZE         = 16;
+constexpr size_t NONCE_SIZE        = 12;
+constexpr size_t IV_SIZE           = 16;
+constexpr size_t TAG_SIZE          = 16;
+constexpr size_t CHUNK_FIELD_SIZE  = 4;
+constexpr size_t BUFFER_SIZE       = 512  * 1024;
+// A user-chosen chunk size only sets the I/O buffer; capping it keeps a huge setting from
+// allocating gigabytes per worker thread.
+constexpr size_t MAX_IO_BUFFER     = 64   * 1024 * 1024;
+constexpr size_t SMALL_THRESHOLD   = 10   * 1024 * 1024;
+constexpr size_t PROGRESS_INTERVAL = 100  * 1024 * 1024;
+constexpr size_t MAX_NAME_BYTES    = 4096;
+constexpr int    KDF_ITERATIONS    = 200000;
+constexpr int    KEY_SIZE          = 32;
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
+struct CipherSpec {
+    const EVP_CIPHER* (*cipher)();
+    size_t iv_size;
+    bool aead;
+};
 
-std::vector<uint8_t> randBytes(int n) {
+CipherSpec specFor(Algorithm algorithm) {
+    switch (algorithm) {
+    case Algorithm::Gcm:    return {EVP_aes_256_gcm, NONCE_SIZE, true};
+    case Algorithm::Cfb:    return {EVP_aes_256_cfb128, IV_SIZE, false};
+    case Algorithm::Chacha: return {EVP_chacha20_poly1305, NONCE_SIZE, true};
+    }
+    throw std::invalid_argument("unknown algorithm");
+}
+
+// Python hands paths over as UTF-8; MSVC would read a plain std::string as the ANSI code
+// page, which breaks any non-ASCII file name.
+fs::path utf8Path(const std::string& s) {
+    return fs::path(std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
+}
+
+std::vector<uint8_t> randBytes(size_t n) {
     std::vector<uint8_t> buf(n);
-    if (RAND_bytes(buf.data(), n) != 1)
-        throw std::runtime_error("RAND_bytes failed");
+    if (RAND_bytes(buf.data(), static_cast<int>(n)) != 1)
+        throw std::runtime_error("random number generator failed");
     return buf;
 }
 
@@ -45,28 +74,47 @@ void packBE32(uint32_t v, uint8_t* out) {
     out[2] = (v >>  8) & 0xFF; out[3] = (v      ) & 0xFF;
 }
 
-uint32_t unpackBE32(const uint8_t* in) {
-    return (static_cast<uint32_t>(in[0]) << 24)
-         | (static_cast<uint32_t>(in[1]) << 16)
-         | (static_cast<uint32_t>(in[2]) <<  8)
-         |  static_cast<uint32_t>(in[3]);
+// Key bytes are wiped from memory as soon as the key goes out of scope.
+struct SecureKey {
+    std::vector<uint8_t> bytes;
+    ~SecureKey() { if (!bytes.empty()) OPENSSL_cleanse(bytes.data(), bytes.size()); }
+};
+
+struct EvpCtx {
+    EVP_CIPHER_CTX* p = EVP_CIPHER_CTX_new();
+    EvpCtx() { if (!p) throw std::runtime_error("EVP_CIPHER_CTX_new failed"); }
+    EvpCtx(const EvpCtx&) = delete;
+    EvpCtx& operator=(const EvpCtx&) = delete;
+    ~EvpCtx() { EVP_CIPHER_CTX_free(p); }
+    EVP_CIPHER_CTX* get() const { return p; }
+};
+
+void initCipher(EVP_CIPHER_CTX* ctx, const CipherSpec& spec, const uint8_t* key, const uint8_t* iv, bool encrypt) {
+    auto init = encrypt ? EVP_EncryptInit_ex : EVP_DecryptInit_ex;
+    if (init(ctx, spec.cipher(), nullptr, nullptr, nullptr) != 1
+        || (spec.aead && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN,
+                                             static_cast<int>(spec.iv_size), nullptr) != 1)
+        || init(ctx, nullptr, nullptr, key, iv) != 1)
+        throw std::runtime_error("cipher initialisation failed");
 }
 
-std::string buildName(const std::string& src, bool encrypt_name, const std::string& ext) {
-    if (encrypt_name) {
-        time_t t = time(nullptr);
-        struct tm tm_info{};
-        localtime_s(&tm_info, &t);
-        char ts[16];
-        strftime(ts, sizeof(ts), "%Y%m%d%H%M%S", &tm_info);
-        auto r = randBytes(4);
-        std::ostringstream oss;
-        oss << ts << "_";
-        for (uint8_t b : r) oss << std::hex << std::setw(2) << std::setfill('0') << int(b);
-        oss << ext;
-        return oss.str();
-    }
-    return fs::path(src).stem().string() + ext;
+void writeAll(std::ofstream& out, const void* data, size_t n) {
+    if (n == 0) return;
+    out.write(static_cast<const char*>(data), static_cast<std::streamsize>(n));
+    if (!out) throw std::runtime_error("could not write the output file (disk full or no access?)");
+}
+
+size_t readSome(std::ifstream& in, std::vector<uint8_t>& buf, size_t max_bytes) {
+    in.read(reinterpret_cast<char*>(buf.data()),
+            static_cast<std::streamsize>(std::min(max_bytes, buf.size())));
+    if (in.bad()) throw std::runtime_error("could not read the source file");
+    return static_cast<size_t>(in.gcount());
+}
+
+void readExact(std::ifstream& in, uint8_t* dst, size_t n) {
+    in.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(n));
+    if (static_cast<size_t>(in.gcount()) != n)
+        throw std::runtime_error("the file is truncated or corrupted");
 }
 
 void fireProgress(const ProgressFn& cb, size_t& batch, size_t n) {
@@ -74,493 +122,175 @@ void fireProgress(const ProgressFn& cb, size_t& batch, size_t n) {
     if (cb && batch >= PROGRESS_INTERVAL) { cb(static_cast<double>(batch)); batch = 0; }
 }
 
-// RAII wrapper for EVP_CIPHER_CTX
-struct EvpCtx {
-    EVP_CIPHER_CTX* p = EVP_CIPHER_CTX_new();
-    explicit operator bool() const { return p != nullptr; }
-    EVP_CIPHER_CTX* get() const { return p; }
-    ~EvpCtx() { if (p) EVP_CIPHER_CTX_free(p); }
-};
-
-// Read from stream into a fixed buffer; returns bytes read.
-size_t readChunk(std::ifstream& fin, std::vector<uint8_t>& buf, size_t max_bytes) {
-    fin.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(
-        std::min(max_bytes, buf.size())));
-    return static_cast<size_t>(fin.gcount());
-}
-
-// Write decrypted bytes, extracting filename metadata on first encounter.
-bool feedDecrypted(
-    const uint8_t* data, size_t n,
-    bool& got_meta, std::string& meta_buf,
-    std::string& original_name, const std::string& dir,
-    std::ofstream& fout, std::string& out_path_out)
-{
-    if (got_meta) {
-        fout.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(n));
-        return true;
-    }
-    // Scan for the null separator
-    for (size_t i = 0; i < n; ++i) {
-        if (data[i] == 0) {
-            original_name = meta_buf + std::string(reinterpret_cast<const char*>(data), i);
-            out_path_out = (fs::path(dir) / original_name).string();
-            fout.open(out_path_out, std::ios::binary);
-            if (!fout) return false;
-            size_t rest = n - i - 1;
-            if (rest > 0)
-                fout.write(reinterpret_cast<const char*>(data + i + 1),
-                           static_cast<std::streamsize>(rest));
-            got_meta = true;
-            return true;
-        }
-    }
-    meta_buf.append(reinterpret_cast<const char*>(data), n);
-    return true;
+void closeOrThrow(std::ofstream& out) {
+    out.close();
+    if (out.fail()) throw std::runtime_error("could not finish writing the output file");
 }
 
 } // anonymous namespace
 
-// ── AES-256-GCM ──────────────────────────────────────────────────────────────
-
-std::pair<bool, std::string> encryptGcm(
+std::pair<bool, std::string> encryptFile(
+    Algorithm algorithm,
     const std::string& input_path,
+    const std::string& output_path,
+    const std::string& original_name,
     const std::string& password,
-    bool encrypt_name,
     int chunk_size,
     const ProgressFn& progress)
 {
-    std::string out_path;
     try {
-        if (!fs::exists(input_path))
-            return {false, "Critical error: " + input_path + " not found"};
-        if (input_path.ends_with(".gfglock"))
-            return {false, input_path + " is already encrypted"};
+        const CipherSpec spec = specFor(algorithm);
+        const fs::path in_path = utf8Path(input_path);
+        std::ifstream fin(in_path, std::ios::binary);
+        if (!fin) throw std::runtime_error("cannot open the source file");
+        const uintmax_t file_size = fs::file_size(in_path);
+        if (file_size < SMALL_THRESHOLD || chunk_size < 0) chunk_size = 0;
 
-        size_t file_size = fs::file_size(input_path);
-        if (file_size < SMALL_THRESHOLD) chunk_size = 0;
+        std::ofstream fout(utf8Path(output_path), std::ios::binary | std::ios::trunc);
+        if (!fout) throw std::runtime_error("cannot create the output file");
 
-        std::string out_name = buildName(input_path, encrypt_name, ".gfglock");
-        out_path = (fs::path(input_path).parent_path() / out_name).string();
-
-        auto salt  = randBytes(SALT_SIZE);
-        auto nonce = randBytes(NONCE_SIZE);
-        auto key   = pbkdf2Sha256(password, salt, KDF_ITERATIONS, KEY_SIZE);
-
+        const auto salt = randBytes(SALT_SIZE);
+        const auto iv   = randBytes(spec.iv_size);
+        SecureKey key{pbkdf2Sha256(password, salt, KDF_ITERATIONS, KEY_SIZE)};
         EvpCtx ctx;
-        if (!ctx) throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1
-            || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, NONCE_SIZE, nullptr) != 1
-            || EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce.data()) != 1)
-            throw std::runtime_error("GCM init failed");
+        initCipher(ctx.get(), spec, key.bytes.data(), iv.data(), true);
 
-        std::ifstream fin(input_path, std::ios::binary);
-        std::ofstream fout(out_path, std::ios::binary);
-        if (!fin || !fout) throw std::runtime_error("Cannot open file(s)");
+        uint8_t cs_field[CHUNK_FIELD_SIZE];
+        packBE32(static_cast<uint32_t>(chunk_size), cs_field);
+        writeAll(fout, salt.data(), salt.size());
+        writeAll(fout, iv.data(), iv.size());
+        writeAll(fout, cs_field, CHUNK_FIELD_SIZE);
 
-        fout.write(reinterpret_cast<const char*>(salt.data()),  SALT_SIZE);
-        fout.write(reinterpret_cast<const char*>(nonce.data()), NONCE_SIZE);
-        uint8_t cs_field[4]; packBE32(static_cast<uint32_t>(chunk_size), cs_field);
-        fout.write(reinterpret_cast<const char*>(cs_field), 4);
-
-        // Encrypt embedded filename metadata
-        std::string fn = fs::path(input_path).filename().string();
-        std::vector<uint8_t> name_meta(fn.begin(), fn.end());
+        std::vector<uint8_t> name_meta(original_name.begin(), original_name.end());
         name_meta.push_back(0);
-        std::vector<uint8_t> enc_buf(name_meta.size() + EVP_MAX_BLOCK_LENGTH);
+        std::vector<uint8_t> enc_meta(name_meta.size() + EVP_MAX_BLOCK_LENGTH);
         int out_len = 0;
-        if (EVP_EncryptUpdate(ctx.get(), enc_buf.data(), &out_len,
+        if (EVP_EncryptUpdate(ctx.get(), enc_meta.data(), &out_len,
                               name_meta.data(), static_cast<int>(name_meta.size())) != 1)
-            throw std::runtime_error("EVP_EncryptUpdate (metadata) failed");
-        fout.write(reinterpret_cast<const char*>(enc_buf.data()), out_len);
+            throw std::runtime_error("encryption failed");
+        writeAll(fout, enc_meta.data(), static_cast<size_t>(out_len));
         if (progress) progress(static_cast<double>(name_meta.size()));
 
-        // Stream-encrypt file data
-        size_t io_buf_size = chunk_size > 0
-            ? std::max(static_cast<size_t>(chunk_size), BUFFER_SIZE) : BUFFER_SIZE;
-        std::vector<uint8_t> read_buf(io_buf_size);
-        std::vector<uint8_t> write_buf(io_buf_size + EVP_MAX_BLOCK_LENGTH);
+        const size_t io_size = chunk_size > 0
+            ? std::clamp(static_cast<size_t>(chunk_size), BUFFER_SIZE, MAX_IO_BUFFER) : BUFFER_SIZE;
+        std::vector<uint8_t> read_buf(io_size);
+        std::vector<uint8_t> write_buf(io_size + EVP_MAX_BLOCK_LENGTH);
         size_t progress_batch = 0;
+        uintmax_t total_read = 0;
 
         while (true) {
-            size_t n = readChunk(fin, read_buf, io_buf_size);
+            const size_t n = readSome(fin, read_buf, io_size);
             if (n == 0) break;
+            total_read += n;
             if (EVP_EncryptUpdate(ctx.get(), write_buf.data(), &out_len,
                                   read_buf.data(), static_cast<int>(n)) != 1)
-                throw std::runtime_error("EVP_EncryptUpdate (data) failed");
-            fout.write(reinterpret_cast<const char*>(write_buf.data()), out_len);
+                throw std::runtime_error("encryption failed");
+            writeAll(fout, write_buf.data(), static_cast<size_t>(out_len));
             fireProgress(progress, progress_batch, n);
         }
         if (progress && progress_batch > 0) progress(static_cast<double>(progress_batch));
+        if (total_read != file_size)
+            throw std::runtime_error("the source file changed size while it was being read");
 
         if (EVP_EncryptFinal_ex(ctx.get(), write_buf.data(), &out_len) != 1)
-            throw std::runtime_error("EVP_EncryptFinal_ex failed");
-        fout.write(reinterpret_cast<const char*>(write_buf.data()), out_len);
+            throw std::runtime_error("encryption failed");
+        writeAll(fout, write_buf.data(), static_cast<size_t>(out_len));
 
-        uint8_t tag[TAG_SIZE];
-        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, TAG_SIZE, tag) != 1)
-            throw std::runtime_error("GCM get tag failed");
-        fout.write(reinterpret_cast<const char*>(tag), TAG_SIZE);
-
-        fin.close(); fout.close();
-        fs::remove(input_path);
-        return {true, "Encrypted: " + input_path + " -> " + out_path};
-    } catch (const std::exception& e) {
-        try { if (!out_path.empty() && fs::exists(out_path)) fs::remove(out_path); } catch (...) {}
-        return {false, "Critical error while encrypting " + input_path + ": " + e.what()};
-    }
-}
-
-std::pair<bool, std::string> decryptGcm(
-    const std::string& input_path,
-    const std::string& password,
-    const ProgressFn& progress)
-{
-    std::string out_path;
-    try {
-        if (!fs::exists(input_path))
-            return {false, "Critical error: " + input_path + " not found"};
-        if (!input_path.ends_with(".gfglock") && !input_path.ends_with(".gfglck"))
-            return {false, input_path + " is already decrypted"};
-
-        size_t total_size = fs::file_size(input_path);
-        bool is_gcm = input_path.ends_with(".gfglock");
-
-        std::ifstream fin(input_path, std::ios::binary);
-        if (!fin) throw std::runtime_error("Cannot open file");
-
-        uint8_t salt_buf[SALT_SIZE], nonce_buf[NONCE_SIZE], cs_buf[4];
-        fin.read(reinterpret_cast<char*>(salt_buf), SALT_SIZE);
-        fin.read(reinterpret_cast<char*>(nonce_buf), is_gcm ? NONCE_SIZE : IV_SIZE);
-        fin.read(reinterpret_cast<char*>(cs_buf), 4);
-
-        std::vector<uint8_t> salt(salt_buf, salt_buf + SALT_SIZE);
-        auto key = pbkdf2Sha256(password, salt, KDF_ITERATIONS, KEY_SIZE);
-
-        int hdr_size = SALT_SIZE + (is_gcm ? NONCE_SIZE : IV_SIZE) + 4;
-        size_t data_len = total_size - static_cast<size_t>(hdr_size) - (is_gcm ? TAG_SIZE : 0);
-
-        EvpCtx ctx;
-        if (!ctx) throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        if (is_gcm) {
-            if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1
-                || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, NONCE_SIZE, nullptr) != 1
-                || EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce_buf) != 1)
-                throw std::runtime_error("GCM decrypt init failed");
-        } else {
-            if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_cfb128(), nullptr,
-                                   key.data(), nonce_buf) != 1)
-                throw std::runtime_error("CFB decrypt init failed");
-        }
-
-        std::vector<uint8_t> read_buf(BUFFER_SIZE);
-        std::vector<uint8_t> dec_buf(BUFFER_SIZE + EVP_MAX_BLOCK_LENGTH);
-        bool got_meta = false;
-        std::string meta_buf, original_name;
-        std::ofstream fout;
-        size_t remaining = data_len, progress_batch = 0;
-        int out_len = 0;
-
-        while (remaining > 0) {
-            size_t to_read = std::min(remaining, BUFFER_SIZE);
-            size_t n = readChunk(fin, read_buf, to_read);
-            if (n == 0) break;
-            remaining -= n;
-            if (EVP_DecryptUpdate(ctx.get(), dec_buf.data(), &out_len,
-                                  read_buf.data(), static_cast<int>(n)) != 1)
-                throw std::runtime_error("EVP_DecryptUpdate failed");
-            if (out_len > 0 && !feedDecrypted(dec_buf.data(), static_cast<size_t>(out_len),
-                    got_meta, meta_buf, original_name,
-                    fs::path(input_path).parent_path().string(), fout, out_path))
-                throw std::runtime_error("Cannot create output file");
-            fireProgress(progress, progress_batch, n);
-        }
-        if (progress && progress_batch > 0) progress(static_cast<double>(progress_batch));
-
-        if (is_gcm) {
+        if (spec.aead) {
             uint8_t tag[TAG_SIZE];
-            fin.read(reinterpret_cast<char*>(tag), TAG_SIZE);
-            if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_SIZE, tag) != 1)
-                throw std::runtime_error("GCM set tag failed");
-            if (EVP_DecryptFinal_ex(ctx.get(), dec_buf.data(), &out_len) <= 0) {
-                if (fout.is_open()) fout.close();
-                try { if (!out_path.empty() && fs::exists(out_path)) fs::remove(out_path); } catch (...) {}
-                return {false, "Critical error while decrypting " + input_path + ": authentication failed"};
+            if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_GET_TAG, static_cast<int>(TAG_SIZE), tag) != 1)
+                throw std::runtime_error("could not compute the authentication tag");
+            writeAll(fout, tag, TAG_SIZE);
+        }
+        closeOrThrow(fout);
+        return {true, ""};
+    } catch (const std::exception& e) {
+        return {false, e.what()};
+    }
+}
+
+DecryptResult decryptFile(
+    Algorithm algorithm,
+    const std::string& input_path,
+    const std::string& output_path,
+    const std::string& password,
+    const ProgressFn& progress)
+{
+    try {
+        const CipherSpec spec = specFor(algorithm);
+        const fs::path in_path = utf8Path(input_path);
+        std::ifstream fin(in_path, std::ios::binary);
+        if (!fin) throw std::runtime_error("cannot open the encrypted file");
+
+        const uintmax_t total_size = fs::file_size(in_path);
+        const size_t header_size = SALT_SIZE + spec.iv_size + CHUNK_FIELD_SIZE;
+        const size_t tag_size = spec.aead ? TAG_SIZE : 0;
+        if (total_size < header_size + tag_size + 1)
+            throw std::runtime_error("the file is too small to be a valid encrypted file");
+
+        std::vector<uint8_t> salt(SALT_SIZE), iv(spec.iv_size), chunk_field(CHUNK_FIELD_SIZE);
+        readExact(fin, salt.data(), salt.size());
+        readExact(fin, iv.data(), iv.size());
+        readExact(fin, chunk_field.data(), chunk_field.size());  // informational only
+
+        SecureKey key{pbkdf2Sha256(password, salt, KDF_ITERATIONS, KEY_SIZE)};
+        EvpCtx ctx;
+        initCipher(ctx.get(), spec, key.bytes.data(), iv.data(), false);
+
+        std::ofstream fout(utf8Path(output_path), std::ios::binary | std::ios::trunc);
+        if (!fout) throw std::runtime_error("cannot create the output file");
+
+        DecryptResult result;
+        bool got_name = false;
+        // The stream starts with the original file name and a NUL; everything after it is data.
+        auto consume = [&](const uint8_t* data, size_t n) {
+            if (got_name) { writeAll(fout, data, n); return; }
+            const uint8_t* nul = std::find(data, data + n, static_cast<uint8_t>(0));
+            result.original_name.append(reinterpret_cast<const char*>(data), static_cast<size_t>(nul - data));
+            if (result.original_name.size() > MAX_NAME_BYTES)
+                throw std::runtime_error("wrong password or the file is corrupted");
+            if (nul != data + n) {
+                got_name = true;
+                writeAll(fout, nul + 1, static_cast<size_t>((data + n) - (nul + 1)));
             }
-        } else {
-            if (EVP_DecryptFinal_ex(ctx.get(), dec_buf.data(), &out_len) != 1)
-                throw std::runtime_error("CFB finalize failed");
-        }
-        if (out_len > 0 && fout.is_open())
-            fout.write(reinterpret_cast<const char*>(dec_buf.data()), out_len);
+        };
 
-        if (!got_meta)
-            throw std::runtime_error("metadata not found in decrypted stream");
-        if (fout.is_open()) fout.close();
-        fin.close();
-        fs::remove(input_path);
-        return {true, "Decrypted: " + input_path + " -> " + out_path};
-    } catch (const std::exception& e) {
-        try { if (!out_path.empty() && fs::exists(out_path)) fs::remove(out_path); } catch (...) {}
-        return {false, "Critical error while decrypting " + input_path + ": " + e.what()};
-    }
-}
-
-// ── AES-256-CFB ──────────────────────────────────────────────────────────────
-
-std::pair<bool, std::string> encryptCfb(
-    const std::string& input_path,
-    const std::string& password,
-    bool encrypt_name,
-    int chunk_size,
-    const ProgressFn& progress)
-{
-    std::string out_path;
-    try {
-        if (!fs::exists(input_path))
-            return {false, "Critical error: " + input_path + " not found"};
-        if (input_path.ends_with(".gfglck"))
-            return {false, input_path + " is already encrypted"};
-
-        size_t file_size = fs::file_size(input_path);
-        if (file_size < SMALL_THRESHOLD) chunk_size = 0;
-
-        std::string out_name = buildName(input_path, encrypt_name, ".gfglck");
-        out_path = (fs::path(input_path).parent_path() / out_name).string();
-
-        auto salt = randBytes(SALT_SIZE);
-        auto iv   = randBytes(IV_SIZE);
-        auto key  = pbkdf2Sha256(password, salt, KDF_ITERATIONS, KEY_SIZE);
-
-        EvpCtx ctx;
-        if (!ctx) throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_cfb128(), nullptr,
-                               key.data(), iv.data()) != 1)
-            throw std::runtime_error("CFB init failed");
-
-        std::ifstream fin(input_path, std::ios::binary);
-        std::ofstream fout(out_path, std::ios::binary);
-        if (!fin || !fout) throw std::runtime_error("Cannot open file(s)");
-
-        fout.write(reinterpret_cast<const char*>(salt.data()), SALT_SIZE);
-        fout.write(reinterpret_cast<const char*>(iv.data()),   IV_SIZE);
-        uint8_t cs_field[4]; packBE32(static_cast<uint32_t>(chunk_size), cs_field);
-        fout.write(reinterpret_cast<const char*>(cs_field), 4);
-
-        std::string fn = fs::path(input_path).filename().string();
-        std::vector<uint8_t> name_meta(fn.begin(), fn.end());
-        name_meta.push_back(0);
-        std::vector<uint8_t> enc_buf(name_meta.size() + EVP_MAX_BLOCK_LENGTH);
-        int out_len = 0;
-        if (EVP_EncryptUpdate(ctx.get(), enc_buf.data(), &out_len,
-                              name_meta.data(), static_cast<int>(name_meta.size())) != 1)
-            throw std::runtime_error("EVP_EncryptUpdate (metadata) failed");
-        fout.write(reinterpret_cast<const char*>(enc_buf.data()), out_len);
-        if (progress) progress(static_cast<double>(name_meta.size()));
-
-        size_t io_buf_size = chunk_size > 0
-            ? std::max(static_cast<size_t>(chunk_size), BUFFER_SIZE) : BUFFER_SIZE;
-        std::vector<uint8_t> read_buf(io_buf_size);
-        std::vector<uint8_t> write_buf(io_buf_size + EVP_MAX_BLOCK_LENGTH);
-        size_t progress_batch = 0;
-
-        while (true) {
-            size_t n = readChunk(fin, read_buf, io_buf_size);
-            if (n == 0) break;
-            if (EVP_EncryptUpdate(ctx.get(), write_buf.data(), &out_len,
-                                  read_buf.data(), static_cast<int>(n)) != 1)
-                throw std::runtime_error("EVP_EncryptUpdate failed");
-            fout.write(reinterpret_cast<const char*>(write_buf.data()), out_len);
-            fireProgress(progress, progress_batch, n);
-        }
-        if (progress && progress_batch > 0) progress(static_cast<double>(progress_batch));
-
-        if (EVP_EncryptFinal_ex(ctx.get(), write_buf.data(), &out_len) != 1)
-            throw std::runtime_error("EVP_EncryptFinal_ex failed");
-        fout.write(reinterpret_cast<const char*>(write_buf.data()), out_len);
-
-        fin.close(); fout.close();
-        fs::remove(input_path);
-        return {true, "Encrypted: " + input_path + " -> " + out_path};
-    } catch (const std::exception& e) {
-        try { if (!out_path.empty() && fs::exists(out_path)) fs::remove(out_path); } catch (...) {}
-        return {false, "Critical error while encrypting " + input_path + ": " + e.what()};
-    }
-}
-
-std::pair<bool, std::string> decryptCfb(
-    const std::string& input_path,
-    const std::string& password,
-    const ProgressFn& progress)
-{
-    // CFB shares the GCM decrypt path (is_gcm = false selects CFB cipher + no tag)
-    return decryptGcm(input_path, password, progress);
-}
-
-// ── ChaCha20-Poly1305 ─────────────────────────────────────────────────────────
-
-std::pair<bool, std::string> encryptChacha(
-    const std::string& input_path,
-    const std::string& password,
-    bool encrypt_name,
-    int chunk_size,
-    const ProgressFn& progress)
-{
-    std::string out_path;
-    try {
-        if (!fs::exists(input_path))
-            return {false, "Critical error: " + input_path + " not found"};
-        if (input_path.ends_with(".gfgcha"))
-            return {false, input_path + " is already encrypted"};
-
-        size_t file_size = fs::file_size(input_path);
-        if (file_size < SMALL_THRESHOLD) chunk_size = 0;
-
-        std::string out_name = buildName(input_path, encrypt_name, ".gfgcha");
-        out_path = (fs::path(input_path).parent_path() / out_name).string();
-
-        auto salt  = randBytes(SALT_SIZE);
-        auto nonce = randBytes(NONCE_SIZE);
-        auto key   = pbkdf2Sha256(password, salt, KDF_ITERATIONS, KEY_SIZE);
-
-        EvpCtx ctx;
-        if (!ctx) throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        if (EVP_EncryptInit_ex(ctx.get(), EVP_chacha20_poly1305(), nullptr, nullptr, nullptr) != 1
-            || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN, NONCE_SIZE, nullptr) != 1
-            || EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce.data()) != 1)
-            throw std::runtime_error("ChaCha20-Poly1305 init failed");
-
-        std::ifstream fin(input_path, std::ios::binary);
-        std::ofstream fout(out_path, std::ios::binary);
-        if (!fin || !fout) throw std::runtime_error("Cannot open file(s)");
-
-        fout.write(reinterpret_cast<const char*>(salt.data()),  SALT_SIZE);
-        fout.write(reinterpret_cast<const char*>(nonce.data()), NONCE_SIZE);
-        uint8_t cs_field[4]; packBE32(static_cast<uint32_t>(chunk_size), cs_field);
-        fout.write(reinterpret_cast<const char*>(cs_field), 4);
-
-        std::string fn = fs::path(input_path).filename().string();
-        std::vector<uint8_t> name_meta(fn.begin(), fn.end());
-        name_meta.push_back(0);
-        std::vector<uint8_t> enc_buf(name_meta.size() + EVP_MAX_BLOCK_LENGTH);
-        int out_len = 0;
-        if (EVP_EncryptUpdate(ctx.get(), enc_buf.data(), &out_len,
-                              name_meta.data(), static_cast<int>(name_meta.size())) != 1)
-            throw std::runtime_error("EVP_EncryptUpdate (metadata) failed");
-        fout.write(reinterpret_cast<const char*>(enc_buf.data()), out_len);
-        if (progress) progress(static_cast<double>(name_meta.size()));
-
-        size_t io_buf_size = chunk_size > 0
-            ? std::max(static_cast<size_t>(chunk_size), BUFFER_SIZE) : BUFFER_SIZE;
-        std::vector<uint8_t> read_buf(io_buf_size);
-        std::vector<uint8_t> write_buf(io_buf_size + EVP_MAX_BLOCK_LENGTH);
-        size_t progress_batch = 0;
-
-        while (true) {
-            size_t n = readChunk(fin, read_buf, io_buf_size);
-            if (n == 0) break;
-            if (EVP_EncryptUpdate(ctx.get(), write_buf.data(), &out_len,
-                                  read_buf.data(), static_cast<int>(n)) != 1)
-                throw std::runtime_error("EVP_EncryptUpdate failed");
-            fout.write(reinterpret_cast<const char*>(write_buf.data()), out_len);
-            fireProgress(progress, progress_batch, n);
-        }
-        if (progress && progress_batch > 0) progress(static_cast<double>(progress_batch));
-
-        if (EVP_EncryptFinal_ex(ctx.get(), write_buf.data(), &out_len) != 1)
-            throw std::runtime_error("EVP_EncryptFinal_ex failed");
-        fout.write(reinterpret_cast<const char*>(write_buf.data()), out_len);
-
-        uint8_t tag[TAG_SIZE];
-        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_GET_TAG, TAG_SIZE, tag) != 1)
-            throw std::runtime_error("ChaCha20 get tag failed");
-        fout.write(reinterpret_cast<const char*>(tag), TAG_SIZE);
-
-        fin.close(); fout.close();
-        fs::remove(input_path);
-        return {true, "Encrypted: " + input_path + " -> " + out_path};
-    } catch (const std::exception& e) {
-        try { if (!out_path.empty() && fs::exists(out_path)) fs::remove(out_path); } catch (...) {}
-        return {false, "Critical error while encrypting " + input_path + ": " + e.what()};
-    }
-}
-
-std::pair<bool, std::string> decryptChacha(
-    const std::string& input_path,
-    const std::string& password,
-    const ProgressFn& progress)
-{
-    std::string out_path;
-    try {
-        if (!fs::exists(input_path))
-            return {false, "Critical error: " + input_path + " not found"};
-        if (!input_path.ends_with(".gfgcha"))
-            return {false, input_path + " is already decrypted"};
-
-        size_t total_size = fs::file_size(input_path);
-        std::ifstream fin(input_path, std::ios::binary);
-        if (!fin) throw std::runtime_error("Cannot open file");
-
-        uint8_t salt_buf[SALT_SIZE], nonce_buf[NONCE_SIZE], cs_buf[4];
-        fin.read(reinterpret_cast<char*>(salt_buf), SALT_SIZE);
-        fin.read(reinterpret_cast<char*>(nonce_buf), NONCE_SIZE);
-        fin.read(reinterpret_cast<char*>(cs_buf), 4);
-
-        std::vector<uint8_t> salt(salt_buf, salt_buf + SALT_SIZE);
-        auto key = pbkdf2Sha256(password, salt, KDF_ITERATIONS, KEY_SIZE);
-
-        EvpCtx ctx;
-        if (!ctx) throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        if (EVP_DecryptInit_ex(ctx.get(), EVP_chacha20_poly1305(), nullptr, nullptr, nullptr) != 1
-            || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN, NONCE_SIZE, nullptr) != 1
-            || EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce_buf) != 1)
-            throw std::runtime_error("ChaCha20-Poly1305 decrypt init failed");
-
-        size_t data_len = total_size - SALT_SIZE - NONCE_SIZE - 4 - TAG_SIZE;
         std::vector<uint8_t> read_buf(BUFFER_SIZE);
         std::vector<uint8_t> dec_buf(BUFFER_SIZE + EVP_MAX_BLOCK_LENGTH);
-        bool got_meta = false;
-        std::string meta_buf, original_name;
-        std::ofstream fout;
-        size_t remaining = data_len, progress_batch = 0;
+        uintmax_t remaining = total_size - header_size - tag_size;
+        size_t progress_batch = 0;
         int out_len = 0;
 
         while (remaining > 0) {
-            size_t to_read = std::min(remaining, BUFFER_SIZE);
-            size_t n = readChunk(fin, read_buf, to_read);
-            if (n == 0) break;
+            const size_t want = static_cast<size_t>(std::min<uintmax_t>(remaining, BUFFER_SIZE));
+            const size_t n = readSome(fin, read_buf, want);
+            if (n == 0) throw std::runtime_error("the file is truncated or corrupted");
             remaining -= n;
             if (EVP_DecryptUpdate(ctx.get(), dec_buf.data(), &out_len,
                                   read_buf.data(), static_cast<int>(n)) != 1)
-                throw std::runtime_error("EVP_DecryptUpdate failed");
-            if (out_len > 0 && !feedDecrypted(dec_buf.data(), static_cast<size_t>(out_len),
-                    got_meta, meta_buf, original_name,
-                    fs::path(input_path).parent_path().string(), fout, out_path))
-                throw std::runtime_error("Cannot create output file");
+                throw std::runtime_error("decryption failed");
+            consume(dec_buf.data(), static_cast<size_t>(out_len));
             fireProgress(progress, progress_batch, n);
         }
         if (progress && progress_batch > 0) progress(static_cast<double>(progress_batch));
 
-        uint8_t tag[TAG_SIZE];
-        fin.read(reinterpret_cast<char*>(tag), TAG_SIZE);
-        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_TAG, TAG_SIZE, tag) != 1)
-            throw std::runtime_error("ChaCha20 set tag failed");
-        if (EVP_DecryptFinal_ex(ctx.get(), dec_buf.data(), &out_len) <= 0) {
-            if (fout.is_open()) fout.close();
-            try { if (!out_path.empty() && fs::exists(out_path)) fs::remove(out_path); } catch (...) {}
-            return {false, "Critical error while decrypting " + input_path + ": authentication failed"};
+        if (spec.aead) {
+            uint8_t tag[TAG_SIZE];
+            readExact(fin, tag, TAG_SIZE);
+            if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_TAG, static_cast<int>(TAG_SIZE), tag) != 1)
+                throw std::runtime_error("decryption failed");
+            if (EVP_DecryptFinal_ex(ctx.get(), dec_buf.data(), &out_len) <= 0)
+                return {false, "wrong password or the file was modified (authentication failed)", ""};
+        } else if (EVP_DecryptFinal_ex(ctx.get(), dec_buf.data(), &out_len) != 1) {
+            throw std::runtime_error("decryption failed");
         }
-        if (out_len > 0 && fout.is_open())
-            fout.write(reinterpret_cast<const char*>(dec_buf.data()), out_len);
-
-        if (!got_meta) throw std::runtime_error("metadata not found");
-        if (fout.is_open()) fout.close();
-        fin.close();
-        fs::remove(input_path);
-        return {true, "Decrypted: " + input_path + " -> " + out_path};
+        consume(dec_buf.data(), static_cast<size_t>(out_len));
+        if (!got_name) throw std::runtime_error("wrong password or the file is corrupted");
+        closeOrThrow(fout);
+        result.ok = true;
+        return result;
     } catch (const std::exception& e) {
-        try { if (!out_path.empty() && fs::exists(out_path)) fs::remove(out_path); } catch (...) {}
-        return {false, "Critical error while decrypting " + input_path + ": " + e.what()};
+        return {false, e.what(), ""};
     }
 }
 

@@ -7,7 +7,7 @@ import sys
 from multiprocessing import freeze_support
 from typing import Optional
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, QThreadPool
 from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -18,6 +18,7 @@ from gfglock.utils.helpers import resource_path
 from gfglock.utils.logging import write_log
 
 _ENC_EXTS = (".gfglock", ".gfglck", ".gfgcha")
+_SHUTDOWN_WAIT_MS = 2000
 
 
 class _Startup:
@@ -101,7 +102,12 @@ class _Startup:
         self._app.exit(-1)
 
     def shutdown(self) -> None:
-        """Release the QML scene before the controllers it referenced."""
+        """Stop background work, then release the QML scene before the controllers it referenced."""
+        if self._enc_ctrl is not None:
+            self._enc_ctrl.shutdown()
+            # A cancelled folder scan exits within milliseconds; wait for it so its thread
+            # doesn't outlive the objects it reports to.
+            QThreadPool.globalInstance().waitForDone(_SHUTDOWN_WAIT_MS)
         self._engine = None
         self._app_ctrl = None
         self._enc_ctrl = None
@@ -175,40 +181,12 @@ def _handle_cli(enc_ctrl, args: list, mode: str) -> None:
 
     # Reconstruct paths (Windows Explorer can break paths with spaces)
     raw_paths = _parse_paths(path_args)
+    paths = [os.path.abspath(p.strip("\"'")) for p in raw_paths]
 
-    # Walk and filter paths by mode
-    final_paths = []
-    for p in raw_paths:
-        p = p.strip("\"'")
-        abs_p = os.path.abspath(p)
-        if not os.path.exists(abs_p):
-            final_paths.append(abs_p)
-            continue
-        if os.path.isfile(abs_p):
-            if mode == "encrypt" and not abs_p.lower().endswith(_ENC_EXTS):
-                final_paths.append(abs_p)
-            elif mode == "decrypt" and abs_p.lower().endswith(_ENC_EXTS):
-                final_paths.append(abs_p)
-        elif os.path.isdir(abs_p):
-            for root, _, files in os.walk(abs_p):
-                for f in files:
-                    fp = os.path.join(root, f)
-                    is_enc = fp.lower().endswith(_ENC_EXTS)
-                    if mode == "encrypt" and not is_enc:
-                        final_paths.append(fp)
-                    elif mode == "decrypt" and is_enc:
-                        final_paths.append(fp)
-
-    # Deduplicate
-    seen: set = set()
-    unique = [
-        p for p in final_paths
-        if not (p in seen or seen.add(p))  # type: ignore[func-returns-value]
-    ]
-
+    # Files are filtered by mode and added in one batch; folders are scanned on a
+    # background thread so a large folder from Explorer doesn't freeze the window.
     enc_ctrl.setMode(mode)
-    for p in unique:
-        enc_ctrl.addPath(p)
+    enc_ctrl.addFiles(paths)
 
 
 def _parse_paths(path_args: list) -> list:

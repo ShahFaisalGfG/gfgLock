@@ -1,9 +1,11 @@
-// bindings.cpp - pybind11 module: exposes all native functions to Python.
-// GIL is released before every file I/O operation; re-acquired for callbacks.
+// bindings.cpp - pybind11 module: exposes the native file transforms to Python.
+// The GIL is released for the whole file operation and re-acquired only for progress callbacks.
 
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+#include <stdexcept>
 
 #include "aes_cpu.hpp"
 #include "kdf.hpp"
@@ -13,7 +15,11 @@ using namespace gfglock;
 
 namespace {
 
-// Wrap a Python callable so C++ can invoke it with GIL held.
+// Bumped whenever the Python-facing API changes; native_bridge falls back to the pure-Python
+// path when an older module (with the old, unsafe API) is found on disk.
+constexpr int API_VERSION = 2;
+
+// Wrap a Python callable so C++ can invoke it with the GIL held.
 ProgressFn wrapCallback(py::object cb) {
     if (cb.is_none()) return {};
     return [cb](double bytes) {
@@ -22,19 +28,25 @@ ProgressFn wrapCallback(py::object cb) {
     };
 }
 
-// Call a file-level function with GIL released, progress callback re-acquires.
+// Run a file-level function with the GIL released; progress callbacks re-acquire it.
 template<typename Fn>
 auto withGilReleased(Fn&& fn) {
     py::gil_scoped_release release;
     return fn();
 }
 
+Algorithm parseAlgorithm(const std::string& name) {
+    if (name == "gcm") return Algorithm::Gcm;
+    if (name == "cfb") return Algorithm::Cfb;
+    if (name == "chacha") return Algorithm::Chacha;
+    throw std::invalid_argument("unknown algorithm '" + name + "' (expected gcm, cfb, or chacha)");
+}
+
 } // anonymous namespace
 
 PYBIND11_MODULE(gfglock_native, m) {
     m.doc() = "gfgLock native C++20 acceleration module (OpenSSL)";
-
-    // ── KDF ──────────────────────────────────────────────────────────────────
+    m.attr("API_VERSION") = API_VERSION;
 
     m.def("pbkdf2_sha256",
         [](const std::string& password, py::bytes salt_py, int iterations, int dklen) -> py::bytes {
@@ -48,64 +60,31 @@ PYBIND11_MODULE(gfglock_native, m) {
         py::arg("password"), py::arg("salt"), py::arg("iterations"), py::arg("dklen"),
         "Derive a key with PBKDF2-HMAC-SHA256 (OpenSSL EVP).");
 
-    // ── AES-256-GCM ──────────────────────────────────────────────────────────
-
-    m.def("encrypt_gcm",
-        [](const std::string& path, const std::string& pw, bool enc_name,
-           int chunk_size, py::object cb) {
+    m.def("encrypt_file",
+        [](const std::string& algorithm, const std::string& input_path, const std::string& output_path,
+           const std::string& original_name, const std::string& password, int chunk_size, py::object cb) {
+            const Algorithm algo = parseAlgorithm(algorithm);
             auto progress = wrapCallback(cb);
-            return withGilReleased([&] { return encryptGcm(path, pw, enc_name, chunk_size, progress); });
+            return withGilReleased([&] {
+                return encryptFile(algo, input_path, output_path, original_name, password, chunk_size, progress);
+            });
         },
-        py::arg("path"), py::arg("password"), py::arg("encrypt_name") = false,
-        py::arg("chunk_size") = 0, py::arg("callback") = py::none(),
-        "Encrypt a file with AES-256-GCM (C++ + OpenSSL, GIL released).");
+        py::arg("algorithm"), py::arg("input_path"), py::arg("output_path"), py::arg("original_name"),
+        py::arg("password"), py::arg("chunk_size") = 0, py::arg("callback") = py::none(),
+        "Encrypt input_path into output_path. Returns (ok, error). Never deletes or renames files.");
 
-    m.def("decrypt_gcm",
-        [](const std::string& path, const std::string& pw, py::object cb) {
+    m.def("decrypt_file",
+        [](const std::string& algorithm, const std::string& input_path, const std::string& output_path,
+           const std::string& password, py::object cb) {
+            const Algorithm algo = parseAlgorithm(algorithm);
             auto progress = wrapCallback(cb);
-            return withGilReleased([&] { return decryptGcm(path, pw, progress); });
+            DecryptResult result = withGilReleased([&] {
+                return decryptFile(algo, input_path, output_path, password, progress);
+            });
+            return py::make_tuple(result.ok, result.message, py::bytes(result.original_name));
         },
-        py::arg("path"), py::arg("password"), py::arg("callback") = py::none(),
-        "Decrypt a .gfglock file with AES-256-GCM (C++ + OpenSSL, GIL released).");
-
-    // ── AES-256-CFB ──────────────────────────────────────────────────────────
-
-    m.def("encrypt_cfb",
-        [](const std::string& path, const std::string& pw, bool enc_name,
-           int chunk_size, py::object cb) {
-            auto progress = wrapCallback(cb);
-            return withGilReleased([&] { return encryptCfb(path, pw, enc_name, chunk_size, progress); });
-        },
-        py::arg("path"), py::arg("password"), py::arg("encrypt_name") = false,
-        py::arg("chunk_size") = 0, py::arg("callback") = py::none(),
-        "Encrypt a file with AES-256-CFB (C++ + OpenSSL, GIL released).");
-
-    m.def("decrypt_cfb",
-        [](const std::string& path, const std::string& pw, py::object cb) {
-            auto progress = wrapCallback(cb);
-            return withGilReleased([&] { return decryptCfb(path, pw, progress); });
-        },
-        py::arg("path"), py::arg("password"), py::arg("callback") = py::none(),
-        "Decrypt a .gfglck file with AES-256-CFB (C++ + OpenSSL, GIL released).");
-
-    // ── ChaCha20-Poly1305 ─────────────────────────────────────────────────────
-
-    m.def("encrypt_chacha",
-        [](const std::string& path, const std::string& pw, bool enc_name,
-           int chunk_size, py::object cb) {
-            auto progress = wrapCallback(cb);
-            return withGilReleased([&] { return encryptChacha(path, pw, enc_name, chunk_size, progress); });
-        },
-        py::arg("path"), py::arg("password"), py::arg("encrypt_name") = false,
-        py::arg("chunk_size") = 0, py::arg("callback") = py::none(),
-        "Encrypt a file with ChaCha20-Poly1305 (C++ + OpenSSL, GIL released).");
-
-    m.def("decrypt_chacha",
-        [](const std::string& path, const std::string& pw, py::object cb) {
-            auto progress = wrapCallback(cb);
-            return withGilReleased([&] { return decryptChacha(path, pw, progress); });
-        },
-        py::arg("path"), py::arg("password"), py::arg("callback") = py::none(),
-        "Decrypt a .gfgcha file with ChaCha20-Poly1305 (C++ + OpenSSL, GIL released).");
-
+        py::arg("algorithm"), py::arg("input_path"), py::arg("output_path"),
+        py::arg("password"), py::arg("callback") = py::none(),
+        "Decrypt input_path into output_path. Returns (ok, error, original_name_bytes); the name is "
+        "untrusted and must be validated. Never deletes or renames files.");
 }

@@ -134,7 +134,7 @@ Compressed `.7z` archives for all three variants are also available on the [Rele
 4. **Enter your password** - 12+ characters strongly recommended
 5. **Start** - hit **Start** and watch real-time progress
 
-Encrypted files are saved in the same folder as the original, identified by their extension. To decrypt, drop an encrypted file onto gfgLock - the algorithm is auto-detected from the extension, no configuration needed.
+Encrypted files are saved in the same folder as the original under its full name plus the algorithm's extension (`report.docx` → `report.docx.gfglock`), and the original is removed only after the encrypted copy is completely written to disk. To decrypt, drop an encrypted file onto gfgLock - the algorithm is auto-detected from the extension, no configuration needed. Neither step ever overwrites an existing file: if the name is taken, the new file gets a suffix such as `report (2).docx`. Dropping a folder adds every file inside it, including subfolders; even folders with tens of thousands of files load in about a second.
 
 ---
 
@@ -333,6 +333,16 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 ---
 
 ## Changelog
+
+### Unreleased
+- 🛡️ **Fixed data loss:** files with the same name but different extensions (`report.docx`, `report.pdf`) were both encrypted to `report.gfglock`, so one original was lost. Encrypted files now keep the full original name, and no operation ever overwrites an existing file.
+- 🛡️ **Fixed unsafe decryption names:** the file name stored inside an encrypted file is now validated. A tampered file can no longer write outside its folder, to a device name such as `NUL`, or into a hidden NTFS stream.
+- 🛡️ **Safer writes:** output goes to a temporary file, is size-checked and flushed to disk, and only then replaces the name and removes the source. Failed or wrong-password operations leave the original untouched, and authenticated modes (GCM, ChaCha20-Poly1305) never expose plaintext before the authentication tag is verified.
+- 🐛 **Fixed:** files with non-ASCII names (`résumé.txt`) failed to encrypt on the native path, and names like `café.txt` were restored garbled.
+- 🐛 **Fixed:** encrypting a file named like `A.GFGLOCK` could delete it; dropping a folder added the folder itself instead of its files.
+- ⚡ **Large folders:** folders are scanned in the background (also from the Explorer context menu) with a live count and a Stop button; removing thousands of files from the list is instant.
+- 🧩 **Context menu:** "Decrypt with gfgLock" only appears when the selection contains encrypted files or folders, and launch failures are reported instead of being ignored.
+- 🔧 The native engine (`gfglock_native`) now exposes API version 2; an outdated module is ignored in favour of the Python fallback. Files from earlier versions decrypt unchanged.
 
 ### v3.0.1 - July 2026 *(current)*
 - 🖼️ **Startup splash screen:** live dependency-loading progress shown while the app boots

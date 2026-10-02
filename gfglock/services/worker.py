@@ -1,6 +1,7 @@
 # worker.py - background encryption/decryption worker (PySide6)
 
 import os
+import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from functools import partial
@@ -10,6 +11,7 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from gfglock.core import aes256_gcm_cfb as aes_core
 from gfglock.core import chacha20_poly1305 as xchacha_core
+from gfglock.core.file_ops import is_encrypted_path
 from gfglock.utils import load_settings, predict_encrypted_size
 
 
@@ -49,6 +51,7 @@ class EncryptDecryptWorker(QRunnable):
         self.enc_algo = enc_algo
         self.total_bytes = float(self._calc_total_size())
         self.processed_bytes = 0.0
+        self._progress_lock = threading.Lock()
         self._files_completed = 0
         self.signals = WorkerSignals()
 
@@ -92,10 +95,14 @@ class EncryptDecryptWorker(QRunnable):
     def _make_progress_callback(self, file_index: int, total_files: int) -> Callable[[float], None]:
         """Create a per-file chunk progress callback."""
         def callback(chunk_bytes: float) -> None:
-            self.processed_bytes = min(
-                self.processed_bytes + float(chunk_bytes), self.total_bytes
-            )
-            self.signals.progress.emit(self.processed_bytes, self.total_bytes)
+            # Native workers report from several threads at once; without the lock two
+            # read-modify-writes can interleave and drop progress.
+            with self._progress_lock:
+                self.processed_bytes = min(
+                    self.processed_bytes + float(chunk_bytes), self.total_bytes
+                )
+                done = self.processed_bytes
+            self.signals.progress.emit(done, self.total_bytes)
         return callback
 
     @Slot()
@@ -220,9 +227,8 @@ class EncryptDecryptWorker(QRunnable):
 
     def _is_skip(self, p: str, msg: str) -> bool:
         """Determine if a failed result is a skip (not an actual error)."""
-        low = (p or "").lower()
-        encrypted_exts = (".gfglock", ".gfglck", ".gfgcha")
+        encrypted = is_encrypted_path(p or "")
         if self.mode == "encrypt":
-            return (bool(msg) and "already encrypted" in msg.lower()) or low.endswith(encrypted_exts)
+            return (bool(msg) and "already encrypted" in msg.lower()) or encrypted
         else:
-            return (bool(msg) and "already decrypted" in msg.lower()) or not low.endswith(encrypted_exts)
+            return (bool(msg) and "already decrypted" in msg.lower()) or not encrypted

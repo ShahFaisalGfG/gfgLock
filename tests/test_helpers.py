@@ -255,10 +255,10 @@ class TestDeriveKey:
 class TestGenerateEncryptedName:
     """generate_encrypted_name must produce the on-disk name for an encrypted file."""
 
-    def test_keeps_stem_when_not_randomized(self):
-        """encrypt_name=False must keep the original stem and swap the extension."""
-        result = helpers.generate_encrypted_name("/some/dir/report.txt", False, ".gfglock")
-        assert result == "report.gfglock"
+    def test_keeps_full_name_when_not_randomized(self):
+        """encrypt_name=False must keep the full original name so report.txt and report.pdf can't collide."""
+        assert helpers.generate_encrypted_name("/some/dir/report.txt", False, ".gfglock") == "report.txt.gfglock"
+        assert helpers.generate_encrypted_name("/some/dir/report.pdf", False, ".gfglock") == "report.pdf.gfglock"
 
     def test_randomizes_name_when_requested(self):
         """encrypt_name=True must produce a timestamp_hex name hiding the original stem."""

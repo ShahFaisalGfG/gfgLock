@@ -542,10 +542,15 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     font.pixelSize:   12
                                     Layout.preferredHeight: 48
+                                    // Starting mid-scan would only process the files found so far.
                                     enabled: passInput.text.length > 0 &&
                                              (encDlg.operationMode === "decrypt" || passInput.text === confirmInput.text) &&
-                                             encryptController.fileModel.count > 0
+                                             encryptController.fileModel.count > 0 &&
+                                             !encryptController.scanning
                                     onClicked: encDlg.startOp()
+                                    ToolTip.visible: hovered && encryptController.scanning
+                                    ToolTip.text: "Wait for the folder scan to finish, or stop it"
+                                    ToolTip.delay: 300
                                     Keys.onPressed: function(event) {
                                         if (event.key === Qt.Key_Space) event.accepted = true
                                     }
@@ -723,7 +728,7 @@ ApplicationWindow {
                 encDlg.close()
             } else if (encryptController.fileModel.count === 0) {
                 fileDialog.open()
-            } else if (passInput.text.length > 0
+            } else if (passInput.text.length > 0 && !encryptController.scanning
                        && (encDlg.operationMode === "decrypt" || passInput.text === confirmInput.text)) {
                 encDlg.startOp()
             }

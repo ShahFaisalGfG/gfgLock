@@ -7,50 +7,37 @@ namespace gfglock {
 
 using ProgressFn = std::function<void(double)>;
 
-/// Encrypt a file using AES-256-GCM. C++ owns the full I/O loop; GIL released.
-std::pair<bool, std::string> encryptGcm(
+/// Cipher behind each encrypted file type: .gfglock (GCM), .gfglck (CFB), .gfgcha (ChaCha).
+enum class Algorithm { Gcm, Cfb, Chacha };
+
+/// Outcome of decryptFile(): on success `original_name` holds the raw UTF-8 bytes of the
+/// name stored inside the file. It is untrusted input and must be validated by the caller.
+struct DecryptResult {
+    bool ok = false;
+    std::string message;
+    std::string original_name;
+};
+
+/// Encrypt input_path into output_path (both UTF-8). Writes the header, the encrypted
+/// `original_name` + NUL + file data, and the tag for AEAD ciphers. Never deletes or renames
+/// anything: choosing the output name and removing the source is the caller's job.
+std::pair<bool, std::string> encryptFile(
+    Algorithm algorithm,
     const std::string& input_path,
+    const std::string& output_path,
+    const std::string& original_name,
     const std::string& password,
-    bool encrypt_name,
     int chunk_size,
     const ProgressFn& progress
 );
 
-/// Decrypt a .gfglock file using AES-256-GCM.
-std::pair<bool, std::string> decryptGcm(
+/// Decrypt input_path into output_path (plaintext data only). For AEAD ciphers the result is
+/// only reported as successful after the tag verifies; on any failure the caller must discard
+/// output_path. Never deletes or renames anything.
+DecryptResult decryptFile(
+    Algorithm algorithm,
     const std::string& input_path,
-    const std::string& password,
-    const ProgressFn& progress
-);
-
-/// Encrypt a file using AES-256-CFB.
-std::pair<bool, std::string> encryptCfb(
-    const std::string& input_path,
-    const std::string& password,
-    bool encrypt_name,
-    int chunk_size,
-    const ProgressFn& progress
-);
-
-/// Decrypt a .gfglck file using AES-256-CFB.
-std::pair<bool, std::string> decryptCfb(
-    const std::string& input_path,
-    const std::string& password,
-    const ProgressFn& progress
-);
-
-/// Encrypt a file using ChaCha20-Poly1305.
-std::pair<bool, std::string> encryptChacha(
-    const std::string& input_path,
-    const std::string& password,
-    bool encrypt_name,
-    int chunk_size,
-    const ProgressFn& progress
-);
-
-/// Decrypt a .gfgcha file using ChaCha20-Poly1305.
-std::pair<bool, std::string> decryptChacha(
-    const std::string& input_path,
+    const std::string& output_path,
     const std::string& password,
     const ProgressFn& progress
 );

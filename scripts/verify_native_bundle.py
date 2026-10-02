@@ -21,18 +21,13 @@ def verify_bundle(bundle_dir: Path) -> None:
             dll_handles.append(os.add_dll_directory(str(directory)))
 
     module = importlib.import_module("gfglock_native")
-    required_functions = (
-        "pbkdf2_sha256",
-        "encrypt_gcm",
-        "decrypt_gcm",
-        "encrypt_cfb",
-        "decrypt_cfb",
-        "encrypt_chacha",
-        "decrypt_chacha",
-    )
+    required_functions = ("pbkdf2_sha256", "encrypt_file", "decrypt_file")
     missing = [name for name in required_functions if not callable(getattr(module, name, None))]
     if missing:
         raise ImportError(f"Bundled gfglock_native is missing functions: {', '.join(missing)}")
+    api_version = getattr(module, "API_VERSION", 1)
+    if api_version < 2:
+        raise ImportError(f"Bundled gfglock_native is API version {api_version}; version 2 or newer is required")
 
     print(f"Native extension loaded from: {module.__file__}")
     # Keep the DLL search handles alive until after import completes.

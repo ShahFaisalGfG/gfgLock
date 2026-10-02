@@ -89,7 +89,7 @@ class FileListModel(QAbstractListModel):
                     key = os.path.normcase(path)
                     if key in self._path_keys or key in pending_keys:
                         continue
-                    if not os.path.exists(path):
+                    if not os.path.isfile(path):
                         continue
                     item = self._make_item(path)
                     additions.append(item)
@@ -101,26 +101,22 @@ class FileListModel(QAbstractListModel):
             pass
 
     @Slot(list)
-    def addFileItems(self, items: list) -> None:
-        """Insert pre-scanned file metadata without doing filesystem work on the UI thread."""
+    def addScanned(self, entries: list) -> None:
+        """Insert (path, size) pairs from a folder scan without touching the filesystem."""
         additions = []
         pending_keys: set[str] = set()
-        try:
-            for item in items:
-                try:
-                    path = os.path.normpath(str(item["path"]))
-                    key = os.path.normcase(path)
-                    if key in self._path_keys or key in pending_keys:
-                        continue
-                    normalized_item = dict(item)
-                    normalized_item["path"] = path
-                    additions.append(normalized_item)
-                    pending_keys.add(key)
-                except (KeyError, TypeError, ValueError):
+        for entry in entries:
+            try:
+                raw_path, size = entry
+                path = os.path.normpath(str(raw_path))
+                key = os.path.normcase(path)
+                if key in self._path_keys or key in pending_keys:
                     continue
-            self._insert_items(additions)
-        except Exception:
-            pass
+                additions.append(self._make_item(path, int(size)))
+                pending_keys.add(key)
+            except (TypeError, ValueError):
+                continue
+        self._insert_items(additions)
 
     def _insert_items(self, items: list[dict]) -> None:
         """Append prepared file rows and emit one contiguous model update."""
@@ -156,17 +152,20 @@ class FileListModel(QAbstractListModel):
 
     @Slot()
     def removeSelected(self) -> None:
-        """Remove all currently selected items."""
+        """Remove all currently selected items in one pass and one model reset.
+
+        Removing row by row is quadratic (each pop shifts the list and each removal
+        relayouts the view), which froze the window when removing thousands of rows.
+        """
+        if not self._selected:
+            return
         try:
-            rows = sorted(self._selected, reverse=True)
-            for row in rows:
-                if 0 <= row < len(self._files):
-                    self.beginRemoveRows(QModelIndex(), row, row)
-                    removed = self._files.pop(row)
-                    self._path_keys.discard(os.path.normcase(removed["path"]))
-                    self._total_bytes -= removed["bytes"]
-                    self.endRemoveRows()
+            self.beginResetModel()
+            self._files = [item for row, item in enumerate(self._files) if row not in self._selected]
+            self._path_keys = {os.path.normcase(item["path"]) for item in self._files}
+            self._total_bytes = sum(item["bytes"] for item in self._files)
             self._selected.clear()
+            self.endResetModel()
             self.countChanged.emit(len(self._files))
             self.totalSizeChanged.emit()
             self.selectionChanged.emit()
@@ -323,14 +322,15 @@ class FileListModel(QAbstractListModel):
     # ── Internal helpers ─────────────────────────────────────────────────────
 
     @staticmethod
-    def _make_item(path: str) -> dict:
-        """Build a file metadata dict for a given path."""
-        try:
-            size_bytes = os.path.getsize(path)
-            size_str = format_bytes(float(size_bytes))
-        except Exception:
-            size_bytes = 0
-            size_str = "?"
+    def _make_item(path: str, size_bytes: int | None = None) -> dict:
+        """Build a file metadata dict for a path, using a known size when the caller has one."""
+        if size_bytes is None:
+            try:
+                size_bytes = os.path.getsize(path)
+            except OSError:
+                size_bytes = -1
+        size_str = format_bytes(float(size_bytes)) if size_bytes >= 0 else "?"
+        size_bytes = max(size_bytes, 0)
         name = os.path.basename(path)
         ext = os.path.splitext(name)[1].lstrip(".").upper() or "FILE"
         return {"name": name, "path": path, "size": size_str, "bytes": size_bytes, "ext": ext}

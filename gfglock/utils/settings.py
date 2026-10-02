@@ -1,8 +1,10 @@
 # settings.py - settings file load, save, and merge utilities
 
+import copy
 import json
 import os
 import sys
+import threading
 from typing import Any, Dict
 
 from gfglock.config.defaults import get_default_settings as _get_defaults
@@ -27,26 +29,59 @@ def get_default_settings() -> Dict[str, Any]:
     return _get_defaults()
 
 
+# Parsed settings keyed by the file's (path, mtime, size). write_log() asks for settings on every
+# log line, which during a batch of thousands of files meant thousands of JSON reads.
+_cache_lock = threading.Lock()
+_cache: tuple[tuple[str, int, int], Dict[str, Any]] | None = None
+
+
 def load_settings() -> Dict[str, Any]:
-    """Load settings from settings.json, merging with defaults for any missing keys."""
+    """Load settings from settings.json, merging with defaults for any missing keys.
+
+    Returns a fresh copy each time; the parsed file is reused until it changes on disk.
+    """
+    global _cache
     path = get_settings_file()
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                user_settings = json.load(f)
-            return merge_settings(get_default_settings(), user_settings)
-        except Exception:
-            pass
-    return get_default_settings()
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return get_default_settings()
+    key = (path, stat.st_mtime_ns, stat.st_size)
+    with _cache_lock:
+        if _cache is not None and _cache[0] == key:
+            return copy.deepcopy(_cache[1])
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            settings = merge_settings(get_default_settings(), json.load(f))
+    except Exception:
+        return get_default_settings()
+    with _cache_lock:
+        _cache = (key, settings)
+    return copy.deepcopy(settings)
 
 
 def save_settings(settings: Dict[str, Any]) -> bool:
-    """Persist settings to settings.json. Returns True on success."""
+    """Persist settings to settings.json atomically. Returns True on success.
+
+    Writes a temp file next to it and swaps it in, so a crash mid-write can't leave a
+    truncated settings.json behind.
+    """
+    global _cache
+    path = get_settings_file()
+    tmp_path = f"{path}.tmp"
     try:
-        with open(get_settings_file(), "w", encoding="utf-8") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2)
+        os.replace(tmp_path, path)
+        # File times can be coarser than two quick saves, so don't rely on mtime alone here.
+        with _cache_lock:
+            _cache = None
         return True
     except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
         return False
 
 

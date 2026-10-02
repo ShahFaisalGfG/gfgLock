@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from gfglock.config.defaults import NotificationDefaults, PerformanceDefaults
 
+from gfglock.core.file_ops import ENCRYPTED_EXTS
 from gfglock.models.file_model import FileListModel
 from gfglock.services.notifier import send_notification
 from gfglock.services.folder_scanner import FolderScanWorker
@@ -15,7 +16,6 @@ from gfglock.services.worker import EncryptDecryptWorker
 from gfglock.utils.logging import write_log, write_session_separator
 from gfglock.utils.settings import load_settings
 
-_ENC_EXTS = frozenset((".gfglock", ".gfglck", ".gfgcha"))
 _ALGO_NAMES = {
     "aes256_gcm":        "AES-256 GCM",
     "aes256_cfb":        "AES-256 CFB",
@@ -35,14 +35,15 @@ class EncryptController(QObject):
     operationFinished = Signal(float, int, int, int, int)  # elapsed, total, ok, fail, skip
     operationStarted = Signal()
     busyChanged = Signal(bool)
+    scanChanged = Signal()                             # folder scan started/progressed/ended
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._file_model = FileListModel(self)
         self._threadpool = QThreadPool.globalInstance()
         self._worker: EncryptDecryptWorker | None = None
-        self._folder_scans: dict[int, FolderScanWorker] = {}
-        self._next_folder_scan_id = 0
+        self._scan: FolderScanWorker | None = None
+        self._scan_found = 0
         self._busy = False
         self._operation_mode = "encrypt"
 
@@ -58,53 +59,91 @@ class EncryptController(QObject):
         """True while an encrypt/decrypt operation is in progress."""
         return self._busy
 
+    @Property(bool, notify=scanChanged)
+    def scanning(self) -> bool:
+        """True while a folder scan is adding files in the background."""
+        return self._scan is not None
+
+    @Property(int, notify=scanChanged)
+    def scanFound(self) -> int:
+        """Files found so far by the running folder scan."""
+        return self._scan_found
+
     @Slot(str)
     def setMode(self, mode: str) -> None:
-        """Set the operation mode ('encrypt' or 'decrypt') to gate file additions."""
-        try:
-            self._operation_mode = mode
-        except Exception:
-            pass
+        """Set the operation mode ('encrypt' or 'decrypt') to gate file additions.
+
+        A scan started for the other mode is stopped, since it filters for the wrong files.
+        """
+        if mode != self._operation_mode:
+            self.cancelScan()
+        self._operation_mode = mode
 
     # ── File management slots ─────────────────────────────────────────────
 
     @Slot(list)
     def addFiles(self, urls: list) -> None:
-        """Accept a list of file:/// URLs or plain paths and add them to the model."""
+        """Accept file:/// URLs or plain paths; folders among them are scanned in the background."""
         try:
             paths = [self._url_to_path(u) for u in urls if u]
-            self._file_model.addFiles([p for p in paths if p and self._isAllowed(p)])
+            folders = [p for p in paths if p and os.path.isdir(p)]
+            self._file_model.addFiles([p for p in paths if p and p not in folders and self._isAllowed(p)])
+            if folders:
+                self._start_scan(folders)
         except Exception:
             pass
 
     @Slot(str)
     def addFolder(self, url: str) -> None:
-        """Scan a folder in the background and add results in model batches."""
+        """Scan a folder and its subfolders in the background, adding results in batches."""
         try:
             folder = self._url_to_path(url)
-            if not folder or not os.path.isdir(folder):
-                return
-            self._next_folder_scan_id += 1
-            scan_id = self._next_folder_scan_id
-            worker = FolderScanWorker(
-                folder=folder,
-                scan_id=scan_id,
-                encrypted_extensions=_ENC_EXTS,
-                include_encrypted=self._operation_mode == "decrypt",
-            )
-            queued = Qt.ConnectionType.QueuedConnection
-            worker.signals.items_found.connect(self._file_model.addFileItems, queued)
-            worker.signals.error.connect(self.errorOccurred, queued)
-            worker.signals.finished.connect(self._on_folder_scan_finished, queued)
-            self._folder_scans[scan_id] = worker
-            self._threadpool.start(worker)
+            if folder and os.path.isdir(folder):
+                self._start_scan([folder])
         except Exception:
             pass
 
-    @Slot(int)
-    def _on_folder_scan_finished(self, scan_id: int) -> None:
-        """Release the completed scan worker reference."""
-        self._folder_scans.pop(scan_id, None)
+    @Slot()
+    def cancelScan(self) -> None:
+        """Stop the running folder scan; files already found stay in the list."""
+        if self._scan is not None:
+            self._scan.cancel()
+
+    def shutdown(self) -> None:
+        """Stop background work before exit so the thread pool drains quickly."""
+        self.cancelScan()
+        self.cancelOperation()
+
+    def _start_scan(self, folders: list[str]) -> None:
+        """Scan folders on the thread pool, replacing any scan already running."""
+        self.cancelScan()
+        worker = FolderScanWorker(
+            roots=folders,
+            encrypted_extensions=ENCRYPTED_EXTS,
+            include_encrypted=self._operation_mode == "decrypt",
+        )
+        queued = Qt.ConnectionType.QueuedConnection
+        worker.signals.batch_found.connect(self._file_model.addScanned, queued)
+        worker.signals.progress.connect(self._on_scan_progress, queued)
+        worker.signals.error.connect(self.errorOccurred, queued)
+        worker.signals.finished.connect(
+            lambda _found, _cancelled, w=worker: self._on_scan_finished(w), queued
+        )
+        self._scan = worker
+        self._scan_found = 0
+        self.scanChanged.emit()
+        self._threadpool.start(worker)
+
+    def _on_scan_progress(self, found: int) -> None:
+        """Track the running file count for the scanning indicator."""
+        self._scan_found = found
+        self.scanChanged.emit()
+
+    def _on_scan_finished(self, worker: FolderScanWorker) -> None:
+        """Clear the scan state once the current scan ends."""
+        if self._scan is worker:
+            self._scan = None
+            self.scanChanged.emit()
 
     @Slot(str)
     def addPath(self, path: str) -> None:
@@ -125,8 +164,9 @@ class EncryptController(QObject):
 
     @Slot()
     def clearFiles(self) -> None:
-        """Remove all files from the model."""
+        """Stop any folder scan and remove all files from the model."""
         try:
+            self.cancelScan()
             self._file_model.clearAll()
         except Exception:
             pass
@@ -222,7 +262,7 @@ class EncryptController(QObject):
     def _isAllowed(self, path: str) -> bool:
         """Return True if the file is valid for the current operation mode."""
         try:
-            is_enc = os.path.splitext(path)[1].lower() in _ENC_EXTS
+            is_enc = os.path.splitext(path)[1].lower() in ENCRYPTED_EXTS
             if self._operation_mode == "encrypt":
                 return not is_enc
             if self._operation_mode == "decrypt":

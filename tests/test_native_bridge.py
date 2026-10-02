@@ -14,11 +14,7 @@ requires_native = pytest.mark.skipif(
     reason="Native C++ extension not loaded",
 )
 
-_WRAPPER_NAMES = (
-    "encrypt_gcm", "decrypt_gcm",
-    "encrypt_cfb", "decrypt_cfb",
-    "encrypt_chacha", "decrypt_chacha",
-)
+_NATIVE_FUNCTIONS = ("pbkdf2_sha256", "encrypt_file", "decrypt_file")
 
 
 def _reload_blocked():
@@ -57,8 +53,8 @@ class TestNativeAvailableFlag:
         """When native is available, every wrapped C++ function must be present and callable."""
         native = native_bridge._native
         assert native is not None
-        names = ("pbkdf2_sha256",) + _WRAPPER_NAMES
-        for name in names:
+        assert native.API_VERSION >= native_bridge.REQUIRED_API_VERSION
+        for name in _NATIVE_FUNCTIONS:
             func = getattr(native, name, None)
             assert callable(func), f"{name} missing or not callable on native module"
 
@@ -99,17 +95,37 @@ class TestDeriveKey:
 class TestFallbackWrappers:
     """When NATIVE_AVAILABLE is False, every wrapper must degrade without raising."""
 
-    @pytest.mark.parametrize("func_name", _WRAPPER_NAMES)
-    def test_wrapper_fallback(self, func_name, monkeypatch):
-        """Each encrypt/decrypt wrapper must return (False, message) instead of raising."""
+    def test_encrypt_wrapper_fallback(self, monkeypatch, tmp_path):
+        """encrypt_file must return (False, message) instead of raising when native is off."""
         monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
-        func = getattr(native_bridge, func_name)
-        try:
-            ok, msg = func("nonexistent.bin", "pw")
-        except Exception as exc:
-            pytest.fail(f"{func_name} raised instead of degrading: {exc}")
+        ok, msg = native_bridge.encrypt_file("gcm", "missing.bin", str(tmp_path / "out"), "missing.bin", "pw")
         assert ok is False
         assert isinstance(msg, str) and msg
+
+    def test_decrypt_wrapper_fallback(self, monkeypatch, tmp_path):
+        """decrypt_file must return (False, message, b"") instead of raising when native is off."""
+        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
+        ok, msg, name = native_bridge.decrypt_file("gcm", "missing.gfglock", str(tmp_path / "out"), "pw")
+        assert ok is False and name == b""
+        assert isinstance(msg, str) and msg
+
+    @requires_native
+    def test_unknown_algorithm_reports_error(self, tmp_path):
+        """The native module must reject an unknown algorithm name without crashing."""
+        ok, msg = native_bridge.encrypt_file("rot13", "x", str(tmp_path / "o"), "x", "pw")
+        assert ok is False and "unknown algorithm" in msg
+
+    def test_outdated_module_is_ignored(self, monkeypatch):
+        """A native module older than API version 2 must not be used."""
+        fake = type(sys)("gfglock_native")
+        monkeypatch.setitem(sys.modules, "gfglock_native", fake)
+        try:
+            reloaded = importlib.reload(native_bridge)
+            assert reloaded.NATIVE_AVAILABLE is False
+            assert reloaded._native is None
+        finally:
+            monkeypatch.undo()
+            importlib.reload(native_bridge)
 
 
 class TestPathHelpers:

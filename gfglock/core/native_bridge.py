@@ -35,9 +35,16 @@ _pyd_dir = _frozen_core_dir()
 if _pyd_dir not in sys.path:
     sys.path.insert(0, _pyd_dir)
 
+# The file-transform API changed in version 2 (explicit output path, no file deletion in C++).
+# An older module left on disk is ignored so its unsafe naming/deletion logic can't run.
+REQUIRED_API_VERSION = 2
+
 try:
     import gfglock_native as _native  # type: ignore[import]
-    NATIVE_AVAILABLE: bool = True
+    NATIVE_AVAILABLE: bool = getattr(_native, "API_VERSION", 1) >= REQUIRED_API_VERSION
+    if not NATIVE_AVAILABLE:
+        _log("gfglock_native is outdated (rebuild with scripts/build_native.ps1); using the Python fallback")
+        _native = None
 except ImportError:
     _native = None
     NATIVE_AVAILABLE = False
@@ -53,96 +60,37 @@ def derive_key(password: str, salt: bytes, iterations: int = 200000) -> bytes:
         pass
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations, dklen=32)
 
-# ── AES-256-GCM ───────────────────────────────────────────────────────────────
+# ── File transforms ──────────────────────────────────────────────────────────
 
-def encrypt_gcm(
-    path: str,
+def encrypt_file(
+    algorithm: str,
+    input_path: str,
+    output_path: str,
+    original_name: str,
     password: str,
-    encrypt_name: bool = False,
     chunk_size: int = 0,
     callback: Optional[Callable[[float], None]] = None,
 ) -> tuple[bool, str]:
-    """Encrypt a file with AES-256-GCM via the native module."""
+    """Encrypt input_path into output_path natively ("gcm", "cfb", or "chacha"). Returns (ok, error)."""
     try:
         assert NATIVE_AVAILABLE and _native is not None
-        result = _native.encrypt_gcm(path, password, encrypt_name, chunk_size, callback)
-        return bool(result[0]), str(result[1])
+        ok, error = _native.encrypt_file(algorithm, input_path, output_path, original_name, password, chunk_size, callback)
+        return bool(ok), str(error)
     except Exception as e:
-        return False, f"Critical error while encrypting {path}: {e}"
+        return False, str(e) or repr(e)
 
 
-def decrypt_gcm(
-    path: str,
+def decrypt_file(
+    algorithm: str,
+    input_path: str,
+    output_path: str,
     password: str,
     callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Decrypt a .gfglock file with AES-256-GCM via the native module."""
+) -> tuple[bool, str, bytes]:
+    """Decrypt input_path into output_path natively. Returns (ok, error, stored_name_bytes)."""
     try:
         assert NATIVE_AVAILABLE and _native is not None
-        result = _native.decrypt_gcm(path, password, callback)
-        return bool(result[0]), str(result[1])
+        ok, error, name = _native.decrypt_file(algorithm, input_path, output_path, password, callback)
+        return bool(ok), str(error), bytes(name)
     except Exception as e:
-        return False, f"Critical error while decrypting {path}: {e}"
-
-# ── AES-256-CFB ───────────────────────────────────────────────────────────────
-
-def encrypt_cfb(
-    path: str,
-    password: str,
-    encrypt_name: bool = False,
-    chunk_size: int = 0,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Encrypt a file with AES-256-CFB via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.encrypt_cfb(path, password, encrypt_name, chunk_size, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while encrypting {path}: {e}"
-
-
-def decrypt_cfb(
-    path: str,
-    password: str,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Decrypt a .gfglck file with AES-256-CFB via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.decrypt_cfb(path, password, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while decrypting {path}: {e}"
-
-# ── ChaCha20-Poly1305 ─────────────────────────────────────────────────────────
-
-def encrypt_chacha(
-    path: str,
-    password: str,
-    encrypt_name: bool = False,
-    chunk_size: int = 0,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Encrypt a file with ChaCha20-Poly1305 via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.encrypt_chacha(path, password, encrypt_name, chunk_size, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while encrypting {path}: {e}"
-
-
-def decrypt_chacha(
-    path: str,
-    password: str,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Decrypt a .gfgcha file with ChaCha20-Poly1305 via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.decrypt_chacha(path, password, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while decrypting {path}: {e}"
-
+        return False, str(e) or repr(e), b""

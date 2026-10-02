@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from gfglock.core import aes256_gcm_cfb as aes_core
+from gfglock.core import chacha20_poly1305 as chacha_core
 from gfglock.core import native_bridge
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -158,9 +160,9 @@ def _bench_all_cpu(suite: BenchSuite) -> None:
         return
 
     modes = [
-        ("CPU  AES-256-GCM",       native_bridge.encrypt_gcm,    (".gfglock",), native_bridge.decrypt_gcm),
-        ("CPU  AES-256-CFB",       native_bridge.encrypt_cfb,    (".gfglck",),  native_bridge.decrypt_cfb),
-        ("CPU  ChaCha20-Poly1305", native_bridge.encrypt_chacha, (".gfgcha",),  native_bridge.decrypt_chacha),
+        ("CPU  AES-256-GCM",       lambda p, pw: aes_core.encrypt_file(p, pw, AEAD=True),  (".gfglock",), aes_core.decrypt_file),
+        ("CPU  AES-256-CFB",       lambda p, pw: aes_core.encrypt_file(p, pw, AEAD=False), (".gfglck",),  aes_core.decrypt_file),
+        ("CPU  ChaCha20-Poly1305", chacha_core.encrypt_file,                               (".gfgcha",),  chacha_core.decrypt_file),
     ]
 
     for size_mb in FILE_SIZES_MB:

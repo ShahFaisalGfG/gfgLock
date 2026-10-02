@@ -120,10 +120,14 @@ def derive_key(password: str, salt: bytes, iterations: int = 200000) -> bytes:
 
 
 def generate_encrypted_name(src_path: str, encrypt_name: bool, ext: str) -> str:
-    """Return the output filename for an encrypted file."""
+    """Return the preferred output filename for an encrypted file.
+
+    The full original name is kept (report.docx -> report.docx.gfglock) so files that differ
+    only by extension never map to the same encrypted name. With encrypt_name, a timestamp
+    plus random suffix hides the original name; it is restored from inside the file on decrypt.
+    """
     if encrypt_name:
         now = datetime.now().strftime("%Y%m%d%H%M%S")
         rand = token_hex(4)
         return f"{now}_{rand}{ext}"
-    base = os.path.splitext(os.path.basename(src_path))[0]
-    return base + ext
+    return os.path.basename(src_path) + ext

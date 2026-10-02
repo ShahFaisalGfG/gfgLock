@@ -8,6 +8,7 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <objbase.h>
+#include <cwctype>
 #include <string>
 #include <vector>
 
@@ -39,12 +40,27 @@ static const GUID CLSID_GfgLockDecrypt = {
 
 static std::wstring dllDirectory()
 {
-    wchar_t buf[MAX_PATH] = {};
-    GetModuleFileNameW(g_hModule, buf, MAX_PATH);
-    std::wstring s(buf);
+    // Grow the buffer for install paths longer than MAX_PATH instead of truncating them.
+    std::wstring s(MAX_PATH, L'\0');
+    for (;;) {
+        DWORD n = GetModuleFileNameW(g_hModule, s.data(), static_cast<DWORD>(s.size()));
+        if (n == 0) return {};
+        if (n < s.size()) { s.resize(n); break; }
+        s.resize(s.size() * 2);
+    }
     auto pos = s.rfind(L'\\');
     if (pos != std::wstring::npos) s.resize(pos);
     return s;
+}
+
+// True when the file name ends in one of gfgLock's encrypted extensions (any letter case).
+static bool hasEncryptedExtension(const std::wstring& name)
+{
+    auto dot = name.rfind(L'.');
+    if (dot == std::wstring::npos) return false;
+    std::wstring ext = name.substr(dot);
+    for (auto& ch : ext) ch = static_cast<wchar_t>(towlower(ch));
+    return ext == L".gfglock" || ext == L".gfglck" || ext == L".gfgcha";
 }
 
 static std::wstring quoted(const std::wstring& s)
@@ -74,12 +90,21 @@ static std::wstring writeTempFile(const std::vector<std::wstring>& paths)
     HANDLE h = CreateFileW(tmp, GENERIC_WRITE, 0, nullptr,
                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return {};
+    bool ok = true;
     for (const auto& p : paths) {
         std::string line = toUtf8(p) + "\n";
         DWORD written = 0;
-        WriteFile(h, line.c_str(), static_cast<DWORD>(line.size()), &written, nullptr);
+        if (!WriteFile(h, line.c_str(), static_cast<DWORD>(line.size()), &written, nullptr)
+            || written != line.size()) {
+            ok = false;
+            break;
+        }
     }
     CloseHandle(h);
+    if (!ok) {
+        DeleteFileW(tmp);
+        return {};
+    }
     return tmp;
 }
 
@@ -169,10 +194,35 @@ public:
         return S_OK;
     }
 
-    STDMETHODIMP GetState(IShellItemArray*, BOOL, EXPCMDSTATE* pState) override
+    STDMETHODIMP GetState(IShellItemArray* psia, BOOL fOkToBeSlow, EXPCMDSTATE* pState) override
     {
         if (!pState) return E_POINTER;
         *pState = ECS_ENABLED;
+        if (!psia) return S_OK;
+        // Inspecting the selection can touch slow (network) items; ask Explorer to call
+        // again on its background thread rather than delaying the menu.
+        if (!fOkToBeSlow) return E_PENDING;
+
+        bool anyEncrypted = false, anyPlain = false;
+        DWORD count = 0;
+        psia->GetCount(&count);
+        for (DWORD i = 0; i < count && !(anyEncrypted && anyPlain); i++) {
+            IShellItem* psi = nullptr;
+            if (FAILED(psia->GetItemAt(i, &psi))) continue;
+            SFGAOF attrs = 0;
+            psi->GetAttributes(SFGAO_FOLDER | SFGAO_STREAM, &attrs);
+            if ((attrs & SFGAO_FOLDER) && !(attrs & SFGAO_STREAM)) {
+                anyEncrypted = anyPlain = true;  // a folder can hold either kind
+            } else {
+                LPWSTR name = nullptr;
+                if (SUCCEEDED(psi->GetDisplayName(SIGDN_PARENTRELATIVEPARSING, &name))) {
+                    (hasEncryptedExtension(name) ? anyEncrypted : anyPlain) = true;
+                    CoTaskMemFree(name);
+                }
+            }
+            psi->Release();
+        }
+        if (_isEncrypt ? !anyPlain : !anyEncrypted) *pState = ECS_HIDDEN;
         return S_OK;
     }
 
@@ -213,20 +263,26 @@ public:
             }
         }
 
-        std::wstring cmdLine = buildCmdLine(exePath, mode, paths);
+        std::wstring responseFile;
+        std::wstring cmdLine = buildCmdLine(exePath, mode, paths, responseFile);
 
         STARTUPINFOW si      = {};
         si.cb                = sizeof(si);
         PROCESS_INFORMATION pi = {};
-        CreateProcessW(nullptr,
-                       cmdLine.data(),
-                       nullptr, nullptr,
-                       FALSE,
-                       CREATE_NO_WINDOW,
-                       nullptr, nullptr,
-                       &si, &pi);
-        if (pi.hProcess) CloseHandle(pi.hProcess);
-        if (pi.hThread)  CloseHandle(pi.hThread);
+        if (!CreateProcessW(nullptr,
+                            cmdLine.data(),
+                            nullptr, nullptr,
+                            FALSE,
+                            CREATE_NO_WINDOW,
+                            nullptr, nullptr,
+                            &si, &pi)) {
+            HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
+            // The app normally deletes the response file after reading it; it never started.
+            if (!responseFile.empty()) DeleteFileW(responseFile.c_str());
+            return hr;
+        }
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
         return S_OK;
     }
 
@@ -234,7 +290,8 @@ private:
     // Build the command line; fall back to @responsefile if it would be too long.
     std::wstring buildCmdLine(const std::wstring& exe,
                               const std::wstring& mode,
-                              const std::vector<std::wstring>& paths) const
+                              const std::vector<std::wstring>& paths,
+                              std::wstring& responseFile) const
     {
         std::wstring direct = quoted(exe) + L" " + mode;
         for (const auto& p : paths) {
@@ -246,6 +303,7 @@ private:
 
         std::wstring tmp = writeTempFile(paths);
         if (tmp.empty()) return direct;
+        responseFile = tmp;
         return quoted(exe) + L" " + mode + L" @" + quoted(tmp);
     }
 };
