@@ -53,7 +53,7 @@ jobs:
         run: pip install -r requirements.txt
 
       # Cache the vcpkg binary + installed OpenSSL/pybind11 packages.
-      # Key tied to native/vcpkg.json so a dependency change busts the cache.
+      # Key tied to native/vcpkg.json and the pinned vcpkg commit, so either change busts the cache.
       - name: Cache vcpkg packages
         uses: actions/cache@v4
         with:
@@ -61,7 +61,7 @@ jobs:
             .vcpkg
             native/vcpkg_installed
             native/build/vcpkg_installed
-          key: vcpkg-${{ hashFiles('native/vcpkg.json') }}
+          key: vcpkg-${{ hashFiles('native/vcpkg.json', 'native/vcpkg-commit.txt') }}
 
       # Compiles gfglock_native.pyd and gfglock_shell.dll using MSVC + CMake.
       - name: Build native extension

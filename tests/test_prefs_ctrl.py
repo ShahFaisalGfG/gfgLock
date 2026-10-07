@@ -177,7 +177,7 @@ class TestLogs:
 
 
 class TestReadSize:
-    def test_read_size_defaults_to_automatic(self, controller):
+    def test_read_size_starts_at_the_default(self, controller):
         assert controller.encReadSize == 0 and controller.decReadSize == 0
 
     def test_saved_read_size_is_reported(self, controller, monkeypatch):
@@ -185,10 +185,12 @@ class TestReadSize:
         controller.saveSettings({"encryption.read_size": 32 * 1024 * 1024})
         assert controller.encReadSize == 32 * 1024 * 1024
 
-    def test_options_start_with_automatic(self, controller):
+    def test_options_start_with_the_default(self, controller):
         options = controller.readSizeOptions
-        assert options[0]["code"] == 0 and "Automatic" in options[0]["label"]
-        assert [o["code"] for o in options[1:]] == ReadSizeDefaults.SIZES
+        assert options[0] == {"label": "Default (4 MB)", "code": 0}
+        codes = [o["code"] for o in options[1:]]
+        assert ReadSizeDefaults.DEFAULT_BYTES not in codes  # offered once, as the default
+        assert sorted(codes + [ReadSizeDefaults.DEFAULT_BYTES]) == ReadSizeDefaults.TEST_SIZES
 
 
 class TestReadSizeTest:
@@ -199,14 +201,25 @@ class TestReadSizeTest:
         controller.readSizeTestFinished.connect(lambda e, d, m: calls.append((e, d, m)))
         return calls
 
-    def test_result_picks_sizes_and_describes_them(self, controller):
+    def test_result_is_saved_and_described(self, controller, monkeypatch):
+        saved: list[dict] = []
+        monkeypatch.setattr(prefs_ctrl, "save_settings", lambda s: saved.append(s) or True)
         calls = self._finished(controller)
         timings = [SizeTiming(4 * self.MB, 1.0, 1.0), SizeTiming(32 * self.MB, 0.5, 0.99)]
         controller._on_read_size_finished(timings, "")
         (encrypt, decrypt, message), = calls
         assert (encrypt, decrypt) == (32 * self.MB, 0)
-        assert "32 MB when encrypting" in message and "Automatic when decrypting" in message
+        assert (controller.encReadSize, controller.decReadSize) == (32 * self.MB, 0)
+        assert saved[-1]["encryption"]["read_size"] == 32 * self.MB
+        assert "32 MB (" in message and "the default, 4 MB" in message and message.endswith("Saved.")
         assert not controller.readSizeTestRunning
+
+    def test_failed_save_is_reported(self, controller, monkeypatch):
+        monkeypatch.setattr(prefs_ctrl, "save_settings", lambda s: False)
+        monkeypatch.setattr(prefs_ctrl, "write_log", MagicMock())
+        calls = self._finished(controller)
+        controller._on_read_size_finished([SizeTiming(4 * self.MB, 1.0, 1.0)], "")
+        assert calls[0][2].endswith("couldn't be saved.")
 
     def test_error_is_reported(self, controller, monkeypatch):
         monkeypatch.setattr(prefs_ctrl, "write_log", MagicMock())

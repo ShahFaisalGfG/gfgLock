@@ -7,23 +7,16 @@ from gfglock.utils import settings as settings_mod
 
 
 class TestGetSettingsFile:
-    """get_settings_file must resolve to the frozen-app data directory and create it."""
+    """settings.json lives in the app's data folder (see test_paths), or beside the module from source."""
 
-    def test_frozen_uses_appdata(self, monkeypatch, tmp_path):
-        """When frozen, settings.json must live under <APPDATA>/gfgLock/."""
-        monkeypatch.setattr(settings_mod.sys, "frozen", True, raising=False)
-        monkeypatch.setenv("APPDATA", str(tmp_path))
-        result = settings_mod.get_settings_file()
-        assert result == os.path.join(str(tmp_path), "gfgLock", "settings.json")
-        assert os.path.isdir(os.path.dirname(result))
+    def test_built_app_uses_the_data_folder(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(settings_mod, "data_dir", lambda: str(tmp_path))
+        assert settings_mod.get_settings_file() == os.path.join(str(tmp_path), "settings.json")
 
-    def test_frozen_without_appdata_falls_back_to_home(self, monkeypatch, tmp_path):
-        """Missing APPDATA must fall back to the user home directory."""
-        monkeypatch.setattr(settings_mod.sys, "frozen", True, raising=False)
-        monkeypatch.delenv("APPDATA", raising=False)
-        monkeypatch.setattr(settings_mod.os.path, "expanduser", lambda _p: str(tmp_path))
-        result = settings_mod.get_settings_file()
-        assert result == os.path.join(str(tmp_path), "gfgLock", "settings.json")
+    def test_from_source_uses_the_module_folder(self, monkeypatch):
+        monkeypatch.setattr(settings_mod, "data_dir", lambda: None)
+        assert settings_mod.get_settings_file() == os.path.join(
+            os.path.dirname(os.path.abspath(settings_mod.__file__)), "settings.json")
 
 
 class TestGetDefaultSettings:
@@ -173,7 +166,7 @@ class TestDropUnknownKeys:
 
 
 class TestMigrateSettings:
-    """A read size picked in 3.0.x ("chunk_size") carries over; the old defaults become Automatic."""
+    """A read size picked in 3.0.x ("chunk_size") carries over; the old defaults become the default."""
 
     MB = 1024 * 1024
 
@@ -183,10 +176,14 @@ class TestMigrateSettings:
         assert migrated["encryption"]["read_size"] == 32 * self.MB
         assert migrated["decryption"]["read_size"] == 64 * self.MB
 
-    def test_old_defaults_and_off_become_automatic(self):
+    def test_old_defaults_and_off_become_the_default(self):
         old = {"encryption": {"chunk_size": 16 * self.MB}, "decryption": {"chunk_size": None}}
         migrated = settings_mod.migrate_settings(old)
         assert "read_size" not in migrated["encryption"] and "read_size" not in migrated["decryption"]
+
+    def test_saved_4_mb_becomes_the_default(self):
+        migrated = settings_mod.migrate_settings({"encryption": {"read_size": 4 * self.MB}})
+        assert migrated["encryption"]["read_size"] == 0
 
     def test_existing_read_size_wins(self):
         old = {"encryption": {"chunk_size": 64 * self.MB, "read_size": 0}}

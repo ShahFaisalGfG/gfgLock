@@ -90,7 +90,7 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     Fail "python not found in PATH"
 }
 if (-not (Get-Command pyinstaller -ErrorAction SilentlyContinue)) {
-    Fail "pyinstaller not found. Install it with: pip install 'pyinstaller>=6.17'"
+    Fail "pyinstaller not found. Install the pinned build tools with: pip install -r requirements.txt"
 }
 
 $IsccPaths = @(

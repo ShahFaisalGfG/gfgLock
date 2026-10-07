@@ -188,7 +188,7 @@ class EncryptController(QObject):
         section_name, defaults = _PERFORMANCE[self._mode]
         section = settings.get(section_name, {})
         threads = self._clamp_threads(int(section.get("cpu_threads", defaults.DEFAULT_THREADS)), settings)
-        read_size = int(section.get("read_size", ReadSizeDefaults.AUTOMATIC) or 0)
+        read_size = int(section.get("read_size", ReadSizeDefaults.DEFAULT) or 0)
         algorithm = algorithm or settings.get("advanced", {}).get("encryption_mode", AlgorithmDefaults.DEFAULT_ALGORITHM)
 
         algo_label = _ALGO_NAMES.get(algorithm, algorithm) if self._mode == MODE_ENCRYPT else "auto-detect"

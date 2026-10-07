@@ -153,14 +153,14 @@ class ReadSizeTestWorker(QRunnable):
 
 
 def pick_fastest(timings: list[SizeTiming], seconds: Callable[[SizeTiming], float],
-                 automatic_bytes: int, margin: float = 0.05) -> int:
-    """Return the fastest read size, or 0 (Automatic) unless it beats Automatic's size by `margin`.
+                 default_bytes: int, margin: float = 0.05) -> int:
+    """Return the fastest read size, or 0 (the default) unless it beats the default's size by `margin`.
 
     Differences of a few percent are within run-to-run variation, so they don't justify moving
     away from the default.
     """
     fastest = min(timings, key=seconds)
-    baseline = next((t for t in timings if t.read_size == automatic_bytes), None)
+    baseline = next((t for t in timings if t.read_size == default_bytes), None)
     if baseline is None or seconds(fastest) < seconds(baseline) * (1 - margin):
         return fastest.read_size
     return 0

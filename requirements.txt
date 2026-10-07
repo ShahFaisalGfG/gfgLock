@@ -1,5 +1,8 @@
-PySide6>=6.7
-cryptography>=46.0
-pycryptodome>=3.20
-pyinstaller>=6.17
-pytest>=8.0
+# Exact versions every build and CI run uses, so a release can be rebuilt as it shipped.
+# pyproject.toml lists the looser ranges the code supports.
+PySide6==6.11.2
+cryptography==50.0.1
+pycryptodome==3.23.0
+pyinstaller==6.22.3
+pybind11==3.1.0
+pytest==9.1.1

@@ -46,19 +46,19 @@ class TestTimeReadSizes:
 
 
 class TestPickFastest:
-    AUTO = 4 * MB
+    DEFAULT = 4 * MB
 
     def _timings(self, **seconds):
         return [SizeTiming(int(name[1:]) * MB, s, s) for name, s in seconds.items()]
 
     def test_clearly_faster_size_wins(self):
         timings = self._timings(s4=1.0, s32=0.8)
-        assert pick_fastest(timings, lambda t: t.encrypt_s, self.AUTO) == 32 * MB
+        assert pick_fastest(timings, lambda t: t.encrypt_s, self.DEFAULT) == 32 * MB
 
-    def test_small_difference_keeps_automatic(self):
+    def test_small_difference_keeps_the_default(self):
         timings = self._timings(s4=1.0, s8=0.97)
-        assert pick_fastest(timings, lambda t: t.encrypt_s, self.AUTO) == 0
+        assert pick_fastest(timings, lambda t: t.encrypt_s, self.DEFAULT) == 0
 
-    def test_automatic_size_itself_fastest_keeps_automatic(self):
+    def test_default_size_itself_fastest_keeps_the_default(self):
         timings = self._timings(s1=1.3, s4=1.0)
-        assert pick_fastest(timings, lambda t: t.encrypt_s, self.AUTO) == 0
+        assert pick_fastest(timings, lambda t: t.encrypt_s, self.DEFAULT) == 0

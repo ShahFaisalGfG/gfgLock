@@ -21,6 +21,8 @@ AppWindow {
     property bool _closeAfterSave: false
     property string _statusMessage: ""
     property string _speedTestMessage: ""
+    // The read sizes shown when the test started, so the lists it changes can be pointed out.
+    property var _sizesBeforeTest: ({})
     property bool _statusIsError: false
     property var _values: ({})
 
@@ -48,13 +50,13 @@ AppWindow {
 
     Connections {
         target: prefsController
-        // The speed test picks a size for each direction; like any edit, Save keeps it.
+        // The speed test saves the size it picks for each direction. Dropping any unsaved choice of
+        // read size lets both lists show the saved result; other unsaved edits stay pending.
         function onReadSizeTestFinished(encryptSize, decryptSize, message) {
             if (encryptSize >= 0) {
-                var changed = encryptSize !== encReadCombo.value || decryptSize !== decReadCombo.value
-                if (encryptSize !== encReadCombo.value) prefsWin.set("encryption.read_size", encryptSize)
-                if (decryptSize !== decReadCombo.value) prefsWin.set("decryption.read_size", decryptSize)
-                message += changed ? " Press Save to keep them." : " They are already selected."
+                prefsWin.forget(["encryption.read_size", "decryption.read_size"])
+                if (encryptSize !== prefsWin._sizesBeforeTest.encrypt) encReadCombo.flash()
+                if (decryptSize !== prefsWin._sizesBeforeTest.decrypt) decReadCombo.flash()
             }
             prefsWin._speedTestMessage = message
         }
@@ -78,6 +80,14 @@ AppWindow {
         prefsWin._values = values
         prefsWin.dirty = true
         prefsWin._statusMessage = ""
+    }
+
+    // Drop unsaved edits of these keys, so their controls show the saved values again.
+    function forget(keys) {
+        var values = Object.assign({}, prefsWin._values)
+        for (var i = 0; i < keys.length; i++) delete values[keys[i]]
+        prefsWin._values = values
+        prefsWin.dirty = Object.keys(values).length > 0
     }
 
     function value(key, fallback) {
@@ -295,9 +305,10 @@ AppWindow {
                     Card {
                         Layout.fillWidth: true
                         title: "Read size"
-                        description: "How much of a file is read at once. The fastest size depends on the disk and processor; Automatic (4 MB) suits most PCs. Each file being worked on holds about four times the size in memory."
+                        description: "How much of a file is read at once. The fastest size depends on the disk and processor; the default, 4 MB, suits most PCs. Each file being worked on holds about four times the size in memory."
                         FormRow {
                             label: "When encrypting"
+                            enabled: !prefsController.readSizeTestRunning
                             StyledComboBox {
                                 id: encReadCombo
                                 Layout.fillWidth: true
@@ -309,6 +320,7 @@ AppWindow {
                         }
                         FormRow {
                             label: "When decrypting"
+                            enabled: !prefsController.readSizeTestRunning
                             StyledComboBox {
                                 id: decReadCombo
                                 Layout.fillWidth: true
@@ -319,28 +331,39 @@ AppWindow {
                             }
                         }
                         FormRow {
-                            label: "Find the fastest"
+                            label: "Best size for this PC"
                             hint: prefsController.readSizeTestRunning
                                 ? "Testing each size... " + Math.round(prefsController.readSizeTestProgress * 100) + "%"
                                 : prefsWin._speedTestMessage
-                                  || "Encrypts and decrypts a 256 MB test file in the temp folder with every size, then selects the fastest. Takes about a minute; the test file is deleted afterwards."
+                                  || "Encrypts and decrypts a 256 MB test file in the temp folder with every size, then selects and saves the fastest for each. Takes about a minute; the test file is deleted afterwards."
                             Item { Layout.fillWidth: true }
                             AppButton {
-                                text: prefsController.readSizeTestRunning ? "Stop" : "Run speed test"
+                                text: prefsController.readSizeTestRunning ? "Stop" : "Optimize for this PC"
                                 iconName: prefsController.readSizeTestRunning ? "stop" : "speed"
                                 toolTipText: prefsController.readSizeTestRunning
-                                    ? "Stop the speed test; nothing is changed"
-                                    : "Time every read size on this PC and select the fastest"
+                                    ? "Stop the test; the read sizes stay as they are"
+                                    : "Test every read size on this PC, then select and save the fastest"
                                 onClicked: {
                                     if (prefsController.readSizeTestRunning) {
                                         prefsController.cancelReadSizeTest()
                                     } else {
                                         prefsWin._speedTestMessage = ""
+                                        prefsWin._sizesBeforeTest = { encrypt: encReadCombo.currentValue,
+                                                                      decrypt: decReadCombo.currentValue }
                                         prefsController.startReadSizeTest(
                                             prefsWin.value("advanced.encryption_mode", prefsController.encMode))
                                     }
                                 }
                             }
+                        }
+                        ProgressBar {
+                            Layout.fillWidth: true
+                            visible: prefsController.readSizeTestRunning
+                            from: 0
+                            to: 1
+                            value: prefsController.readSizeTestProgress
+                            Accessible.role: Accessible.ProgressBar
+                            Accessible.name: "Read size test progress"
                         }
                     }
                 }

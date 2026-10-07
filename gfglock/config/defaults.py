@@ -68,23 +68,23 @@ class AlgorithmDefaults:
 
 
 class ReadSizeDefaults:
-    """How much of a file is read at once: (label, bytes). 0 lets the engine choose (4 MB), which
+    """How much of a file is read at once: (label, bytes). 0 is the default size, 4 MB, which
     measured fastest on a typical desktop; the best size depends on the disk and CPU, so the
-    Preferences window can also time each size on this PC."""
+    Preferences window can time each size on this PC and save the fastest."""
 
-    AUTOMATIC = 0
-    # The size Automatic stands for (DEFAULT_BLOCK_SIZE in native/src/aes_cpu.cpp, BUFFER_SIZE in py_cipher).
-    AUTOMATIC_BYTES = 4 * 1024 * 1024
+    DEFAULT = 0
+    # The size the default stands for (DEFAULT_BLOCK_SIZE in native/src/aes_cpu.cpp, BUFFER_SIZE in py_cipher).
+    DEFAULT_BYTES = 4 * 1024 * 1024
     OPTIONS = [
-        ("Automatic (recommended)", AUTOMATIC),
+        ("Default (4 MB)", DEFAULT),
         ("1 MB", 1 * 1024 * 1024),
-        ("4 MB", 4 * 1024 * 1024),
         ("8 MB", 8 * 1024 * 1024),
         ("16 MB", 16 * 1024 * 1024),
         ("32 MB", 32 * 1024 * 1024),
         ("64 MB (uses the most memory)", 64 * 1024 * 1024),
     ]
-    SIZES = [size for _, size in OPTIONS if size]
+    # Every size the speed test times, the default's included.
+    TEST_SIZES = sorted([DEFAULT_BYTES] + [size for _, size in OPTIONS if size])
 
 
 class LoggingDefaults:
@@ -117,12 +117,12 @@ def get_default_settings() -> Dict[str, Any]:
         "theme": ThemeDefaults.DEFAULT_THEME,
         "encryption": {
             "cpu_threads": EncryptionDefaults.DEFAULT_THREADS,
-            "read_size": ReadSizeDefaults.AUTOMATIC,
+            "read_size": ReadSizeDefaults.DEFAULT,
             "encrypt_filenames": EncryptionDefaults.DEFAULT_ENCRYPT_FILENAMES,
         },
         "decryption": {
             "cpu_threads": DecryptionDefaults.DEFAULT_THREADS,
-            "read_size": ReadSizeDefaults.AUTOMATIC,
+            "read_size": ReadSizeDefaults.DEFAULT,
         },
         "advanced": {
             "encryption_mode": AlgorithmDefaults.DEFAULT_ALGORITHM,

@@ -30,7 +30,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-This installs: `PySide6`, `cryptography`, `pycryptodome`, `pyinstaller`, `pytest`.
+This installs the exact versions every build uses: `PySide6`, `cryptography`, `pycryptodome`, `pyinstaller`, `pybind11`, and `pytest`. `pyproject.toml` lists the looser version ranges the code supports.
 
 ---
 
@@ -47,7 +47,7 @@ python -m gfglock encrypt "C:\path\to\file.txt"
 python -m gfglock decrypt "C:\path\to\file.txt.gfglock"
 ```
 
-In development mode, settings are kept in `gfglock\utils\settings.json`; the installed app keeps them in `%APPDATA%\gfgLock`.
+In development mode, settings are kept in `gfglock\utils\settings.json` and logs in `logs\`. The installed app keeps them in `%APPDATA%\gfgLock`, and the portable exe in a `gfgLock data` folder beside itself (`gfglock\utils\paths.py`).
 
 ---
 
@@ -59,7 +59,7 @@ Compiles `gfglock_native.pyd` (OpenSSL-backed AES-256 GCM and CFB, ChaCha20-Poly
 .\scripts\build_native.ps1
 ```
 
-The script bootstraps vcpkg into `.vcpkg\` if it is missing, installs OpenSSL through it, and finishes by loading the new module the way the app does; the build fails if the app couldn't use it. Without the native module the app runs on the slower pure-Python ciphers, which read and write the same files.
+The script fetches vcpkg into `.vcpkg\` at the commit pinned in `native\vcpkg-commit.txt` (which fixes the OpenSSL version), installs OpenSSL through it, and finishes by loading the new module the way the app does; the build fails if the app couldn't use it. Without the native module the app runs on the slower pure-Python ciphers, which read and write the same files.
 
 ---
 

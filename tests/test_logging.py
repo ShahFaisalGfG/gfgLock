@@ -9,23 +9,13 @@ _SEP_PATTERN = re.compile(r"^─{68}\n\n$")
 
 
 class TestGetLogsDir:
-    """get_logs_dir must resolve to the frozen-app data directory and create it."""
+    """Logs go in a logs folder inside the app's data folder (see test_paths), created on demand."""
 
-    def test_frozen_uses_appdata(self, monkeypatch, tmp_path):
-        """When frozen, logs dir must be <APPDATA>/gfgLock/logs and must exist on disk."""
-        monkeypatch.setattr(log_mod.sys, "frozen", True, raising=False)
-        monkeypatch.setenv("APPDATA", str(tmp_path))
+    def test_built_app_uses_the_data_folder(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(log_mod, "data_dir", lambda: str(tmp_path))
         result = log_mod.get_logs_dir()
-        assert result == os.path.join(str(tmp_path), "gfgLock", "logs")
+        assert result == os.path.join(str(tmp_path), "logs")
         assert os.path.isdir(result)
-
-    def test_frozen_without_appdata_falls_back_to_home(self, monkeypatch, tmp_path):
-        """Missing APPDATA must fall back to the user home directory."""
-        monkeypatch.setattr(log_mod.sys, "frozen", True, raising=False)
-        monkeypatch.delenv("APPDATA", raising=False)
-        monkeypatch.setattr(log_mod.os.path, "expanduser", lambda _p: str(tmp_path))
-        result = log_mod.get_logs_dir()
-        assert result == os.path.join(str(tmp_path), "gfgLock", "logs")
 
 
 class TestLogFilePaths:

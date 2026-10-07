@@ -364,7 +364,7 @@
 <p><img alt="gfgLock Logo" src="icons/Square150x150Logo.scale-100.png" /></p>
 <h1 id="gfglock">gfgLock</h1>
 <p><strong>Free, open-source file encryption for Windows - offline, private, and built to last.</strong></p>
-<p><a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
+<p><a href="LICENSE.txt"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
 <a href="https://github.com/ShahFaisalGfG/gfgLock/releases"><img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4.svg?logo=windows&amp;logoColor=white" /></a>
 <a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/ShahFaisalGfG/gfgLock?color=brightgreen&amp;label=Latest%20Release" /></a>
 <a href="https://winstall.app/apps/gfgRoyal.gfgLock"><img alt="winget" src="https://img.shields.io/badge/winget-gfgRoyal.gfgLock-0078D4.svg?logo=windows&amp;logoColor=white" /></a></p>
@@ -450,7 +450,7 @@
 <li>⚡ <strong>Hardware-accelerated</strong> - native C++ extension backed by OpenSSL; seamless Python fallback on any machine</li>
 <li>🎨 <strong>Modern, clean UI</strong> - PySide6 + QML with System, Light, and Dark themes</li>
 <li>🧩 <strong>Three ciphers</strong> - AES-256 GCM and ChaCha20-Poly1305 detect damaged or altered files; AES-256 CFB stays for older files</li>
-<li>📦 <strong>Three install modes</strong> - system-wide, per-user (no admin), and a portable exe that runs without installing</li>
+<li>📦 <strong>Three install modes</strong> - system-wide, per-user (no admin), and a portable exe that keeps its settings beside itself (USB-friendly)</li>
 <li>🖱️ <strong>Context-menu integration</strong> - right-click any file in Windows Explorer to encrypt or decrypt</li>
 </ul>
 <hr />
@@ -465,7 +465,7 @@
 <li><strong>File Explorer context menu</strong> - right-click any file → <em>Encrypt with gfgLock</em> / <em>Decrypt with gfgLock</em>; while gfgLock is open, more files you send this way join the same window</li>
 <li><strong>Drag &amp; drop</strong> - drop files or folders anywhere on the window; encrypted files go to the Decrypt tab and everything else to the Encrypt tab</li>
 <li><strong>Keyboard friendly</strong> - every control can be reached with Tab and shows a focus outline, and the main actions have shortcuts</li>
-<li><strong>Detailed logging</strong> - full activity or critical-only log levels saved to <code>%APPDATA%\gfgLock\logs\</code></li>
+<li><strong>Detailed logging</strong> - full activity or critical-only log levels saved to <code>%APPDATA%\gfgLock\logs\</code> (the portable exe: <code>gfgLock data\logs\</code> beside it)</li>
 <li><strong>Live theme switching</strong> - System / Light / Dark with instant preview</li>
 <li><strong>Zero dependencies at runtime</strong> - fully self-contained executable</li>
 </ul>
@@ -497,7 +497,7 @@
 <tr>
 <td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.1.0_portable.exe</code></a></td>
 <td style="text-align: center;">❌</td>
-<td>Running without installing; settings are kept in <code>%APPDATA%\gfgLock</code></td>
+<td>USB drives and PCs where you can't install; settings and logs stay in a <code>gfgLock data</code> folder beside the exe</td>
 </tr>
 </tbody>
 </table>
@@ -747,11 +747,11 @@ PBKDF2-HMAC-SHA256  (200 000 iterations)
 </tr>
 <tr>
 <td><strong>Read size</strong></td>
-<td>How much of a file is read at once, set separately for encrypting and decrypting. <strong>Automatic</strong> (4 MB) suits most PCs; 1 MB to 64 MB can be picked by hand. Each file being worked on holds about four times the size in memory</td>
+<td>How much of a file is read at once, set separately for encrypting and decrypting. The <strong>Default (4 MB)</strong> suits most PCs; 1 MB to 64 MB can be picked by hand. Each file being worked on holds about four times the size in memory</td>
 </tr>
 <tr>
-<td><strong>Run speed test</strong></td>
-<td>Encrypts and decrypts a 256 MB test file in the temp folder with every read size (about a minute), then selects the fastest for this PC. Automatic is kept unless another size is at least 5% faster; press <strong>Save</strong> to keep the result</td>
+<td><strong>Optimize for this PC</strong></td>
+<td>Encrypts and decrypts a 256 MB test file in the temp folder with every read size (about a minute, with a progress bar), then selects and saves the fastest size for encrypting and for decrypting. Another size replaces the default only when it is at least 5% faster</td>
 </tr>
 </tbody>
 </table>
@@ -841,7 +841,7 @@ python -m gfglock
 </tr>
 <tr>
 <td>Logs not created</td>
-<td>Turn on <strong>Keep logs</strong> in <strong>Preferences → Notifications &amp; logs</strong>; check write permissions on <code>%APPDATA%\gfgLock\logs\</code></td>
+<td>Turn on <strong>Keep logs</strong> in <strong>Preferences → Notifications &amp; logs</strong>; check write permissions on <code>%APPDATA%\gfgLock\logs\</code> (portable exe: <code>gfgLock data\logs\</code> beside it)</td>
 </tr>
 </tbody>
 </table>
@@ -904,7 +904,7 @@ python -m gfglock
 <li>🐛 <strong>Fixed:</strong> encrypting a file named like <code>A.GFGLOCK</code> could delete it; dropping a folder added the folder itself instead of its files.</li>
 <li>🐛 <strong>Fixed:</strong> turning <strong>Keep the PC responsive</strong> on or off reset <strong>Files at a time</strong> to 1.</li>
 <li>⚡ <strong>Faster encryption:</strong> reading, encrypting, and writing a file now overlap instead of taking turns, so a large file encrypts and decrypts about 1.5 times faster, at about the speed of the disk (a 1 GB file on a SATA SSD: about 3.8 s instead of 5.5 s).</li>
-<li>⚡ <strong>Read size:</strong> now <strong>Automatic</strong> by default (4 MB, which measured fastest on a typical desktop), applies to decrypting as well (it used to be ignored there), and <strong>Run speed test</strong> in <strong>Preferences → Speed</strong> times every size on your PC and selects the fastest. A read size picked in an earlier version is kept (128 MB becomes 64 MB, the new maximum); the old defaults become Automatic.</li>
+<li>⚡ <strong>Read size:</strong> now defaults to 4 MB (which measured fastest on a typical desktop), applies to decrypting as well (it used to be ignored there), and <strong>Optimize for this PC</strong> in <strong>Preferences → Speed</strong> times every size on your PC, then selects and saves the fastest. A read size picked in an earlier version is kept (128 MB becomes 64 MB, the new maximum); the old defaults become the new default.</li>
 <li>⚡ <strong>Large folders:</strong> folders are scanned in the background (also from the Explorer context menu) with a live count and a Stop button; removing thousands of files from the list is instant.</li>
 <li>🎨 <strong>Redesigned interface:</strong> one window with <strong>Encrypt</strong> and <strong>Decrypt</strong> tabs replaces the launcher and its pop-up dialogs, in the same design as CC-Gen-Ultimate. Each tab keeps its own file list, and every file shows its progress and result (<em>Done</em> with the name it was saved as, <em>Skipped</em>, or <em>Failed</em> with the reason). Failed files stay in the list to retry, finished ones can be removed, and the right-click menu offers <strong>Show in folder</strong> and copying names or paths. The number of files at a time moved to <strong>Preferences → Speed</strong>, so the tabs only ask for what each job needs.</li>
 <li>🎨 Dialogs dim the window with a dark layer in both themes; in the dark theme they used to fade it to a pale grey that looked like a frozen app.</li>
@@ -913,10 +913,12 @@ python -m gfglock
 <li>🖱️ <strong>One window:</strong> dropping files anywhere sends encrypted files to Decrypt and the rest to Encrypt, and files sent from the Explorer context menu while gfgLock is open join that window instead of opening another.</li>
 <li>🧩 <strong>Context menu:</strong> "Decrypt with gfgLock" only appears when the selection contains encrypted files or folders, and launch failures are reported instead of being ignored.</li>
 <li>🏷️ AES-256 CFB is now labelled <em>legacy</em>: measured on current PCs it is the slowest of the three methods, and it can't detect a damaged or altered file.</li>
-<li>🧪 <strong>Release checks:</strong> every build runs the frozen app with <code>--self-test</code> (native engine, all algorithms on both the native and Python paths, every QML screen, and every image the app shows), so a missing module or DLL fails the build instead of reaching users. The release workflow also runs the test suite.</li>
+<li>🧪 <strong>Release checks:</strong> every build runs the frozen app with <code>--self-test</code> (native engine, all algorithms on both the native and Python paths, every QML screen, and every image the app shows), so a missing module or DLL fails the build instead of reaching users. The test suite and the QML linter also run on every push and pull request, and builds use pinned Python packages and a pinned vcpkg commit (OpenSSL 3.6.5), so a release can be rebuilt as it shipped.</li>
 <li>🔧 The Python fallback uses AES-CFB from its new location in <code>cryptography</code>, so future <code>cryptography</code> releases keep opening <code>.gfglck</code> files.</li>
 <li>🔧 <strong>Installers:</strong> the system-wide uninstaller no longer deletes every user's <code>%APPDATA%\gfgLock</code> folder (which held other users' per-user installs and settings), and uninstalling never deletes other files in the install folder. Explorer refreshes file icons after install, and <code>THIRD_PARTY_NOTICES.md</code> and the offline readme are installed under <code>docs</code>.</li>
 <li>🔧 A damaged or hand-edited settings file can no longer stop Start from working; values of the wrong type fall back to their defaults.</li>
+<li>📦 <strong>The portable exe is portable:</strong> it keeps its settings and logs in a <code>gfgLock data</code> folder beside itself instead of in <code>%APPDATA%</code>, and takes over the settings of an earlier version on its first start. On a drive it can't write to, it falls back to <code>%APPDATA%\gfgLock</code>.</li>
+<li>🔧 gfgLock is released under the MIT License; the <code>LICENSE</code> file, which the readme linked to, is now included.</li>
 <li>🔧 The native engine (<code>gfglock_native</code>) now exposes API version 4; an outdated module is ignored in favour of the Python fallback. Files from earlier versions decrypt unchanged.</li>
 </ul>
 <h3 id="v301---july-2026">v3.0.1 - July 2026</h3>
@@ -953,8 +955,8 @@ python -m gfglock
 <p><a href="release_notes/">Full release notes →</a></p>
 <hr />
 <h2 id="license--credits">License &amp; Credits</h2>
-<p>Released under the <a href="LICENSE">MIT License</a> - free to use, modify, and distribute.</p>
-<p>Built with ❤️ by <strong>Shah Faisal</strong> · <a href="https://shahfaisalgfg.github.io/shahfaisal/">Portfolio</a> · <a href="mailto:shahfaisalgfg@outlook.com">shahfaisalgfg@outlook.com</a></p>
+<p>Released under the <a href="LICENSE.txt">MIT License</a> - free to use, modify, and distribute.</p>
+<p>Built with ❤️ by <strong>Shah Faisal</strong> · <a href="https://shahfaisalgfg.github.io/shahfaisal/">Portfolio</a> · <a href="mailto:shahfaisalgfg@gmail.com">shahfaisalgfg@gmail.com</a></p>
 <hr />
 <h2 id="support-the-project">Support the Project</h2>
 <p>gfgLock is free and will always stay free. If it's saved you time, protected a file that mattered, or just made your workflow a little smoother, here are a few ways to give back:</p>

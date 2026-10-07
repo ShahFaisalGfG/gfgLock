@@ -3,25 +3,20 @@
 import copy
 import json
 import os
-import sys
 import threading
 from typing import Any, Dict
 
 from gfglock.config.defaults import ReadSizeDefaults
 from gfglock.config.defaults import get_default_settings as _get_defaults
 from gfglock.utils.console import safe_print
+from gfglock.utils.paths import data_dir
 
 
 def get_settings_file() -> str:
-    """Return the path to settings.json, creating the directory if needed."""
-    try:
-        if getattr(sys, "frozen", False):
-            appdata  = os.environ.get("APPDATA") or os.path.expanduser("~")
-            data_dir = os.path.join(appdata, "gfgLock")
-            os.makedirs(data_dir, exist_ok=True)
-            return os.path.join(data_dir, "settings.json")
-    except Exception:
-        pass
+    """Return the path to settings.json: in the app's data folder, or next to this module from source."""
+    folder = data_dir()
+    if folder:
+        return os.path.join(folder, "settings.json")
     utils_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(utils_dir, "settings.json")
 
@@ -99,17 +94,24 @@ def migrate_settings(settings: Any) -> Any:
     """Carry a read size chosen in an older version over to "read_size".
 
     A value that differs from the old default was picked by the user, so it is kept, moved to the
-    nearest size offered now (128 MB becomes 64 MB). The old defaults and "Off" become Automatic.
+    nearest size offered now (128 MB becomes 64 MB). The old defaults and "Off" become the default,
+    and so does a saved 4 MB, which the list now offers only as the default.
     """
     if not isinstance(settings, dict):
         return settings
     for section, old_default in _OLD_CHUNK_DEFAULTS.items():
         values = settings.get(section)
-        if not isinstance(values, dict) or "chunk_size" not in values or "read_size" in values:
+        if not isinstance(values, dict):
+            continue
+        if values.get("read_size") == ReadSizeDefaults.DEFAULT_BYTES:
+            values["read_size"] = ReadSizeDefaults.DEFAULT
+        if "chunk_size" not in values or "read_size" in values:
             continue
         old = values["chunk_size"]
         if isinstance(old, int) and not isinstance(old, bool) and old > 0 and old != old_default:
-            values["read_size"] = min(ReadSizeDefaults.SIZES, key=lambda size: abs(size - old))
+            nearest = min(ReadSizeDefaults.TEST_SIZES, key=lambda size: abs(size - old))
+            if nearest != ReadSizeDefaults.DEFAULT_BYTES:
+                values["read_size"] = nearest
     return settings
 
 

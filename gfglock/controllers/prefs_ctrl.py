@@ -30,7 +30,7 @@ class PrefsController(QObject):
     # (success, message): the result of saveSettings, resetDefaults, or clearLogs.
     saveFinished = Signal(bool, str)
     readSizeTestChanged = Signal()
-    # (encrypt read size, decrypt read size, message): sizes are -1 when the test failed or stopped.
+    # (encrypt read size, decrypt read size, message): the sizes were saved; -1 when the test failed or stopped.
     readSizeTestFinished = Signal(int, int, str)
 
     def __init__(self, parent=None):
@@ -73,13 +73,13 @@ class PrefsController(QObject):
 
     @Property(int, notify=settingsChanged)
     def encReadSize(self) -> int:
-        """Bytes read at a time when encrypting; 0 is Automatic."""
-        return int(self._get("encryption", "read_size", default=ReadSizeDefaults.AUTOMATIC) or 0)
+        """Bytes read at a time when encrypting; 0 is the default (4 MB)."""
+        return int(self._get("encryption", "read_size", default=ReadSizeDefaults.DEFAULT) or 0)
 
     @Property(int, notify=settingsChanged)
     def decReadSize(self) -> int:
-        """Bytes read at a time when decrypting; 0 is Automatic."""
-        return int(self._get("decryption", "read_size", default=ReadSizeDefaults.AUTOMATIC) or 0)
+        """Bytes read at a time when decrypting; 0 is the default (4 MB)."""
+        return int(self._get("decryption", "read_size", default=ReadSizeDefaults.DEFAULT) or 0)
 
     @Property(bool, notify=settingsChanged)
     def encFilenames(self) -> bool:
@@ -128,7 +128,7 @@ class PrefsController(QObject):
 
     @Property(list, constant=True)
     def readSizeOptions(self) -> list:
-        """{label, code} entries for the read size combo boxes; code 0 is Automatic."""
+        """{label, code} entries for the read size combo boxes; code 0 is the default (4 MB)."""
         return [{"label": label, "code": size} for label, size in ReadSizeDefaults.OPTIONS]
 
     @Property(bool, notify=readSizeTestChanged)
@@ -189,7 +189,7 @@ class PrefsController(QObject):
         if self._read_size_test is not None:
             return
         cipher = AlgorithmDefaults.CIPHERS.get(algorithm, AlgorithmDefaults.CIPHERS[AlgorithmDefaults.DEFAULT_ALGORITHM])
-        worker = ReadSizeTestWorker(ReadSizeDefaults.SIZES, cipher)
+        worker = ReadSizeTestWorker(ReadSizeDefaults.TEST_SIZES, cipher)
         worker.signals.progress.connect(self._on_read_size_progress)
         worker.signals.finished.connect(self._on_read_size_finished)
         self._read_size_test = worker
@@ -212,7 +212,7 @@ class PrefsController(QObject):
         self.readSizeTestChanged.emit()
 
     def _on_read_size_finished(self, timings: list, error: str) -> None:
-        """Pick the fastest sizes and tell QML; an empty result means the test was stopped."""
+        """Save the fastest sizes and tell QML; an empty result means the test was stopped."""
         self._read_size_test = None
         self.readSizeTestChanged.emit()
         if error:
@@ -221,12 +221,18 @@ class PrefsController(QObject):
         elif not timings:
             self.readSizeTestFinished.emit(-1, -1, "Speed test stopped.")
         else:
-            encrypt = pick_fastest(timings, lambda t: t.encrypt_s, ReadSizeDefaults.AUTOMATIC_BYTES)
-            decrypt = pick_fastest(timings, lambda t: t.decrypt_s, ReadSizeDefaults.AUTOMATIC_BYTES)
-            self.readSizeTestFinished.emit(encrypt, decrypt, _describe_test(timings, encrypt, decrypt))
+            encrypt = pick_fastest(timings, lambda t: t.encrypt_s, ReadSizeDefaults.DEFAULT_BYTES)
+            decrypt = pick_fastest(timings, lambda t: t.decrypt_s, ReadSizeDefaults.DEFAULT_BYTES)
+            self._set(encrypt, "encryption", "read_size")
+            self._set(decrypt, "decryption", "read_size")
+            message = _describe_test(timings, encrypt, decrypt)
+            if self._persist():
+                self.readSizeTestFinished.emit(encrypt, decrypt, message + " Saved.")
+            else:
+                self.readSizeTestFinished.emit(encrypt, decrypt, message + " They are selected but couldn't be saved.")
 
-    def _persist(self) -> None:
-        """Save the current settings and tell QML how it went."""
+    def _persist(self) -> bool:
+        """Save the current settings, tell QML how it went, and return whether it worked."""
         saved = save_settings(self._settings)
         self.settingsChanged.emit()
         if saved:
@@ -234,17 +240,19 @@ class PrefsController(QObject):
         else:
             write_log("Could not save settings", "critical")
             self.saveFinished.emit(False, "Couldn't save the preferences file.")
+        return saved
 
 
 def _describe_test(timings: list[SizeTiming], encrypt: int, decrypt: int) -> str:
-    """'Fastest on this PC: 32 MB when encrypting (310 MB/s), Automatic when decrypting (295 MB/s).'"""
-    labels = {size: label.split(" (")[0] for label, size in ReadSizeDefaults.OPTIONS}
+    """'Best on this PC: 32 MB for encrypting (310 MB/s) and the default, 4 MB, for decrypting (295 MB/s).'"""
     by_size = {t.read_size: t for t in timings}
 
-    def speed(size: int, seconds_of) -> str:
-        timing = by_size[size or ReadSizeDefaults.AUTOMATIC_BYTES]
-        return f"{TEST_FILE_SIZE / seconds_of(timing) / 1e6:.0f} MB/s"
+    def choice(size: int, seconds_of) -> str:
+        timing = by_size[size or ReadSizeDefaults.DEFAULT_BYTES]
+        name = f"{timing.read_size // (1024 * 1024)} MB"
+        label = f"the default, {name}" if size == ReadSizeDefaults.DEFAULT else name
+        return f"{label} ({TEST_FILE_SIZE / seconds_of(timing) / 1e6:.0f} MB/s)"
 
-    return (f"Fastest on this PC: {labels[encrypt]} when encrypting ({speed(encrypt, lambda t: t.encrypt_s)}), "
-            f"{labels[decrypt]} when decrypting ({speed(decrypt, lambda t: t.decrypt_s)}). "
-            "Automatic is kept unless another size is at least 5% faster.")
+    return (f"Best on this PC: {choice(encrypt, lambda t: t.encrypt_s)} for encrypting and "
+            f"{choice(decrypt, lambda t: t.decrypt_s)} for decrypting. Another size replaces the default "
+            "only when it is at least 5% faster.")

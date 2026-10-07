@@ -1,25 +1,20 @@
 # logging.py - log file management utilities
 
 import os
-import sys
 from datetime import datetime
 
+from gfglock.utils.paths import data_dir
 from gfglock.utils.settings import load_settings
 
 
 def get_logs_dir() -> str:
-    """Return the logs directory path, creating it if needed."""
-    try:
-        if getattr(sys, "frozen", False):
-            appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-            logs_dir = os.path.join(appdata, "gfgLock", "logs")
-            os.makedirs(logs_dir, exist_ok=True)
-            return logs_dir
-    except Exception:
-        pass
-    utils_dir = os.path.dirname(os.path.abspath(__file__))
-    pkg_dir = os.path.dirname(os.path.dirname(utils_dir))  # project root
-    logs_dir = os.path.join(pkg_dir, "logs")
+    """Return the logs directory path (in the app's data folder, or the project when run from source)."""
+    folder = data_dir()
+    if folder:
+        logs_dir = os.path.join(folder, "logs")
+    else:
+        utils_dir = os.path.dirname(os.path.abspath(__file__))
+        logs_dir = os.path.join(os.path.dirname(os.path.dirname(utils_dir)), "logs")  # project root
     try:
         os.makedirs(logs_dir, exist_ok=True)
     except Exception:

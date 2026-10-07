@@ -128,7 +128,7 @@ Write-Step "Checking pybind11"
 $Pybind11Dir = python -c "import pybind11; print(pybind11.get_cmake_dir())" 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $Pybind11Dir) {
     Write-Host "   Installing pybind11..." -ForegroundColor DarkGray
-    pip install "pybind11[global]>=2.12" --quiet
+    pip install "pybind11==3.1.0" --quiet
     $Pybind11Dir = python -c "import pybind11; print(pybind11.get_cmake_dir())"
     if ($LASTEXITCODE -ne 0) { Fail "pybind11 install failed." }
 }
@@ -155,15 +155,36 @@ Write-Host "   Python import lib  : $PyLibrary" -ForegroundColor DarkGray
 
 Write-Step "Checking vcpkg"
 
+# vcpkg is pinned to the commit in native\vcpkg-commit.txt, which fixes the OpenSSL version, so a
+# release can be rebuilt exactly. A cached .vcpkg from another commit is replaced.
+$VcpkgCommit = (Get-Content (Join-Path $NativeDir "vcpkg-commit.txt") -Raw).Trim()
+$VcpkgMarker = Join-Path $VcpkgDir ".gfglock-vcpkg-commit"
+$VcpkgPinned = (Test-Path $VcpkgMarker) -and ((Get-Content $VcpkgMarker -Raw).Trim() -eq $VcpkgCommit)
+if ((Test-Path $VcpkgDir) -and -not $VcpkgPinned) {
+    Write-Host "   .vcpkg is not at the pinned commit; replacing it" -ForegroundColor DarkGray
+    Remove-Item -Recurse -Force $VcpkgDir
+}
+
 if (-not (Test-Path $VcpkgDir)) {
-    Write-Host "   Bootstrapping vcpkg at $VcpkgDir ..." -ForegroundColor DarkGray
-    git clone "https://github.com/microsoft/vcpkg.git" $VcpkgDir --depth 1 --quiet
-    if ($LASTEXITCODE -ne 0) { Fail "vcpkg clone failed." }
+    # A source archive of the commit, over HTTPS: needs no git history and no SSH key, and is
+    # unaffected by git settings that rewrite GitHub URLs.
+    Write-Host "   Downloading vcpkg $VcpkgCommit ..." -ForegroundColor DarkGray
+    $VcpkgZip = Join-Path $env:TEMP "vcpkg-$VcpkgCommit.zip"
+    $VcpkgUnpack = Join-Path $env:TEMP "vcpkg-$VcpkgCommit"
+    try {
+        Invoke-WebRequest -Uri "https://github.com/microsoft/vcpkg/archive/$VcpkgCommit.zip" -OutFile $VcpkgZip -UseBasicParsing
+    } catch {
+        Fail "vcpkg download failed: $_"
+    }
+    if (Test-Path $VcpkgUnpack) { Remove-Item -Recurse -Force $VcpkgUnpack }
+    New-Item -ItemType Directory -Path $VcpkgUnpack | Out-Null
+    tar -xf $VcpkgZip -C $VcpkgUnpack
+    if ($LASTEXITCODE -ne 0) { Fail "vcpkg archive could not be unpacked." }
+    Move-Item (Join-Path $VcpkgUnpack "vcpkg-$VcpkgCommit") $VcpkgDir
+    Remove-Item -Recurse -Force $VcpkgUnpack, $VcpkgZip
     & "$VcpkgDir\bootstrap-vcpkg.bat" -disableMetrics 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail "vcpkg bootstrap failed." }
-    foreach ($item in @(".git", ".github", ".gitignore", ".gitattributes")) {
-        Remove-Item -Recurse -Force (Join-Path $VcpkgDir $item) -ErrorAction SilentlyContinue
-    }
+    Set-Content -Path $VcpkgMarker -Value $VcpkgCommit -NoNewline
 }
 
 $VcpkgExe = Join-Path $VcpkgDir "vcpkg.exe"

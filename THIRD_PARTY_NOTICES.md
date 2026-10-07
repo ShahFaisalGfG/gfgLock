@@ -1,7 +1,8 @@
 # Third-Party Notices
 
-The gfgLock installers and the portable app bundle the open-source components below. Each keeps
-its own licence; the complete source for every one is available from the project linked.
+gfgLock is free and open-source software, released under the [MIT License](LICENSE). The
+installers and the portable app bundle the open-source components below. Each keeps its own
+licence; the complete source for every one is available from the project linked.
 
 | Component | Licence | Used for |
 |---|---|---|

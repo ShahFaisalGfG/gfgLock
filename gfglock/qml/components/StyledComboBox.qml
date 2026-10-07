@@ -75,11 +75,33 @@ ComboBox {
         color: Theme.textMuted
     }
 
+    // Draws attention to a value the app changed on its own (for example after a test picked it):
+    // the box glows in the accent color twice and fades back.
+    function flash() { flashAnimation.restart() }
+
+    SequentialAnimation {
+        id: flashAnimation
+        loops: 2
+        NumberAnimation { target: flashFill; property: "opacity"; to: 0.3; duration: 250; easing.type: Easing.OutQuad }
+        NumberAnimation { target: flashFill; property: "opacity"; to: 0; duration: 850; easing.type: Easing.InQuad }
+    }
+
     background: Rectangle {
         radius: Theme.radius
-        color: control.hovered && control.enabled ? Theme.surfaceHover : Theme.surface
-        border.width: control.visualFocus || control.valueMissing ? 2 : 1
-        border.color: control.visualFocus ? Theme.focusRing : control.valueMissing ? Theme.warning : Theme.border
+        // Disabled boxes take the muted fill, so the whole box reads as disabled, not just its text.
+        color: !control.enabled ? Theme.surfaceAlt : control.hovered ? Theme.surfaceHover : Theme.surface
+        border.width: control.visualFocus || control.valueMissing || flashFill.opacity > 0 ? 2 : 1
+        border.color: control.visualFocus ? Theme.focusRing
+            : control.valueMissing ? Theme.warning
+            : flashFill.opacity > 0 ? Theme.accent : Theme.border
+
+        Rectangle {
+            id: flashFill
+            anchors.fill: parent
+            radius: parent.radius
+            color: Theme.accent
+            opacity: 0
+        }
     }
 
     delegate: ItemDelegate {

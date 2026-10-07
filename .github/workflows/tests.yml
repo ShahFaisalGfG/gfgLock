@@ -1,0 +1,40 @@
+name: Tests
+
+# Runs the test suite and the QML linter on every push and pull request. The native engine is
+# built only by the release workflow (its OpenSSL build takes a while), so here the native-path
+# tests skip and the Python fallback carries the cipher tests.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Lint QML
+        shell: pwsh
+        run: |
+          $files = (Get-ChildItem gfglock/qml -Recurse -Filter *.qml).FullName
+          pyside6-qmllint -I gfglock/qml -I gfglock/qml/components @files
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
