@@ -1,28 +1,25 @@
 # prefs_ctrl.py - preferences (settings) controller
 
 import os
-import subprocess
-import sys
 from typing import Any, TypeVar, overload
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
-
-_T = TypeVar("_T")
+from PySide6.QtCore import Property, QObject, QThreadPool, Signal, Slot
 
 from gfglock.config.defaults import (
     AlgorithmDefaults,
-    AppearanceDefaults,
     DecryptionDefaults,
     EncryptionDefaults,
     LoggingDefaults,
     NotificationDefaults,
     PerformanceDefaults,
+    ReadSizeDefaults,
     ThemeDefaults,
 )
-from gfglock.config.ui_config import ChunkSizeOptions, EncryptionModes
-from gfglock.core import native_bridge
-from gfglock.utils.logging import clear_logs, get_logs_dir
+from gfglock.services.read_size_test import TEST_FILE_SIZE, ReadSizeTestWorker, SizeTiming, pick_fastest
+from gfglock.utils.logging import clear_logs, get_logs_dir, write_log
 from gfglock.utils.settings import get_default_settings, load_settings, save_settings
+
+_T = TypeVar("_T")
 
 
 class PrefsController(QObject):
@@ -30,18 +27,17 @@ class PrefsController(QObject):
 
     settingsChanged = Signal()
     themeChanged = Signal(str)
-    logsCleared = Signal()
+    # (success, message): the result of saveSettings, resetDefaults, or clearLogs.
+    saveFinished = Signal(bool, str)
+    readSizeTestChanged = Signal()
+    # (encrypt read size, decrypt read size, message): sizes are -1 when the test failed or stopped.
+    readSizeTestFinished = Signal(int, int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._settings = load_settings()
-
-    # ── Internal helpers ─────────────────────────────────────────────────
-
-    @staticmethod
-    def _coerce_chunk(key: str, value) -> Any:
-        """Convert the -1 sentinel to None for chunk_size keys before storing."""
-        return None if key == "chunk_size" and value == -1 else value
+        self._read_size_test: ReadSizeTestWorker | None = None
+        self._read_size_progress = 0.0
 
     # ── Settings access helpers ───────────────────────────────────────────
 
@@ -50,24 +46,20 @@ class PrefsController(QObject):
     @overload
     def _get(self, *keys: str, default: None = ...) -> Any: ...
     def _get(self, *keys: str, default=None):
-        """Navigate nested settings keys and return the value."""
-        try:
-            val = self._settings
-            for k in keys:
-                val = val[k]
-            return val
-        except Exception:
-            return default
+        """Navigate nested settings keys and return the value, or `default` when missing."""
+        node: Any = self._settings
+        for key in keys:
+            if not isinstance(node, dict) or key not in node:
+                return default
+            node = node[key]
+        return node
 
     def _set(self, value, *keys) -> None:
         """Set a nested settings value without saving to disk."""
-        try:
-            node = self._settings
-            for k in keys[:-1]:
-                node = node.setdefault(k, {})
-            node[keys[-1]] = value
-        except Exception:
-            pass
+        node = self._settings
+        for key in keys[:-1]:
+            node = node.setdefault(key, {})
+        node[keys[-1]] = value
 
     # ── Properties ────────────────────────────────────────────────────────
 
@@ -80,22 +72,22 @@ class PrefsController(QObject):
         return self._get("encryption", "cpu_threads", default=EncryptionDefaults.DEFAULT_THREADS)
 
     @Property(int, notify=settingsChanged)
-    def encChunkSize(self) -> int:
-        val = self._get("encryption", "chunk_size", default=EncryptionDefaults.DEFAULT_CHUNK_SIZE)
-        return -1 if val is None else int(val)
+    def encReadSize(self) -> int:
+        """Bytes read at a time when encrypting; 0 is Automatic."""
+        return int(self._get("encryption", "read_size", default=ReadSizeDefaults.AUTOMATIC) or 0)
+
+    @Property(int, notify=settingsChanged)
+    def decReadSize(self) -> int:
+        """Bytes read at a time when decrypting; 0 is Automatic."""
+        return int(self._get("decryption", "read_size", default=ReadSizeDefaults.AUTOMATIC) or 0)
 
     @Property(bool, notify=settingsChanged)
     def encFilenames(self) -> bool:
-        return self._get("encryption", "encrypt_filenames", default=False)
+        return self._get("encryption", "encrypt_filenames", default=EncryptionDefaults.DEFAULT_ENCRYPT_FILENAMES)
 
     @Property(int, notify=settingsChanged)
     def decThreads(self) -> int:
         return self._get("decryption", "cpu_threads", default=DecryptionDefaults.DEFAULT_THREADS)
-
-    @Property(int, notify=settingsChanged)
-    def decChunkSize(self) -> int:
-        val = self._get("decryption", "chunk_size", default=DecryptionDefaults.DEFAULT_CHUNK_SIZE)
-        return -1 if val is None else int(val)
 
     @Property(str, notify=settingsChanged)
     def encMode(self) -> str:
@@ -115,106 +107,144 @@ class PrefsController(QObject):
         return self._get("advanced", "clamp_cpu_threads", default=PerformanceDefaults.CLAMP_CPU_THREADS)
 
     @Property(bool, notify=settingsChanged)
-    def logTextWrap(self) -> bool:
-        """True when the logs panel wraps long lines (default on)."""
-        return self._get("appearance", "log_text_wrap", default=AppearanceDefaults.LOG_TEXT_WRAP)
-
-    @Property(bool, notify=settingsChanged)
     def operationNotifications(self) -> bool:
         """True when desktop notifications fire on operation completion (default on)."""
         return self._get("advanced", "operation_notifications", default=NotificationDefaults.OPERATION_NOTIFICATIONS)
 
-    @Property(int, notify=settingsChanged)
-    def maxThreads(self) -> int:
-        """Maximum selectable thread count, respecting the clamping setting."""
-        total = os.cpu_count() or 1
-        return max(1, total - 1) if self.clampThreads else total
+    @Property(int, constant=True)
+    def cpuCount(self) -> int:
+        """Logical CPU threads on this machine; the thread lists offer 1 up to this."""
+        return os.cpu_count() or 1
 
     @Property(list, constant=True)
-    def encryptionModeOptions(self) -> list:
-        """Return list of {label, value} dicts for encryption algorithm dropdown."""
-        return [{"label": label, "value": val} for label, val in EncryptionModes.get_options()]
+    def themeOptions(self) -> list:
+        """{label, code} entries for the theme combo box."""
+        return [{"label": label, "code": code} for label, code in ThemeDefaults.OPTIONS]
 
     @Property(list, constant=True)
-    def chunkSizeOptions(self) -> list:
-        """Return list of {label, value} dicts for chunk size dropdown."""
-        return [
-            {"label": label, "value": val if val is not None else -1}
-            for label, val in ChunkSizeOptions.get_options()
-        ]
+    def algorithmOptions(self) -> list:
+        """{label, code, hint} entries for the algorithm combo box."""
+        return [{"label": label, "code": code, "hint": hint} for label, code, hint in AlgorithmDefaults.OPTIONS]
 
-    @Property(bool, constant=True)
-    def nativeAvailable(self) -> bool:
-        """True when the native C++ extension (.pyd) is loaded."""
-        return native_bridge.NATIVE_AVAILABLE
+    @Property(list, constant=True)
+    def readSizeOptions(self) -> list:
+        """{label, code} entries for the read size combo boxes; code 0 is Automatic."""
+        return [{"label": label, "code": size} for label, size in ReadSizeDefaults.OPTIONS]
+
+    @Property(bool, notify=readSizeTestChanged)
+    def readSizeTestRunning(self) -> bool:
+        """True while the read size speed test runs."""
+        return self._read_size_test is not None
+
+    @Property(float, notify=readSizeTestChanged)
+    def readSizeTestProgress(self) -> float:
+        """Fraction (0-1) of the read size speed test done."""
+        return self._read_size_progress
+
+    @Property(list, constant=True)
+    def logLevelOptions(self) -> list:
+        """{label, code} entries for the log level combo box."""
+        return [{"label": label, "code": code} for label, code in LoggingDefaults.OPTIONS]
 
     # ── Slots ─────────────────────────────────────────────────────────────
 
-    @Slot()
-    def loadSettings(self) -> None:
-        """Reload settings from disk and notify QML."""
-        try:
-            self._settings = load_settings()
-            self.settingsChanged.emit()
-        except Exception:
-            pass
-
     @Slot("QVariantMap")
     def saveSettings(self, updates: dict) -> None:
-        """Merge updates dict into current settings and persist."""
-        try:
-            theme_before = self._get("theme")
-            for key, value in updates.items():
-                keys = key.split(".")
-                self._set(self._coerce_chunk(keys[-1], value), *keys)
-            save_settings(self._settings)
-            self.settingsChanged.emit()
-            if self._get("theme") != theme_before:
-                self.themeChanged.emit(self._get("theme", default="system"))
-        except Exception:
-            pass
-
-    @Slot(str, "QVariant")
-    def setSetting(self, key: str, value) -> None:
-        """Set a single dot-separated key and persist immediately."""
-        try:
+        """Apply dotted-key updates (e.g. {"encryption.cpu_threads": 4}) and save them in one write."""
+        theme_before = self._get("theme")
+        for key, value in updates.items():
             keys = key.split(".")
-            self._set(self._coerce_chunk(keys[-1], value), *keys)
-            save_settings(self._settings)
-            self.settingsChanged.emit()
-            if key == "theme":
-                self.themeChanged.emit(str(value))
-        except Exception:
-            pass
+            self._set(value, *keys)
+        self._persist()
+        if self._get("theme") != theme_before:
+            self.themeChanged.emit(self._get("theme", default=ThemeDefaults.DEFAULT_THEME))
 
     @Slot()
     def resetDefaults(self) -> None:
-        """Reset all settings to factory defaults and persist."""
-        try:
-            self._settings = get_default_settings()
-            save_settings(self._settings)
-            self.settingsChanged.emit()
-            self.themeChanged.emit(self._settings.get("theme", "system"))
-        except Exception:
-            pass
+        """Reset all settings to factory defaults and save them."""
+        self._settings = get_default_settings()
+        self._persist()
+        self.themeChanged.emit(self._get("theme", default=ThemeDefaults.DEFAULT_THEME))
 
     @Slot()
     def clearLogs(self) -> None:
-        """Delete all log file contents."""
-        try:
-            clear_logs()
-            self.logsCleared.emit()
-        except Exception:
-            pass
+        """Empty the log files."""
+        if clear_logs():
+            self.saveFinished.emit(True, "Logs cleared.")
+        else:
+            self.saveFinished.emit(False, "Couldn't clear the log files; they may be open in another program.")
 
     @Slot()
     def openLogsFolder(self) -> None:
-        """Open the logs directory in the OS file manager."""
+        """Open the logs folder in File Explorer."""
         try:
-            logs_dir = get_logs_dir()
-            if sys.platform == "win32":
-                subprocess.run(["explorer", logs_dir], check=False)
-            else:
-                subprocess.run(["xdg-open", logs_dir], check=False)
-        except Exception:
-            pass
+            os.startfile(get_logs_dir())  # type: ignore[attr-defined]
+        except OSError as error:
+            write_log(f"Could not open the logs folder: {error}", "critical")
+            self.saveFinished.emit(False, "Couldn't open the logs folder.")
+
+    @Slot(str)
+    def startReadSizeTest(self, algorithm: str) -> None:
+        """Time every read size with `algorithm` (a settings code) in the background."""
+        if self._read_size_test is not None:
+            return
+        cipher = AlgorithmDefaults.CIPHERS.get(algorithm, AlgorithmDefaults.CIPHERS[AlgorithmDefaults.DEFAULT_ALGORITHM])
+        worker = ReadSizeTestWorker(ReadSizeDefaults.SIZES, cipher)
+        worker.signals.progress.connect(self._on_read_size_progress)
+        worker.signals.finished.connect(self._on_read_size_finished)
+        self._read_size_test = worker
+        self._read_size_progress = 0.0
+        self.readSizeTestChanged.emit()
+        QThreadPool.globalInstance().start(worker)
+
+    @Slot()
+    def cancelReadSizeTest(self) -> None:
+        """Stop the read size speed test before its next step."""
+        if self._read_size_test is not None:
+            self._read_size_test.cancel()
+
+    def shutdown(self) -> None:
+        """Stop background work before the app exits."""
+        self.cancelReadSizeTest()
+
+    def _on_read_size_progress(self, done: int, total: int) -> None:
+        self._read_size_progress = done / total if total else 0.0
+        self.readSizeTestChanged.emit()
+
+    def _on_read_size_finished(self, timings: list, error: str) -> None:
+        """Pick the fastest sizes and tell QML; an empty result means the test was stopped."""
+        self._read_size_test = None
+        self.readSizeTestChanged.emit()
+        if error:
+            write_log(f"Read size test failed: {error}", "critical")
+            self.readSizeTestFinished.emit(-1, -1, error)
+        elif not timings:
+            self.readSizeTestFinished.emit(-1, -1, "Speed test stopped.")
+        else:
+            encrypt = pick_fastest(timings, lambda t: t.encrypt_s, ReadSizeDefaults.AUTOMATIC_BYTES)
+            decrypt = pick_fastest(timings, lambda t: t.decrypt_s, ReadSizeDefaults.AUTOMATIC_BYTES)
+            self.readSizeTestFinished.emit(encrypt, decrypt, _describe_test(timings, encrypt, decrypt))
+
+    def _persist(self) -> None:
+        """Save the current settings and tell QML how it went."""
+        saved = save_settings(self._settings)
+        self.settingsChanged.emit()
+        if saved:
+            self.saveFinished.emit(True, "")
+        else:
+            write_log("Could not save settings", "critical")
+            self.saveFinished.emit(False, "Couldn't save the preferences file.")
+
+
+def _describe_test(timings: list[SizeTiming], encrypt: int, decrypt: int) -> str:
+    """'Fastest on this PC: 32 MB when encrypting (310 MB/s), Automatic when decrypting (295 MB/s).'"""
+    labels = {size: label.split(" (")[0] for label, size in ReadSizeDefaults.OPTIONS}
+    by_size = {t.read_size: t for t in timings}
+
+    def speed(size: int, seconds_of) -> str:
+        timing = by_size[size or ReadSizeDefaults.AUTOMATIC_BYTES]
+        return f"{TEST_FILE_SIZE / seconds_of(timing) / 1e6:.0f} MB/s"
+
+    return (f"Fastest on this PC: {labels[encrypt]} when encrypting ({speed(encrypt, lambda t: t.encrypt_s)}), "
+            f"{labels[decrypt]} when decrypting ({speed(decrypt, lambda t: t.decrypt_s)}). "
+            "Automatic is kept unless another size is at least 5% faster.")

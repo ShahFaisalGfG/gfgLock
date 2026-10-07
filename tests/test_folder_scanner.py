@@ -8,6 +8,7 @@ from PySide6.QtCore import QThreadPool, QUrl
 from PySide6.QtWidgets import QApplication
 
 from gfglock.controllers.encrypt_ctrl import EncryptController
+from gfglock.core.file_ops import ENCRYPTED_EXTS, TEMP_SUFFIX
 from gfglock.models.file_model import FileListModel
 from gfglock.services.folder_scanner import FolderScanWorker, iter_files
 
@@ -85,8 +86,7 @@ class TestControllerFolderLoading:
         """Dropping a folder used to add the folder itself as a row, which then failed to encrypt."""
         _touch(tmp_path / "docs" / "one.txt")
         _touch(tmp_path / "docs" / "deep" / "two.txt")
-        controller = EncryptController()
-        controller.setMode("encrypt")
+        controller = EncryptController("encrypt")
         controller.addFiles([QUrl.fromLocalFile(str(tmp_path / "docs")).toString()])
         _wait_for_scan(controller, qt_app)
         names = sorted(os.path.basename(p) for p in controller._file_model.getPaths())
@@ -95,8 +95,7 @@ class TestControllerFolderLoading:
     def test_thousands_of_files_load_quickly(self, tmp_path, qt_app):
         for i in range(3000):
             (tmp_path / f"f{i:04d}.bin").write_bytes(b"")
-        controller = EncryptController()
-        controller.setMode("encrypt")
+        controller = EncryptController("encrypt")
         start = time.perf_counter()
         controller.addFolder(QUrl.fromLocalFile(str(tmp_path)).toString())
         assert time.perf_counter() - start < 0.5, "addFolder must return immediately"
@@ -104,12 +103,11 @@ class TestControllerFolderLoading:
         assert controller._file_model.count == 3000
         assert time.perf_counter() - start < 10
 
-    def test_mode_change_cancels_scan(self, tmp_path, qt_app):
+    def test_clearing_the_list_cancels_scan(self, tmp_path, qt_app):
         _touch(tmp_path / "a.txt")
-        controller = EncryptController()
-        controller.setMode("encrypt")
+        controller = EncryptController("encrypt")
         controller.addFolder(QUrl.fromLocalFile(str(tmp_path)).toString())
-        controller.setMode("decrypt")
+        controller.clearFiles()
         _wait_for_scan(controller, qt_app)
         assert controller.scanning is False
 
@@ -138,3 +136,20 @@ class TestModelBulkOperations:
         (tmp_path / "folder").mkdir()
         model.addFiles([str(tmp_path / "folder")])
         assert model.count == 0
+
+
+class TestLinksAndTempFiles:
+    def test_junction_loop_is_not_followed(self, tmp_path):
+        _winapi = pytest.importorskip("_winapi")
+        root = tmp_path / "root"
+        _touch(root / "a.txt")
+        _winapi.CreateJunction(str(root), str(root / "loop"))
+        found = [os.path.relpath(p, root) for p, _ in iter_files([str(root)], lambda n: True)]
+        assert found == ["a.txt"]
+
+    def test_temp_files_of_unfinished_jobs_are_left_out(self, tmp_path):
+        _touch(tmp_path / "doc.txt")
+        _touch(tmp_path / (".0123456789abcdef" + TEMP_SUFFIX))
+        worker = FolderScanWorker([str(tmp_path)], ENCRYPTED_EXTS, include_encrypted=False)
+        found = [os.path.basename(p) for p, _ in iter_files([str(tmp_path)], worker._accept)]
+        assert found == ["doc.txt"]

@@ -11,22 +11,18 @@ def encrypt_file(
     path: str,
     password: str,
     encrypt_name: bool = False,
-    chunk_size=None,
+    read_size: int = 0,
     progress_callback: Optional[Callable] = None,
-) -> tuple[bool, str]:
+) -> file_ops.FileResult:
     """Encrypt a single file using ChaCha20-Poly1305."""
-    return file_ops.encrypt_file(path, password, "chacha", encrypt_name, chunk_size, progress_callback)
+    return file_ops.encrypt_file(path, password, "chacha", encrypt_name, read_size, progress_callback)
 
 
 def decrypt_file(
     path: str,
     password: str,
-    chunk_size=None,
+    read_size: int = 0,
     progress_callback: Optional[Callable] = None,
-) -> tuple[bool, str]:
-    """Decrypt a single .gfgcha file.
-
-    chunk_size is accepted for API compatibility; the layout is read from the file itself.
-    """
-    del chunk_size
-    return file_ops.decrypt_file(path, password, progress_callback)
+) -> file_ops.FileResult:
+    """Decrypt a single .gfgcha file."""
+    return file_ops.decrypt_file(path, password, read_size, progress_callback)

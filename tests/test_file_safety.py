@@ -138,7 +138,7 @@ class TestFailuresKeepTheSource:
         """A backend that reports success but writes a short file must not cost the original."""
         src = _write(tmp_path / "keep.txt", b"important")
 
-        def short_write(algorithm, src_path, dst, name, password, chunk_size, progress):
+        def short_write(algorithm, src_path, dst, name, password, read_size, progress):
             open(dst, "wb").write(b"partial")
             return True, ""
 
@@ -185,3 +185,99 @@ class TestSafeOriginalName:
     ])
     def test_rejects_unsafe_names(self, raw):
         assert file_ops.safe_original_name(raw) is None
+
+
+class TestOutcomes:
+    """Every result says what happened in words the file list can show."""
+
+    def test_done_names_the_written_file(self, backend, tmp_path):
+        src = _write(tmp_path / "f.bin", b"data")
+        result = aes_core.encrypt_file(src, PASSWORD)
+        assert (result.outcome, result.reason) == ("done", "")
+        assert result.output == str(tmp_path / "f.bin.gfglock")
+
+    def test_wrong_password_reason(self, backend, tmp_path):
+        src = _write(tmp_path / "f.bin", b"data")
+        chacha_core.encrypt_file(src, PASSWORD)
+        result = chacha_core.decrypt_file(str(tmp_path / "f.bin.gfgcha"), "wrong")
+        assert result.outcome == "failed" and result.output == ""
+        assert result.reason.startswith("Wrong password")
+
+    def test_already_encrypted_is_a_skip(self, tmp_path):
+        enc = _write(tmp_path / "f.gfglock", b"x")
+        result = aes_core.encrypt_file(enc, PASSWORD)
+        assert (result.outcome, result.reason) == ("skipped", "Already encrypted")
+
+    def test_missing_file_reason(self, tmp_path):
+        result = aes_core.decrypt_file(str(tmp_path / "gone.gfglock"), PASSWORD)
+        assert result.outcome == "failed" and result.reason.startswith("File not found")
+
+
+class TestSourceThatCantBeRemoved:
+    """A file must never end up in both forms: if the original stays, the new copy goes."""
+
+    def test_read_only_source_fails_before_any_work(self, backend, tmp_path):
+        src = _write(tmp_path / "ro.txt", b"keep me")
+        os.chmod(src, 0o444)
+        try:
+            result = aes_core.encrypt_file(src, PASSWORD)
+            assert result.outcome == "failed" and "read-only" in result.reason.lower()
+            assert sorted(os.listdir(tmp_path)) == ["ro.txt"]
+        finally:
+            os.chmod(src, 0o666)
+
+    def test_locked_source_removes_the_new_copy(self, backend, tmp_path, monkeypatch):
+        src = _write(tmp_path / "busy.txt", b"open elsewhere")
+        real_remove = os.remove
+
+        def remove(path):
+            if path == src:
+                raise PermissionError(13, "The process cannot access the file")
+            real_remove(path)
+
+        monkeypatch.setattr(file_ops.os, "remove", remove)
+        result = aes_core.encrypt_file(src, PASSWORD)
+        assert result.outcome == "failed" and "nothing was changed" in result.reason
+        assert sorted(os.listdir(tmp_path)) == ["busy.txt"]
+
+    def test_locked_encrypted_file_keeps_only_the_encrypted_copy(self, backend, tmp_path, monkeypatch):
+        src = _write(tmp_path / "a.txt", b"secret")
+        enc = aes_core.encrypt_file(src, PASSWORD).output
+        real_remove = os.remove
+        monkeypatch.setattr(file_ops.os, "remove",
+                            lambda p: (_ for _ in ()).throw(PermissionError(13, "in use")) if p == enc else real_remove(p))
+        result = aes_core.decrypt_file(enc, PASSWORD)
+        assert result.outcome == "failed"
+        assert sorted(os.listdir(tmp_path)) == [os.path.basename(enc)]
+
+    def test_unexpected_error_leaves_no_temp_file(self, tmp_path, monkeypatch):
+        """Errors other than OSError still remove the partly written temp file."""
+        src = _write(tmp_path / "a.txt", b"data")
+
+        def explode(*_args):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(file_ops, "_backend_encrypt", explode)
+        with pytest.raises(RuntimeError):
+            aes_core.encrypt_file(src, PASSWORD)
+        assert _leftover_temp_files(tmp_path) == []
+        assert sorted(os.listdir(tmp_path)) == ["a.txt"]
+
+
+class TestSkippedPaths:
+    def test_leftover_temp_file_is_skipped(self, tmp_path):
+        temp = _write(tmp_path / (".0123456789abcdef" + file_ops.TEMP_SUFFIX), b"partial")
+        result = aes_core.encrypt_file(temp, PASSWORD)
+        assert result.outcome == "skipped"
+        assert os.path.exists(temp)
+
+    def test_link_is_skipped_and_target_untouched(self, tmp_path):
+        target = _write(tmp_path / "target.txt", b"real data")
+        link = str(tmp_path / "link.txt")
+        try:
+            os.symlink(target, link)
+        except OSError:
+            pytest.skip("creating symbolic links needs Developer Mode or admin rights")
+        result = aes_core.encrypt_file(link, PASSWORD)
+        assert result.outcome == "skipped" and "link" in result.reason.lower()
+        assert sorted(os.listdir(tmp_path)) == ["link.txt", "target.txt"]

@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import os
-import struct
 from collections.abc import Callable
 from secrets import token_bytes
 
@@ -29,8 +28,8 @@ NONCE_SIZE = 12
 IV_SIZE = 16
 TAG_SIZE = 16
 CHUNK_FIELD_SIZE = 4
-BUFFER_SIZE = 1024 * 1024
-SMALL_FILE_THRESHOLD = 10 * 1024 * 1024
+BUFFER_SIZE = 4 * 1024 * 1024  # read size when the caller passes 0 ("Automatic")
+MAX_READ_SIZE = 64 * 1024 * 1024
 PROGRESS_UPDATE_INTERVAL = 100 * 1024 * 1024
 MAX_NAME_BYTES = 4096
 
@@ -84,14 +83,13 @@ def encrypt_stream(
     output_path: str,
     original_name: str,
     password: str,
-    chunk_size: int = 0,
+    read_size: int = 0,
     progress: ProgressFn = None,
 ) -> tuple[bool, str]:
-    """Encrypt input_path into output_path. Returns (ok, error)."""
+    """Encrypt input_path into output_path, reading read_size bytes at a time. Returns (ok, error)."""
     try:
+        block = _block_size(read_size)
         file_size = os.path.getsize(input_path)
-        if file_size < SMALL_FILE_THRESHOLD or chunk_size < 0:
-            chunk_size = 0
         salt = token_bytes(SALT_SIZE)
         iv = token_bytes(_IV_SIZES[algorithm])
         cipher = _StreamCipher(algorithm, derive_key(password, salt), iv, encrypt=True)
@@ -99,10 +97,11 @@ def encrypt_stream(
         total_read = 0
         batch = 0.0
         with open(input_path, "rb") as fin, open(output_path, "wb") as fout:
-            fout.write(salt + iv + struct.pack(">I", chunk_size))
+            # The chunk field is informational; zero says the data is one stream, which it always is.
+            fout.write(salt + iv + bytes(CHUNK_FIELD_SIZE))
             fout.write(cipher.update(name_meta))
             _report(progress, len(name_meta))
-            while data := fin.read(BUFFER_SIZE):
+            while data := fin.read(block):
                 total_read += len(data)
                 fout.write(cipher.update(data))
                 batch = _batched(progress, batch, len(data))
@@ -120,10 +119,12 @@ def decrypt_stream(
     input_path: str,
     output_path: str,
     password: str,
+    read_size: int = 0,
     progress: ProgressFn = None,
 ) -> tuple[bool, str, bytes]:
     """Decrypt input_path into output_path. Returns (ok, error, stored_name_bytes)."""
     try:
+        block = _block_size(read_size)
         total_size = os.path.getsize(input_path)
         header_size = SALT_SIZE + _IV_SIZES[algorithm] + CHUNK_FIELD_SIZE
         tag_size = TAG_SIZE if _AEAD[algorithm] else 0
@@ -153,7 +154,7 @@ def decrypt_stream(
             remaining = total_size - header_size - tag_size
             batch = 0.0
             while remaining > 0:
-                data = fin.read(min(remaining, BUFFER_SIZE))
+                data = fin.read(min(remaining, block))
                 if not data:
                     return False, "the file is truncated or corrupted", b""
                 remaining -= len(data)
@@ -170,6 +171,11 @@ def decrypt_stream(
         return True, "", bytes(name)
     except (OSError, ValueError) as error:
         return False, str(error), b""
+
+
+def _block_size(read_size: int) -> int:
+    """The read size to use: the default for 0, otherwise capped like the native engine."""
+    return min(int(read_size), MAX_READ_SIZE) if read_size and read_size > 0 else BUFFER_SIZE
 
 
 def _batched(progress: ProgressFn, batch: float, n: int) -> float:

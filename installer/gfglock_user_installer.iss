@@ -1,7 +1,7 @@
 ; =======================================================
 ; gfgLock Windows Installer
 ; Inno Setup Script
-; Version: 3.0.1
+; Version: 3.1.0
 ; =======================================================
 ; gfgLock per-user installer (non-admin)
 ; Use this script to create a per-user installer that does not require elevated privileges
@@ -10,7 +10,7 @@
   #define MyAppName "gfgLock"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "3.0.1"
+  #define MyAppVersion "3.1.0"
 #endif
 #ifndef MyAppPublisher
   #define MyAppPublisher "gfgRoyal"
@@ -51,6 +51,8 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=110,120
+; Explorer refreshes file icons after the file associations change
+ChangesAssociations=yes
 
 ; Architectures
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -68,7 +70,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: "{cm:FileAssociations}"
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "gfglock_shell.dll"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Shell extension DLL - no restartreplace/uninsrestartdelete here: those need
 ; MOVEFILE_DELAY_UNTIL_REBOOT, which Windows restricts to admin processes, and
 ; this is the no-admin user installer. If Explorer has the DLL locked at
@@ -76,7 +78,8 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; entries are already removed via uninsdeletekey).
 Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
-Source: "..\requirements.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\readme.html"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#IconsDir}\Square150x150Logo.scale-100.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion
 
@@ -86,6 +89,8 @@ Source: "{#IconsDir}\Square150x150Logo.scale-100.png"; DestDir: "{app}\docs\icon
 ; and can break imports at startup. Only bundled program files live in _internal; settings
 ; and logs are stored in %APPDATA% and are kept.
 Type: filesandordirs; Name: "{app}\_internal"
+; The docs folder is replaced the same way, so old screenshots and files no longer shipped go.
+Type: filesandordirs; Name: "{app}\docs"
 
 
 [Icons]
@@ -96,17 +101,17 @@ Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 
 [Registry]
 ; Per-user file associations under HKCU\Software\Classes
-Root: HKCU; Subkey: "Software\Classes\.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglock"; Flags: uninsdeletevalue; Tasks: associate
+Root: HKCU; Subkey: "Software\Classes\.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglock"; Flags: uninsdeletevalue uninsdeletekeyifempty; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglock\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglock\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
-Root: HKCU; Subkey: "Software\Classes\.gfglck"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglck"; Flags: uninsdeletevalue; Tasks: associate
+Root: HKCU; Subkey: "Software\Classes\.gfglck"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglck"; Flags: uninsdeletevalue uninsdeletekeyifempty; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglck"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File (CFB)"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglck\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfglck\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
-Root: HKCU; Subkey: "Software\Classes\.gfgcha"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfgcha"; Flags: uninsdeletevalue; Tasks: associate
+Root: HKCU; Subkey: "Software\Classes\.gfgcha"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfgcha"; Flags: uninsdeletevalue uninsdeletekeyifempty; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File (ChaCha20)"; Flags: uninsdeletekey; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
 Root: HKCU; Subkey: "Software\Classes\gfgLock.gfgcha\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
@@ -152,16 +157,22 @@ Filename: "https://github.com/ShahFaisalGfG/gfgLock"; Description: "View README 
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillGfgLock"
-Filename: "{sys}\regsvr32.exe"; Parameters: "/s /u ""{app}\gfglock_shell.dll"""; Flags: runhidden; RunOnceId: "UnregShellExt"
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}"
+; Installed files are removed by the uninstaller itself. This user's settings and logs (in
+; %APPDATA%\gfgLock) go too. Folders go only when empty, so an install location that already
+; held other files never loses them.
+Type: files; Name: "{userappdata}\{#MyAppName}\settings.json"
+Type: files; Name: "{userappdata}\{#MyAppName}\settings.json.tmp"
+Type: filesandordirs; Name: "{userappdata}\{#MyAppName}\logs"
+Type: dirifempty; Name: "{userappdata}\{#MyAppName}"
+Type: dirifempty; Name: "{app}"
 
 [Code]
 function SystemInstallExists(): Boolean;
 var S: String;
 begin
-  Result := RegQueryStringValue(HKLM, 'SOFTWARE\gfgRoyal\gfgLock', 'InstallPath', S);
+  Result := RegQueryStringValue(HKLM, 'SOFTWARE\{#MyAppPublisher}\{#MyAppName}', 'InstallPath', S);
 end;
 
 function InitializeSetup(): Boolean;
@@ -180,7 +191,7 @@ end;
 procedure InitializeWizard();
 begin
   WizardForm.WelcomeLabel2.Caption :=
-    'This wizard will guide you through the installation of {MyAppName}.'#13#13 +
+    'This wizard will guide you through the installation of {#MyAppName}.'#13#13 +
     'gfgLock is a secure file encryption tool with AES-256 cryptography and a modern GUI interface.'#13#13 +
     'It is recommended that you close all other applications before continuing.';
 end;
@@ -193,16 +204,9 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var
-  DllPath: String;
-  ResultCode: Integer;
 begin
   if CurStep = ssInstall then
   begin
-    DllPath := ExpandConstant('{app}\gfglock_shell.dll');
-    if FileExists(DllPath) then
-      Exec(ExpandConstant('{sys}\regsvr32.exe'), '/s /u "' + DllPath + '"',
-           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     RemoveStaleSystemRegistryEntries();
   end;
 end;

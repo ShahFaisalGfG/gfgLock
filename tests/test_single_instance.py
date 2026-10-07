@@ -1,11 +1,13 @@
 import threading
 import time
+import uuid
 
 import pytest
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtNetwork import QLocalServer
 
-from gfglock.utils.single_instance import SingleInstance, _SERVER_NAME
+from gfglock.utils import single_instance
+from gfglock.utils.single_instance import SingleInstance
 
 
 @pytest.fixture(scope="session")
@@ -18,8 +20,14 @@ def qapp():
 
 
 @pytest.fixture
-def make_instance():
-    """Factory for SingleInstance objects that always releases their sockets on teardown."""
+def make_instance(monkeypatch):
+    """Factory for SingleInstance objects that always releases their sockets on teardown.
+
+    Each test gets its own pipe name, so it never reaches a gfgLock window that is open on
+    this PC (or another test's server).
+    """
+    server_name = f"gfgLock_test_{uuid.uuid4().hex}"
+    monkeypatch.setattr(single_instance, "_SERVER_NAME", server_name)
     created = []
 
     def factory():
@@ -34,7 +42,7 @@ def make_instance():
         except Exception:
             pass
     try:
-        QLocalServer.removeServer(_SERVER_NAME)
+        QLocalServer.removeServer(server_name)
     except Exception:
         pass
 

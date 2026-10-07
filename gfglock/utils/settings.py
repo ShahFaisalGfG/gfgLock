@@ -7,7 +7,9 @@ import sys
 import threading
 from typing import Any, Dict
 
+from gfglock.config.defaults import ReadSizeDefaults
 from gfglock.config.defaults import get_default_settings as _get_defaults
+from gfglock.utils.console import safe_print
 
 
 def get_settings_file() -> str:
@@ -52,8 +54,12 @@ def load_settings() -> Dict[str, Any]:
             return copy.deepcopy(_cache[1])
     try:
         with open(path, "r", encoding="utf-8") as f:
-            settings = merge_settings(get_default_settings(), json.load(f))
-    except Exception:
+            defaults = get_default_settings()
+            settings = merge_settings(defaults, drop_unknown_keys(migrate_settings(json.load(f)), defaults))
+    except FileNotFoundError:
+        return get_default_settings()
+    except (OSError, ValueError, TypeError) as error:  # unreadable or not valid JSON
+        safe_print(f"settings.json could not be read ({error}); using the defaults")
         return get_default_settings()
     with _cache_lock:
         _cache = (key, settings)
@@ -83,6 +89,57 @@ def save_settings(settings: Dict[str, Any]) -> bool:
         except OSError:
             pass
         return False
+
+
+# Versions before 3.1.0 stored the read size as "chunk_size", defaulting to these values.
+_OLD_CHUNK_DEFAULTS = {"encryption": 16 * 1024 * 1024, "decryption": 32 * 1024 * 1024}
+
+
+def migrate_settings(settings: Any) -> Any:
+    """Carry a read size chosen in an older version over to "read_size".
+
+    A value that differs from the old default was picked by the user, so it is kept, moved to the
+    nearest size offered now (128 MB becomes 64 MB). The old defaults and "Off" become Automatic.
+    """
+    if not isinstance(settings, dict):
+        return settings
+    for section, old_default in _OLD_CHUNK_DEFAULTS.items():
+        values = settings.get(section)
+        if not isinstance(values, dict) or "chunk_size" not in values or "read_size" in values:
+            continue
+        old = values["chunk_size"]
+        if isinstance(old, int) and not isinstance(old, bool) and old > 0 and old != old_default:
+            values["read_size"] = min(ReadSizeDefaults.SIZES, key=lambda size: abs(size - old))
+    return settings
+
+
+def drop_unknown_keys(settings: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+    """Return `settings` without the keys the defaults no longer define, or with the wrong type.
+
+    Files written by older versions keep options that were since removed (such as the old
+    activity log's text wrap); dropping them keeps stale values out of the UI. A value whose type
+    differs from its default (a hand-edited "cpu_threads": "abc", say) is dropped as well, so the
+    default applies instead of the value breaking the app later.
+    """
+    if not isinstance(settings, dict):
+        raise TypeError("settings must be a JSON object")
+    result: Dict[str, Any] = {}
+    for key, value in settings.items():
+        if key not in defaults:
+            continue
+        if isinstance(defaults[key], dict):
+            if isinstance(value, dict):
+                result[key] = drop_unknown_keys(value, defaults[key])
+        elif _same_type(value, defaults[key]):
+            result[key] = value
+    return result
+
+
+def _same_type(value: Any, default: Any) -> bool:
+    """True when value can stand in for default; bool and int are told apart."""
+    if isinstance(default, bool) or isinstance(value, bool):
+        return isinstance(value, bool) and isinstance(default, bool)
+    return isinstance(value, type(default))
 
 
 def merge_settings(defaults: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:

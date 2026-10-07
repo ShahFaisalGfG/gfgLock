@@ -1,544 +1,341 @@
 // qmllint disable unqualified
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick.Layouts
-import QtQuick.Window
 import "components"
+import "pages"
 
-ApplicationWindow {
-    id: root
+AppWindow {
+    id: mainWin
 
-    width:       700
-    height:      _collapsedHeight
-    minimumWidth:  580
-    minimumHeight: logHeader.expanded ? 420 : _collapsedHeight
+    width: 1000
+    height: 720
+    minimumWidth: 720
+    minimumHeight: 520
+    visible: true
+    title: appController.appName + " " + appController.appVersion
 
-    // Height of everything except the (collapsed) log, plus the 1 px window border.
-    readonly property int _collapsedHeight: rootLayout.implicitHeight + 2
-    property int _unseenLogEntries: 0
-    visible: typeof cliLaunchMode === "undefined" || cliLaunchMode === ""
-    title:   "gfgLock"
-    flags:   Qt.FramelessWindowHint | Qt.Window
-    font.family: "Segoe UI Emoji"
+    property var _prefsWindow: null
+    // Set once the user chose to close during a run; the window closes when both tabs are idle.
+    property bool _closeWhenIdle: false
+    readonly property bool _anyBusy: encryptController.busy || decryptController.busy
 
-    Material.theme:  appController && appController.currentTheme === "dark" ? Material.Dark : Material.Light
-    Material.accent: "#0078d4"
+    // Both tabs, in order. Shortcuts (Ctrl+1, Ctrl+2) and the About text derive from this list.
+    readonly property var tasks: [
+        { key: "encrypt", label: "Encrypt", icon: "lock", controller: encryptController },
+        { key: "decrypt", label: "Decrypt", icon: "unlock", controller: decryptController }
+    ]
+    readonly property var currentPage: pages.children[tabs.currentIndex]
+    readonly property var currentController: mainWin.tasks[tabs.currentIndex].controller
 
-    Component.onCompleted: {
-        x = Screen.virtualX + Math.round((Screen.desktopAvailableWidth  - width)  / 2)
-        y = Screen.virtualY + Math.round((Screen.desktopAvailableHeight - height) / 2)
-        if (typeof cliLaunchMode !== "undefined" && cliLaunchMode !== "")
-            openEncryptDialog(cliLaunchMode)
+    // quitOnLastWindowClosed is disabled app-wide (see app.py) since it can misfire while a
+    // QML window is still open, so closing the main window quits explicitly. During a run it asks
+    // first, then lets the files in progress finish so none is left half written.
+    onClosing: function(close) {
+        if (mainWin._anyBusy) {
+            close.accepted = false
+            if (!mainWin._closeWhenIdle) closeDialog.open()
+            return
+        }
+        Qt.quit()
+    }
+    on_AnyBusyChanged: if (!mainWin._anyBusy && mainWin._closeWhenIdle) Qt.quit()
+
+    titleActions: [
+        AppButton {
+            kind: "ghost"
+            compact: true
+            text: "Preferences"
+            iconName: "settings"
+            toolTipText: "Default settings, appearance, speed, and logs (Ctrl+,)"
+            focusPolicy: Qt.TabFocus
+            onClicked: mainWin.openPreferences()
+        },
+        AppButton {
+            kind: "ghost"
+            compact: true
+            iconName: "info"
+            toolTipText: "About " + appController.appName + " (F1)"
+            focusPolicy: Qt.TabFocus
+            onClicked: aboutDialog.open()
+        }
+    ]
+
+    function openPreferences() {
+        if (!mainWin._prefsWindow) {
+            var comp = Qt.createComponent("PreferencesWindow.qml")
+            if (comp.status !== Component.Ready) { console.error(comp.errorString()); return }
+            mainWin._prefsWindow = comp.createObject(mainWin)
+            mainWin._prefsWindow.closing.connect(function() { mainWin._prefsWindow = null })
+        }
+        mainWin._prefsWindow.show()
+        mainWin._prefsWindow.raise()
+        mainWin._prefsWindow.requestActivate()
     }
 
-    // quitOnLastWindowClosed is disabled app-wide (see app.py) since it can
-    // misfire while a QML window is still open, so closing the main window
-    // must quit explicitly.
-    onClosing: Qt.quit()
-
-    // ── Background ──────────────────────────────────────────────────────────
-    Rectangle {
-        anchors.fill: parent
-        color:        Material.theme === Material.Dark ? "#1e1e1e" : "#f3f3f3"
-        border.color: Material.theme === Material.Dark ? "#3c3c3c" : "#d0d0d0"
-        border.width: 1
+    function bringToFront() {
+        if (mainWin.visibility === Window.Minimized) mainWin.showNormal()
+        mainWin.raise()
+        mainWin.requestActivate()
     }
 
-    // ── Log bridge ───────────────────────────────────────────────────────────
+    function tabIndex(key) {
+        return mainWin.tasks.findIndex(t => t.key === key)
+    }
+
+    // Sends each dropped or opened item to the tab it belongs on: encrypted files to Decrypt,
+    // other files to Encrypt, folders to the tab in view (or the given one). Switches to the tab
+    // that received files when only one did.
+    function receive(urls, preferredKey) {
+        var encrypted = [], plain = [], folders = []
+        for (var i = 0; i < urls.length; i++) {
+            var url = urls[i].toString()
+            if (appController.isFolder(url)) folders.push(url)
+            else if (/\.(gfglock|gfglck|gfgcha)$/i.test(url)) encrypted.push(url)
+            else plain.push(url)
+        }
+        var folderKey = preferredKey || mainWin.tasks[tabs.currentIndex].key
+        if (folderKey === "decrypt") encrypted = encrypted.concat(folders)
+        else plain = plain.concat(folders)
+        if (plain.length > 0) encryptController.addFiles(plain)
+        if (encrypted.length > 0) decryptController.addFiles(encrypted)
+        if (plain.length > 0 && encrypted.length === 0) tabs.currentIndex = mainWin.tabIndex("encrypt")
+        else if (encrypted.length > 0 && plain.length === 0) tabs.currentIndex = mainWin.tabIndex("decrypt")
+        else if (plain.length > 0 && encrypted.length > 0)
+            toast.show("Encrypted files went to the Decrypt tab; the rest to the Encrypt tab.")
+    }
+
     Connections {
         target: appController
-        function onLogAppended(message) {
-            logsArea.append(message)
-            logsArea.cursorPosition = logsArea.length
-            if (!logHeader.expanded) root._unseenLogEntries++
+        function onFilesOpened(mode, paths) {
+            tabs.currentIndex = Math.max(0, mainWin.tabIndex(mode))
+            mainWin.receive(paths, mode)
+            mainWin.bringToFront()
         }
-        function onLogsCleared() {
-            logsArea.clear()
-            root._unseenLogEntries = 0
-        }
+        function onActivateRequested() { mainWin.bringToFront() }
     }
 
-    Connections {
-        target: prefsController
-        function onSettingsChanged() {
-            logsArea._wrapEnabled = prefsController.logTextWrap
-        }
-    }
+    // ── Keyboard shortcuts ─────────────────────────────────────────────────
 
-    // ── Root layout ──────────────────────────────────────────────────────────
-    // ── Keyboard shortcuts ───────────────────────────────────────────────────
-    Shortcut { sequence: "Ctrl+E"; onActivated: root.openEncryptDialog("encrypt") }
-    Shortcut { sequence: "Ctrl+D"; onActivated: root.openEncryptDialog("decrypt") }
-    Shortcut { sequence: "Ctrl+,"; onActivated: root.openPreferences() }
-    Shortcut { sequence: "Ctrl+L"; onActivated: logHeader.expanded = !logHeader.expanded }
+    Shortcut { sequences: [StandardKey.Open]; onActivated: mainWin.currentPage.openFiles() }
+    Shortcut { sequence: "Ctrl+Shift+O"; onActivated: mainWin.currentPage.openFolder() }
+    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter", "F5"]; onActivated: mainWin.currentPage.start() }
+    // Esc stops the run, or else the folder scan, of the tab in view.
+    Shortcut {
+        sequence: "Escape"
+        enabled: mainWin.currentController.busy || mainWin.currentController.scanning
+        onActivated: mainWin.currentController.busy ? mainWin.currentController.cancel()
+                                                    : mainWin.currentController.cancelScan()
+    }
+    Shortcut { sequence: "Ctrl+,"; onActivated: mainWin.openPreferences() }
     Shortcut { sequence: "F1"; onActivated: aboutDialog.open() }
+    Shortcut { sequence: "Ctrl+1"; onActivated: tabs.currentIndex = 0 }
+    Shortcut { sequence: "Ctrl+2"; onActivated: tabs.currentIndex = 1 }
+
+    // ── Layout ─────────────────────────────────────────────────────────────
 
     ColumnLayout {
-        id: rootLayout
         anchors.fill: parent
         spacing: 0
 
-        TitleBar {
+        TabBar {
+            id: tabs
             Layout.fillWidth: true
-            window:      root
-            title:       "gfgLock"
-            showMaximize: true
-        }
+            Layout.leftMargin: Theme.spaceLg
+            Layout.topMargin: Theme.spaceSm
+            background: Item {}
 
-        // Header - icon + title + description
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 96
-            color:  "transparent"
-
-            RowLayout {
-                anchors.fill:        parent
-                anchors.leftMargin:  22
-                anchors.rightMargin: 22
-                spacing: 16
-
-                Image {
-                    Layout.preferredWidth:  52
-                    Layout.preferredHeight: 52
-                    source:   "../assets/icons/Square44x44Logo.targetsize-48.png"
-                    fillMode: Image.PreserveAspectFit
-                    smooth:   true
-
-                    Accessible.role:   Accessible.Graphic
-                    Accessible.name:   "gfgLock logo"
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 3
-
-                    Text {
-                        text:          "gfgLock"
-                        font.pixelSize: 20
-                        font.weight:    Font.Bold
-                        color:          Material.foreground
-                    }
-                    Text {
-                        text:          appController ? appController.appDescription : ""
-                        font.pixelSize: 12
-                        color:  Material.theme === Material.Dark ? "#aaaaaa" : "#666666"
-                        elide:  Text.ElideRight
-                        Layout.fillWidth: true
-                    }
-                }
-
-                Rectangle {
-                    Layout.alignment:    Qt.AlignRight | Qt.AlignBottom
-                    Layout.bottomMargin: 4
-                    radius:       9
-                    implicitWidth:  vLabel.implicitWidth + 14
-                    implicitHeight: 20
-                    color:        Qt.rgba(0, 0.47, 0.83, 0.10)
-                    border.color: "#0078d4"
-                    border.width: 1
-
-                    Text {
-                        id: vLabel
-                        anchors.centerIn: parent
-                        text:          appController ? "v" + appController.appVersion : ""
-                        font.pixelSize: 10
-                        color:          "#0078d4"
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 1
-            color:  Material.theme === Material.Dark ? "#3c3c3c" : "#e0e0e0"
-        }
-
-        // Action buttons
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 68
-            color:  "transparent"
-
-            RowLayout {
-                anchors.fill:        parent
-                anchors.leftMargin:  28
-                anchors.rightMargin: 28
-                spacing: 10
-
-                Button {
-                    text:      "🔒  Encrypt"
-                    highlighted: true
-                    Material.accent: "#0078d4"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    font.pixelSize: 13
-                    onClicked: root.openEncryptDialog("encrypt")
-                    Accessible.name: "Encrypt files"
-                    Accessible.role: Accessible.Button
+            Repeater {
+                model: mainWin.tasks
+                delegate: TabButton {
+                    id: tabButton
+                    required property var modelData
+                    required property int index
+                    width: implicitWidth + 28
+                    font.pixelSize: Theme.fontBody
+                    Accessible.name: modelData.label + (modelData.controller.busy ? ", running" : "")
                     ToolTip.visible: hovered
-                    ToolTip.text: "Protect files or folders with a password (Ctrl+E)"
-                    ToolTip.delay: 500
-                }
-                Button {
-                    text:      "🔓  Decrypt"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    font.pixelSize: 13
-                    onClicked: root.openEncryptDialog("decrypt")
-                    Accessible.name: "Decrypt files"
-                    Accessible.role: Accessible.Button
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Unlock .gfglock, .gfglck, or .gfgcha files with their password (Ctrl+D)"
-                    ToolTip.delay: 500
-                }
-                Button {
-                    text:      "⚙  Preferences"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    font.pixelSize: 13
-                    onClicked: root.openPreferences()
-                    Accessible.name: "Open Preferences"
-                    Accessible.role: Accessible.Button
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Theme, default algorithm, performance, and logging (Ctrl+,)"
-                    ToolTip.delay: 500
-                }
-                Button {
-                    text:      "ℹ  About"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    font.pixelSize: 13
-                    onClicked: aboutDialog.open()
-                    Accessible.name: "About gfgLock"
-                    Accessible.role: Accessible.Button
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Version information and updates (F1)"
-                    ToolTip.delay: 500
+                    ToolTip.text: modelData.label + " (Ctrl+" + (index + 1) + ")"
+                    ToolTip.delay: 600
+
+                    contentItem: RowLayout {
+                        spacing: Theme.spaceSm
+                        Icon {
+                            name: tabButton.modelData.icon
+                            size: 14
+                            color: tabButton.checked ? Theme.accent : Theme.textMuted
+                        }
+                        Text {
+                            text: tabButton.modelData.label
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontBody
+                            font.weight: tabButton.checked ? Font.DemiBold : Font.Normal
+                            color: tabButton.checked ? Theme.text : Theme.textMuted
+                        }
+                        BusyIndicator {
+                            visible: tabButton.modelData.controller.busy
+                            running: visible
+                            Layout.preferredWidth: 14
+                            Layout.preferredHeight: 14
+                            padding: 0
+                            Accessible.ignored: true
+                        }
+                    }
                 }
             }
         }
 
-        Rectangle {
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+
+        StackLayout {
+            id: pages
             Layout.fillWidth: true
-            implicitHeight: 1
-            color:  Material.theme === Material.Dark ? "#3c3c3c" : "#e0e0e0"
-        }
-
-        // First-glance guidance: what the two main buttons do and that drag-and-drop works.
-        Text {
-            Layout.fillWidth:    true
-            Layout.leftMargin:   28
-            Layout.rightMargin:  28
-            Layout.topMargin:    10
-            text: "Choose Encrypt to lock files with a password, or Decrypt to open files ending in "
-                + ".gfglock, .gfglck, or .gfgcha. You can also drag files or folders onto this window."
-            font.pixelSize: 12
-            wrapMode:       Text.WordWrap
-            color: Material.theme === Material.Dark ? "#aaaaaa" : "#555555"
-        }
-
-        // Activity log, collapsed by default (Ctrl+L)
-        CollapsibleHeader {
-            id: logHeader
-            Layout.fillWidth:    true
-            Layout.leftMargin:   14
-            Layout.rightMargin:  14
-            Layout.topMargin:    8
-            Layout.bottomMargin: 4
-            title: "Activity log"
-            badge: root._unseenLogEntries > 0 ? root._unseenLogEntries + " new" : ""
-            onExpandedChanged: {
-                if (expanded) {
-                    root._unseenLogEntries = 0
-                    if (root.height < 460) root.height = 460
-                } else {
-                    root.height = root._collapsedHeight
-                }
-            }
-        }
-
-        // Logs area
-        ScrollView {
-            visible:             logHeader.expanded
-            Layout.fillWidth:    true
-            Layout.fillHeight:   true
-            Layout.leftMargin:   14
-            Layout.rightMargin:  14
-            Layout.bottomMargin: 4
-            clip: true
-            ScrollBar.horizontal.policy: logsArea._wrapEnabled ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
-
-            TextArea {
-                id: logsArea
-                property bool _wrapEnabled: prefsController ? prefsController.logTextWrap : true
-                readOnly:      true
-                wrapMode:      _wrapEnabled ? TextEdit.WordWrap : TextEdit.NoWrap
-                onWrapModeChanged: {
-                    var saved = text
-                    text = ""
-                    text = saved
-                    cursorPosition = length
-                }
-                ContextMenu.menu: Menu {
-                    onAboutToShow: wrapLogsItem.checked = logsArea._wrapEnabled
-                    MenuItem {
-                        text:        qsTr("Copy")
-                        enabled:     logsArea.selectedText !== ""
-                        onTriggered: logsArea.copy()
-                    }
-                    MenuItem {
-                        text:        qsTr("Select All")
-                        onTriggered: logsArea.selectAll()
-                    }
-                    MenuSeparator {}
-                    MenuItem {
-                        id:          wrapLogsItem
-                        text:        qsTr("Text Wrap")
-                        checkable:   true
-                        onTriggered: logsArea._wrapEnabled = checked
-                    }
-                }
-                font.pixelSize: 11
-                font.family:   "Consolas, monospace"
-                color: Material.theme === Material.Dark ? "#cccccc" : "#333333"
-                leftPadding:   10
-                rightPadding:  10
-                topPadding:    8
-                bottomPadding: 8
-
-                background: Rectangle {
-                    color:        Material.theme === Material.Dark ? "#141414" : "#fafafa"
-                    radius:       4
-                    border.color: Material.theme === Material.Dark ? "#333333" : "#e0e0e0"
-                    border.width: 1
-                }
-
-                Text {
-                    anchors.top:        parent.top
-                    anchors.left:       parent.left
-                    anchors.topMargin:  8
-                    anchors.leftMargin: 10
-                    text:           "No activity yet…"
-                    font.pixelSize: 11
-                    font.family:    "Consolas, monospace"
-                    color: Material.theme === Material.Dark ? "#555555" : "#aaaaaa"
-                    visible: logsArea.text.length === 0
-                }
-
-                Accessible.name: "Activity log"
-                Accessible.role: Accessible.StaticText
-
-            }
-        }
-
-        // Clear log button - below logs area, right-aligned (mirrors Cancel/Close in EncryptDialog)
-        RowLayout {
-            visible:             logHeader.expanded
-            Layout.alignment:    Qt.AlignRight
-            Layout.rightMargin:  14
-            Layout.bottomMargin: 6
-
-            Button {
-                text:           "🧹  Clear"
-                font.pixelSize: 13
-                Layout.preferredHeight: 48
-                enabled:        logsArea.text.length > 0
-                onClicked:      appController.clearLogs()
-                Accessible.name: "Clear activity log"
-                ToolTip.visible: hovered
-                ToolTip.text: "Clear this log (your files are not affected)"
-                ToolTip.delay: 500
-            }
-        }
-
-        // Keeps the bottom edge in place if the window is enlarged while the log is collapsed.
-        Item {
-            visible: !logHeader.expanded
             Layout.fillHeight: true
-        }
+            currentIndex: tabs.currentIndex
 
-        // Resize grip
-        Item {
-            Layout.fillWidth: true
-            implicitHeight: 14
-
-            DragHandler {
-                target: null
-                onActiveChanged: if (active) root.startSystemResize(Qt.BottomEdge | Qt.RightEdge)
+            LockPage {
+                controller: encryptController
+                onNotice: message => toast.show(message)
             }
-
-            Row {
-                anchors.right:        parent.right
-                anchors.bottom:       parent.bottom
-                anchors.rightMargin:  5
-                anchors.bottomMargin: 3
-                spacing: 2
-
-                Repeater {
-                    model: 3
-                    Rectangle {
-                        width: 3; height: 3; radius: 1
-                        color: Material.theme === Material.Dark ? "#555555" : "#bbbbbb"
-                    }
-                }
+            LockPage {
+                controller: decryptController
+                onNotice: message => toast.show(message)
             }
         }
     }
 
-    // ── Main window drop area ────────────────────────────────────────────────
+    // Drops anywhere in the window; each file goes to the tab it belongs on.
     DropArea {
+        id: dropArea
         anchors.fill: parent
-        z: -1
-
         onDropped: function(drop) {
             if (!drop.hasUrls) return
-            try {
-                if (!root._encDlgComp || root._encDlgComp.status === Component.Error)
-                    root._encDlgComp = Qt.createComponent("EncryptDialog.qml")
-                if (root._encDlgComp.status !== Component.Ready) return
-                var urls = []
-                var allEncrypted = drop.urls.length > 0
-                for (var i = 0; i < drop.urls.length; i++) {
-                    var url = drop.urls[i].toString()
-                    urls.push(url)
-                    if (!/\.(gfglock|gfglck|gfgcha)$/i.test(url)) allEncrypted = false
-                }
-                // Dropping only encrypted files opens Decrypt; anything else opens Encrypt.
-                root._encDlgComp.createObject(root, { operationMode: allEncrypted ? "decrypt" : "encrypt" }).show()
-                encryptController.addFiles(urls)
-            } catch(e) {
-                console.error("onDropped:", e)
-            }
+            mainWin.receive(drop.urls, "")
+            drop.acceptProposedAction()
         }
 
         Rectangle {
             anchors.fill: parent
-            visible:      parent.containsDrag
-            color:        Qt.rgba(0, 0.47, 0.83, 0.06)
-            border.color: "#0078d4"
+            anchors.margins: Theme.spaceSm
+            radius: Theme.radiusLarge
+            color: Theme.dropFill
+            border.color: Theme.accent
             border.width: 2
-            radius:       0
+            visible: dropArea.containsDrag
+
+            Text {
+                anchors.centerIn: parent
+                width: parent.width - 2 * Theme.spaceXl
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: "Drop to add. Encrypted files go to Decrypt, everything else to Encrypt."
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSubtitle
+                font.weight: Font.DemiBold
+                color: Theme.accent
+            }
         }
     }
 
-    ResizeHandles {
-        window: root
+    Toast {
+        id: toast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 88
+        z: 50
     }
 
-    // ── About dialog ─────────────────────────────────────────────────────────
-    Dialog {
+    // ── Close during a run ─────────────────────────────────────────────────
+
+    AppDialog {
+        id: closeDialog
+        title: "Stop and close?"
+        width: Math.min(440, mainWin.width - 48)
+        standardButtons: Dialog.Yes | Dialog.No
+        Component.onCompleted: {
+            closeDialog.standardButton(Dialog.Yes).text = "Stop and close"
+            closeDialog.standardButton(Dialog.No).text = "Keep working"
+        }
+        onAccepted: {
+            mainWin._closeWhenIdle = true
+            encryptController.cancel()
+            decryptController.cancel()
+        }
+
+        Text {
+            width: parent.width
+            text: "Files being worked on now are finished first, then gfgLock closes. Files not started yet stay as they are."
+            wrapMode: Text.WordWrap
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBody
+            color: Theme.text
+        }
+    }
+
+    // ── About ──────────────────────────────────────────────────────────────
+
+    AppDialog {
         id: aboutDialog
-        title:           "About gfgLock"
-        modal:           false
-        standardButtons: Dialog.NoButton
-        anchors.centerIn: parent
-        width:            460
-        topPadding:       20
-        bottomPadding:    24
-        leftPadding:      28
-        rightPadding:     28
-        Material.accent: "#0078d4"
+        title: "About " + appController.appName
+        width: Math.min(480, mainWin.width - 48)
+        standardButtons: Dialog.Close
 
-        contentItem: ColumnLayout {
-            spacing: 14
-
-            Image {
-                Layout.alignment:       Qt.AlignHCenter
-                Layout.preferredWidth:  64
-                Layout.preferredHeight: 64
-                source:      "../assets/icons/Square71x71Logo.scale-100.png"
-                sourceSize:  Qt.size(64, 64)
-                fillMode:    Image.PreserveAspectFit
-                smooth:      true
-            }
-
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text:          "gfgLock"
-                font.pixelSize: 18
-                font.weight:    Font.Bold
-                color:          Material.foreground
-            }
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: appController
-                    ? "v" + appController.appVersion + "  ·  " + appController.appAuthor
-                    : ""
-                font.pixelSize: 12
-                color: Material.theme === Material.Dark ? "#aaaaaa" : "#666666"
-            }
-            Text {
-                Layout.fillWidth: true
-                text:             appController ? appController.appDescription : ""
-                font.pixelSize:   12
-                wrapMode:         Text.WordWrap
-                horizontalAlignment: Text.AlignHCenter
-                color:            Material.foreground
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: 1
-                color:  Material.theme === Material.Dark ? "#333333" : "#e0e0e0"
-            }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: Theme.spaceMd
 
             RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 12
-
-                Button {
-                    text:                   "Check for Updates"
-                    flat:                   true
-                    font.pixelSize:         12
-                    Layout.preferredHeight: 36
-                    Layout.preferredWidth:  150
-                    onClicked: { if (appController) appController.openUpdates(); aboutDialog.close() }
-                    Accessible.name: "Check for updates"
+                spacing: Theme.spaceLg
+                Image {
+                    source: "../assets/icons/Square44x44Logo.targetsize-48.png"
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    fillMode: Image.PreserveAspectFit
+                    Accessible.ignored: true
                 }
-                Button {
-                    text:                   "Close"
-                    highlighted:            true
-                    font.pixelSize:         12
-                    Layout.preferredHeight: 36
-                    Layout.preferredWidth:  100
-                    onClicked: aboutDialog.close()
-                    Accessible.name: "Close about dialog"
+                ColumnLayout {
+                    spacing: 2
+                    Text {
+                        text: appController.appName + " " + appController.appVersion
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSubtitle
+                        font.weight: Font.DemiBold
+                        color: Theme.text
+                    }
+                    Text {
+                        text: "By " + appController.appAuthor
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontCaption
+                        color: Theme.textMuted
+                    }
                 }
             }
-        }
-    }
-
-    // ── Dialog component cache ───────────────────────────────────────────────
-    property var _encDlgComp:  null
-    property var _prefDlgComp: null
-
-    function openEncryptDialog(mode) {
-        try {
-            if (!_encDlgComp || _encDlgComp.status === Component.Error)
-                _encDlgComp = Qt.createComponent("EncryptDialog.qml")
-            if (_encDlgComp.status === Component.Ready) {
-                _encDlgComp.createObject(root, { operationMode: mode }).show()
-            } else {
-                console.error("EncryptDialog not ready:", _encDlgComp.errorString())
+            Text {
+                Layout.fillWidth: true
+                text: appController.appDescription + ". Everything runs on this computer; your files and password never leave it."
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                color: Theme.text
+                wrapMode: Text.WordWrap
             }
-        } catch(e) {
-            console.error("openEncryptDialog:", e)
-        }
-    }
-
-    function openPreferences() {
-        try {
-            if (!_prefDlgComp || _prefDlgComp.status === Component.Error)
-                _prefDlgComp = Qt.createComponent("PreferencesWindow.qml")
-            if (_prefDlgComp.status === Component.Ready) {
-                _prefDlgComp.createObject(root).show()
-            } else {
-                console.error("PreferencesWindow not ready:", _prefDlgComp.errorString())
+            Text {
+                Layout.fillWidth: true
+                text: "Shortcuts: Ctrl+O add files, Ctrl+Shift+O add folder, Ctrl+Enter or F5 start, Esc stop, "
+                    + "Ctrl+, preferences, F1 about, Ctrl+1 Encrypt, Ctrl+2 Decrypt. In the list: Ctrl+A select all, "
+                    + "Space select, Ctrl+C copy names, Delete remove, Shift+F10 or Menu key for more."
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textMuted
+                wrapMode: Text.WordWrap
             }
-        } catch(e) {
-            console.error("openPreferences:", e)
+            AppButton {
+                text: "Check for updates"
+                iconName: "openExternal"
+                toolTipText: "Open the gfgLock releases page in your browser"
+                onClicked: appController.openUpdates()
+            }
         }
     }
 }

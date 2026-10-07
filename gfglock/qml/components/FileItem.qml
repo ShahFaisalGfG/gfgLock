@@ -1,172 +1,199 @@
-// qmllint disable unqualified import
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick.Layouts
 
+// One row of a queue: type badge, name, size or result, and a status badge. Status is always
+// spelled out in text and with an icon, never by color alone.
 Rectangle {
     id: fileItem
 
-    signal itemClicked(int idx, int modifiers)
-    // The list owns one shared context menu; a Menu per row made large lists slow to scroll.
-    signal contextMenuRequested(int idx)
+    signal clicked(int index, int modifiers)
+    signal contextMenuRequested(int index)
+    signal removeRequested(int index)
 
-    required property int    index
+    required property int index
     required property string name
     required property string path
+    required property string folder
     required property string size
     required property string ext
-    required property bool   selected
+    required property bool selected
+    required property string status
+    required property real progress
+    required property string message
+    property bool current: false
+    property bool listHasFocus: false
+    // While the list runs, rows can't be removed: the run already has its files.
+    property bool listBusy: false
 
-    property string fileName:  name
-    property string filePath:  path
-    property string fileSize:  size
-    property string fileExt:   ext.length > 0 ? ext : "FILE"
-    property bool   isSelected: selected
+    readonly property bool _busy: fileItem.status === "working"
+    readonly property bool _encrypted: /^(GFGLOCK|GFGLCK|GFGCHA)$/.test(fileItem.ext)
+    readonly property string _statusText: {
+        switch (fileItem.status) {
+        case "working": return fileItem.progress > 0 ? Math.round(fileItem.progress * 100) + "%" : "Working"
+        case "done":    return "Done"
+        case "skipped": return "Skipped"
+        case "failed":  return "Failed"
+        default:        return "Waiting"
+        }
+    }
+    readonly property color _statusColor: {
+        switch (fileItem.status) {
+        case "working": return Theme.accent
+        case "done":    return Theme.success
+        case "failed":  return Theme.danger
+        default:        return Theme.textMuted
+        }
+    }
 
-    height: 80
-    radius: 6
-    color: isSelected
-        ? (Material.theme === Material.Dark ? "#1a3a5c" : "#cce4f7")
-        : (Material.theme === Material.Dark ? "#2a2a2a" : "#ffffff")
+    implicitHeight: 60
+    radius: Theme.radius
+    color: fileItem.selected ? Theme.accentSoft : (hover.hovered ? Theme.surfaceHover : "transparent")
+    border.width: fileItem.current && fileItem.listHasFocus ? 2 : 0
+    border.color: Theme.focusRing
 
-    border.color: isSelected
-        ? "#0078d4"
-        : (Material.theme === Material.Dark ? "#3a3a3a" : "#e0e0e0")
-    border.width: isSelected ? 2 : 1
+    Accessible.role: Accessible.ListItem
+    Accessible.name: fileItem.name + ", " + fileItem._statusText + (fileItem.message ? ", " + fileItem.message : "")
+    Accessible.description: fileItem.size + ", " + fileItem.folder
+    Accessible.selectable: true
+    Accessible.selected: fileItem.selected
 
-    Behavior on color { ColorAnimation { duration: 80 } }
+    HoverHandler { id: hover }
 
-    // Hover tint
+    ToolTip.visible: hover.hovered && !removeButton.hovered
+    ToolTip.text: fileItem.message ? fileItem.path + "\n" + fileItem.message : fileItem.path
+    ToolTip.delay: 900
+
     Rectangle {
-        anchors.fill: parent
-        radius: parent.radius
-        color: itemMouse.containsMouse && !fileItem.isSelected
-            ? (Material.theme === Material.Dark ? Qt.rgba(1, 1, 1, 0.04) : Qt.rgba(0, 0, 0, 0.03))
-            : "transparent"
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        width: 3
+        height: parent.height - 16
+        radius: 2
+        color: Theme.accent
+        visible: fileItem.selected
     }
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 14
+        anchors.leftMargin: Theme.spaceMd
+        anchors.rightMargin: Theme.spaceSm
+        spacing: Theme.spaceMd
 
-        // Extension badge
         Rectangle {
-            Layout.preferredWidth: 52
-            Layout.preferredHeight: 52
-            radius: 8
-            color: Material.theme === Material.Dark
-                ? Qt.rgba(0, 0.471, 0.831, 0.18)
-                : Qt.rgba(0, 0.471, 0.831, 0.10)
-            border.color: "#0078d4"
+            Layout.preferredWidth: 36
+            Layout.preferredHeight: 36
+            radius: Theme.radius
+            color: Theme.surfaceAlt
             border.width: 1
+            border.color: Theme.border
 
-            Text {
+            // Encrypted files show just the lock; their long extension wouldn't fit the badge.
+            Icon {
                 anchors.centerIn: parent
-                text: fileItem.fileExt.length > 6 ? fileItem.fileExt.substring(0, 5) + "…" : fileItem.fileExt
-                color: "#0078d4"
-                font.pixelSize: fileItem.fileExt.length > 4 ? 10 : 12
-                font.weight: Font.Bold
+                anchors.verticalCenterOffset: fileItem._encrypted ? 0 : -4
+                name: fileItem._encrypted ? "lock" : "page"
+                size: fileItem._encrypted ? 16 : 14
+                color: Theme.accent
+            }
+            Text {
+                visible: !fileItem._encrypted
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 2
+                width: parent.width - 4
                 horizontalAlignment: Text.AlignHCenter
+                text: fileItem.ext
+                font.family: Theme.fontFamily
+                font.pixelSize: 9
+                font.weight: Font.DemiBold
+                color: Theme.textMuted
+                elide: Text.ElideRight
             }
         }
 
-        // Name + path column
         ColumnLayout {
             Layout.fillWidth: true
+            spacing: 2
+
+            Text {
+                Layout.fillWidth: true
+                text: fileItem.name
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBody
+                font.weight: Font.DemiBold
+                color: Theme.text
+                elide: Text.ElideMiddle
+            }
+            Text {
+                Layout.fillWidth: true
+                text: fileItem.message ? fileItem.message : fileItem.size + "  ·  " + fileItem.folder
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                color: fileItem.status === "failed" ? Theme.danger : Theme.textMuted
+                elide: Text.ElideMiddle
+            }
+        }
+
+        RowLayout {
             spacing: 4
+            visible: !removeButton.visible
 
-            Text {
-                Layout.fillWidth: true
-                text: fileItem.fileName
-                color: Material.foreground
-                font.pixelSize: 13
-                font.weight: Font.Medium
-                elide: Text.ElideMiddle
+            Icon {
+                name: fileItem.status === "done" ? "completed"
+                    : fileItem.status === "failed" ? "error"
+                    : fileItem.status === "skipped" ? "skip"
+                    : fileItem._busy ? "sync" : ""
+                visible: name.length > 0
+                size: 13
+                color: fileItem._statusColor
             }
-
             Text {
-                Layout.fillWidth: true
-                text: fileItem.filePath
-                color: Material.theme === Material.Dark ? "#888888" : "#767676"
-                font.pixelSize: 11
-                elide: Text.ElideMiddle
-                maximumLineCount: 1
+                text: fileItem._statusText
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                font.weight: fileItem._busy ? Font.DemiBold : Font.Normal
+                color: fileItem._statusColor
             }
         }
 
-        // Size label - hidden while hovering (X button takes that slot)
-        Text {
-            text: fileItem.fileSize
-            color: Material.theme === Material.Dark ? "#aaaaaa" : "#555555"
-            font.pixelSize: 11
-            horizontalAlignment: Text.AlignRight
-            visible: !itemMouse.containsMouse
-        }
-
-        // Placeholder so layout width stays stable when size label hides
-        Item {
-            Layout.preferredWidth:  26
-            Layout.preferredHeight: 26
-            visible: itemMouse.containsMouse
+        AppButton {
+            id: removeButton
+            kind: "ghost"
+            compact: true
+            iconName: "cancel"
+            toolTipText: "Remove " + fileItem.name + " from the list (the file itself is not deleted)"
+            visible: hover.hovered && !fileItem._busy && !fileItem.listBusy
+            focusPolicy: Qt.NoFocus
+            onClicked: fileItem.removeRequested(fileItem.index)
         }
     }
 
-    // Click-to-select - declared before removeBtn so removeBtn wins on overlap
+    ProgressBar {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: Theme.spaceMd
+        anchors.rightMargin: Theme.spaceMd
+        height: 3
+        visible: fileItem._busy
+        from: 0
+        to: 1
+        value: Math.max(0, fileItem.progress)
+        indeterminate: fileItem.progress <= 0
+        Accessible.ignored: true
+    }
+
     MouseArea {
-        id: itemMouse
         anchors.fill: parent
-        hoverEnabled: true
+        z: -1
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
-                if (!fileItem.isSelected)
-                    fileItem.itemClicked(fileItem.index, Qt.NoModifier)
                 fileItem.contextMenuRequested(fileItem.index)
             } else {
-                fileItem.itemClicked(fileItem.index, mouse.modifiers)
+                fileItem.clicked(fileItem.index, mouse.modifiers)
             }
         }
     }
-
-    // Quick remove - declared AFTER itemMouse so it stacks above it and grabs clicks
-    Rectangle {
-        id: removeBtn
-        width: 26; height: 26
-        radius: 4
-        anchors.right:          parent.right
-        anchors.rightMargin:    12
-        anchors.verticalCenter: parent.verticalCenter
-        visible: itemMouse.containsMouse
-        color: removeMouse.containsMouse ? "#e81123" : "transparent"
-        Behavior on color { ColorAnimation { duration: 80 } }
-
-        Text {
-            anchors.centerIn: parent
-            text:  "✕"
-            font.pixelSize: 10
-            color: removeMouse.containsMouse
-                ? "#ffffff"
-                : (Material.theme === Material.Dark ? "#888888" : "#777777")
-            Behavior on color { ColorAnimation { duration: 80 } }
-        }
-
-        MouseArea {
-            id: removeMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: encryptController.fileModel.removeAt(fileItem.index)
-        }
-
-        ToolTip.visible: removeMouse.containsMouse
-        ToolTip.text: "Remove from the list (the file itself is not deleted)"
-        ToolTip.delay: 600
-    }
-
-    Accessible.name:      "File: " + fileName + ", " + fileSize
-    Accessible.role:      Accessible.ListItem
-    Accessible.checkable: true
-    Accessible.checked:   isSelected
-    Accessible.onPressAction: encryptController.fileModel.toggleSelection(fileItem.index)
 }

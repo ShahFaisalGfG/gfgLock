@@ -37,6 +37,17 @@ jobs:
           "URL=$($m.Url)"             | Out-File $env:GITHUB_OUTPUT -Append
           "EXE_NAME=$($m.ExeName)"    | Out-File $env:GITHUB_OUTPUT -Append
 
+      # Release files are named after pyproject's version and the release after the tag, so the
+      # two must agree (and winget downloads by the tag's version).
+      - name: Check the tag matches the version
+        shell: pwsh
+        run: |
+          $expected = "v${{ steps.meta.outputs.VER }}"
+          if ("${{ github.ref_name }}" -ne $expected) {
+            Write-Error "Tag ${{ github.ref_name }} does not match pyproject.toml version ($expected)."
+            exit 1
+          }
+
       - name: Install Python dependencies
         shell: pwsh
         run: pip install -r requirements.txt

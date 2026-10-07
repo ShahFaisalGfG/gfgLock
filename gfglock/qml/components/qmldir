@@ -1,0 +1,16 @@
+singleton Theme 1.0 Theme.qml
+AppButton 1.0 AppButton.qml
+AppDialog 1.0 AppDialog.qml
+AppSwitch 1.0 AppSwitch.qml
+AppWindow 1.0 AppWindow.qml
+Card 1.0 Card.qml
+FileItem 1.0 FileItem.qml
+FileList 1.0 FileList.qml
+FormRow 1.0 FormRow.qml
+Icon 1.0 Icon.qml
+PasswordField 1.0 PasswordField.qml
+ResizeHandles 1.0 ResizeHandles.qml
+RunBar 1.0 RunBar.qml
+StyledComboBox 1.0 StyledComboBox.qml
+TitleBar 1.0 TitleBar.qml
+Toast 1.0 Toast.qml

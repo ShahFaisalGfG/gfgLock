@@ -3,13 +3,16 @@
 import ctypes
 from ctypes import wintypes
 import os
+import re
 import sys
+import tempfile
 from multiprocessing import freeze_support
 from typing import Optional
 
 from PySide6.QtCore import QSize, QThreadPool
 from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gfglock.ui.boot_thread import BootThread
@@ -17,26 +20,29 @@ from gfglock.ui.splash_screen import SplashScreen
 from gfglock.utils.helpers import resource_path
 from gfglock.utils.logging import write_log
 from gfglock.utils.self_test import run_self_test
+from gfglock.utils.single_instance import SingleInstance
 
 _ENC_EXTS = (".gfglock", ".gfglck", ".gfgcha")
 _SHUTDOWN_WAIT_MS = 2000
 _SELF_TEST_FLAG = "--self-test"
+# Images loaded outside QML; the self-test checks they are bundled.
+SPLASH_LOGO = "gfglock/assets/icons/Square310x310Logo.scale-100.png"
+WINDOW_ICONS = {size: f"gfglock/assets/icons/Square44x44Logo.targetsize-{size}.png" for size in (16, 32, 48, 256)}
 
 
 class _Startup:
     """Owns the splash screen and boot thread, then builds the window."""
 
-    def __init__(self, app: QApplication) -> None:
+    def __init__(self, app: QApplication, instance: SingleInstance, mode: str, paths: list[str]) -> None:
         self._app = app
+        self._instance = instance
+        self._launch = (mode, paths)
         self._engine: Optional[QQmlApplicationEngine] = None
         self._app_ctrl = None
-        self._enc_ctrl = None
+        self._controllers: list = []
         self._prefs_ctrl = None
 
-        logo = resource_path(
-            "gfglock/assets/icons/Square310x310Logo.scale-100.png"
-        )
-        self._splash = SplashScreen(logo)
+        self._splash = SplashScreen(resource_path(SPLASH_LOGO))
         self._splash.show()
 
         self._boot = BootThread()
@@ -53,30 +59,27 @@ class _Startup:
             from gfglock.controllers.prefs_ctrl import PrefsController
 
             icon = QIcon()
-            for size in (16, 32, 48, 256):
-                name = f"Square44x44Logo.targetsize-{size}.png"
-                path = resource_path(f"gfglock/assets/icons/{name}")
+            for size, relative in WINDOW_ICONS.items():
+                path = resource_path(relative)
                 if os.path.isfile(path):
                     icon.addFile(path, QSize(size, size))
             if not icon.isNull():
                 self._app.setWindowIcon(icon)
 
             app_ctrl = AppController()
-            enc_ctrl = EncryptController()
+            enc_ctrl = EncryptController("encrypt")
+            dec_ctrl = EncryptController("decrypt")
             prefs_ctrl = PrefsController()
 
             engine = QQmlApplicationEngine()
             ctx = engine.rootContext()
             ctx.setContextProperty("appController", app_ctrl)
             ctx.setContextProperty("encryptController", enc_ctrl)
+            ctx.setContextProperty("decryptController", dec_ctrl)
             ctx.setContextProperty("prefsController", prefs_ctrl)
 
             qml_dir = resource_path("gfglock/qml")
             engine.addImportPath(qml_dir)
-
-            cli_mode = _detect_mode(sys.argv[1:])
-            ctx.setContextProperty("cliLaunchMode", cli_mode)
-
             engine.load(os.path.join(qml_dir, "main.qml"))
             if not engine.rootObjects():
                 self._on_failed("The user interface failed to load.")
@@ -87,16 +90,21 @@ class _Startup:
             # would leave bound QML text empty.
             self._engine = engine
             self._app_ctrl = app_ctrl
-            self._enc_ctrl = enc_ctrl
+            self._controllers = [enc_ctrl, dec_ctrl]
             self._prefs_ctrl = prefs_ctrl
-            _handle_cli(enc_ctrl, sys.argv[1:], cli_mode)
+            # Later launches (another Explorer right-click) hand their files to this window.
+            self._instance.filesReceived.connect(app_ctrl.openFiles)
+            self._instance.activationRequested.connect(app_ctrl.activateRequested)
+            mode, paths = self._launch
+            if mode and paths:
+                app_ctrl.openFiles(mode, paths)
             self._splash.close()
         except Exception as e:
             write_log(f"Failed to build interface: {e}", level="critical")
             self._on_failed(str(e))
 
     def _on_failed(self, message: str) -> None:
-        """Show a real error dialog and quit instead of hanging silently."""
+        """Show an error dialog and quit instead of hanging silently."""
         write_log(f"Startup failed: {message}", level="critical")
         self._splash.set_error(message)
         QMessageBox.critical(None, "gfgLock", f"Failed to start:\n\n{message}")
@@ -105,14 +113,18 @@ class _Startup:
 
     def shutdown(self) -> None:
         """Stop background work, then release the QML scene before the controllers it referenced."""
-        if self._enc_ctrl is not None:
-            self._enc_ctrl.shutdown()
-            # A cancelled folder scan exits within milliseconds; wait for it so its thread
-            # doesn't outlive the objects it reports to.
+        for controller in self._controllers:
+            controller.shutdown()
+        if self._prefs_ctrl is not None:
+            self._prefs_ctrl.shutdown()
+        if self._controllers:
+            # A cancelled folder scan exits within milliseconds and a read size test after its
+            # current step; wait for them so their threads don't outlive the objects they report to.
             QThreadPool.globalInstance().waitForDone(_SHUTDOWN_WAIT_MS)
+        self._instance.close()
         self._engine = None
         self._app_ctrl = None
-        self._enc_ctrl = None
+        self._controllers = []
         self._prefs_ctrl = None
 
 
@@ -153,15 +165,25 @@ def main() -> None:
     # High-DPI: let Qt handle scaling automatically
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 
+    # Every QML control uses the Material style (as in CC-Gen-Ultimate); Fusion styles the
+    # splash screen, which is a widget.
+    QQuickStyle.setStyle("Material")
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+
+    # Explorer's "Encrypt/Decrypt with gfgLock" passes a mode and paths. When gfgLock is already
+    # open, they go to that window and this launch ends.
+    mode, paths = _launch_request(sys.argv[1:])
+    instance = SingleInstance()
+    if instance.tryForward(mode, paths):
+        sys.exit(0)
 
     # Qt's automatic quit-on-last-window-closed can misfire the instant the
     # splash (a QWidget) closes while a QML window is the only one left open -
     # main.qml's root window quits explicitly on close instead (see main.qml).
     app.setQuitOnLastWindowClosed(False)
 
-    startup = _Startup(app)
+    startup = _Startup(app, instance, mode, paths)
     code = app.exec()
     startup.shutdown()
     sys.exit(code)
@@ -178,21 +200,21 @@ def _detect_mode(args: list) -> str:
     return ""
 
 
-def _handle_cli(enc_ctrl, args: list, mode: str) -> None:
-    """Pre-populate the file model from CLI arguments if any are present."""
-    if not args or not mode:
-        return
-
+def _launch_request(args: list) -> tuple[str, list[str]]:
+    """The mode ("encrypt"/"decrypt" or "") and absolute paths given on the command line."""
+    mode = _detect_mode(args)
+    if not mode:
+        return "", []
     path_args = args[1:] if args[0].lower() in ("encrypt", "decrypt") else args
-
     # Reconstruct paths (Windows Explorer can break paths with spaces)
-    raw_paths = _parse_paths(path_args)
-    paths = [os.path.abspath(p.strip("\"'")) for p in raw_paths]
+    return mode, [os.path.abspath(p.strip("\"'")) for p in _parse_paths(path_args)]
 
-    # Files are filtered by mode and added in one batch; folders are scanned on a
-    # background thread so a large folder from Explorer doesn't freeze the window.
-    enc_ctrl.setMode(mode)
-    enc_ctrl.addFiles(paths)
+
+def _is_shell_list_file(path: str) -> bool:
+    """True for a file list the Explorer extension wrote: gfg<hex>.tmp in the temp folder."""
+    folder, name = os.path.split(os.path.abspath(path))
+    return (os.path.normcase(folder) == os.path.normcase(os.path.abspath(tempfile.gettempdir()))
+            and re.fullmatch(r"gfg[0-9a-f]{1,4}\.tmp", name, re.IGNORECASE) is not None)
 
 
 def _parse_paths(path_args: list) -> list:
@@ -207,10 +229,13 @@ def _parse_paths(path_args: list) -> list:
         except OSError:
             # Fall back to original args so the caller can surface an error
             return path_args
-        try:
-            os.remove(resp)
-        except Exception:
-            pass
+        # Only the shell extension's own list file (%TEMP%\gfgXXXX.tmp) is deleted after reading;
+        # "@" with any other file just reads it.
+        if _is_shell_list_file(resp):
+            try:
+                os.remove(resp)
+            except OSError as error:
+                write_log(f"Could not remove the file list {resp}: {error}", "critical")
         return lines
     # IExplorerCommand passes each path as a correctly split argv element
     if any(os.path.exists(p.strip("\"'")) for p in path_args):

@@ -16,6 +16,8 @@ from collections.abc import Callable, Iterable, Iterator
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from gfglock.core.file_ops import TEMP_SUFFIX
+
 # Rows are flushed to the GUI at most this often, or sooner once this many are waiting.
 FLUSH_INTERVAL_S = 0.1
 MAX_BATCH = 2000
@@ -30,8 +32,10 @@ def iter_files(
     """Yield (path, size_bytes) for every file under `roots` whose name passes `accept`.
 
     Directories are walked depth-first in case-insensitive name order, so files arrive in the
-    order Explorer lists them. Symlinked directories are not followed (avoids loops), and
-    unreadable directories are reported through `on_error` and skipped.
+    order Explorer lists them. Links are skipped: symlinked and junction directories (which can
+    loop back on themselves) are not followed, and linked files are left out, since encrypting a
+    link would leave the file it points to readable. Unreadable directories are reported through
+    `on_error` and skipped.
     """
     stack = list(reversed([os.path.normpath(r) for r in roots]))
     while stack:
@@ -50,13 +54,31 @@ def iter_files(
             if is_cancelled():
                 return
             try:
+                if _is_link(entry):
+                    continue
                 if entry.is_dir(follow_symlinks=False):
                     subfolders.append(entry.path)
-                elif accept(entry.name) and entry.is_file():
+                elif accept(entry.name) and entry.is_file(follow_symlinks=False):
                     yield entry.path, entry.stat().st_size
             except OSError:
                 continue
         stack.extend(reversed(subfolders))
+
+
+def _is_link(entry: os.DirEntry) -> bool:
+    """True for a symbolic link or an NTFS junction. Cloud placeholders (OneDrive) are not links."""
+    if entry.is_symlink():
+        return True
+    is_junction = getattr(entry, "is_junction", None)  # Python 3.12+
+    if is_junction is not None:
+        return is_junction()
+    if not entry.is_dir(follow_symlinks=False):
+        return False
+    try:
+        os.readlink(entry.path)  # succeeds only for links, junctions included
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 class FolderScanSignals(QObject):
@@ -96,6 +118,8 @@ class FolderScanWorker(QRunnable):
 
     def _accept(self, name: str) -> bool:
         """Keep encrypted files in decrypt mode and everything else in encrypt mode."""
+        if name.lower().endswith(TEMP_SUFFIX):
+            return False  # a temp file of a job that is running or was interrupted
         is_encrypted = os.path.splitext(name)[1].lower() in self.encrypted_extensions
         return is_encrypted == self.include_encrypted
 

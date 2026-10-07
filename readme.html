@@ -5,7 +5,7 @@
 	<title>gfgLock - README</title>
 	<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
 
-	<link rel="icon" type="image/png" href="./icons/gfgLock.png">
+	<link rel="icon" type="image/png" href="icons/Square150x150Logo.scale-100.png">
 	<style>
 		/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
 		/*---------------------------------------------------------------------------------------------
@@ -357,434 +357,617 @@
 		}
 	</style>
 
-	<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
 </head>
 
 <body>
-	<script>
-		mermaid.initialize({
-			startOnLoad: true,
-			theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
-				? 'dark'
-				: 'default'
-		});
-	</script>
-	<h1 id="gfglock">gfgLock</h1>
-	<p>A compact, secure Windows file-encryption GUI. Supports AES-256 GCM, AES-256 CFB and ChaCha20-Poly1305, batch
-		processing, logging, and theme switching.</p>
-	<p><a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg"
-				alt="License: MIT"></a> <a href="https://github.com/ShahFaisalGfG/gfgLock/releases"><img
-				src="https://img.shields.io/badge/Platform-Windows-blue.svg" alt="Windows"></a> <a
-			href="https://github.com/ShahFaisalGfG/gfgLock/releases/tag/v3.0.0"><img
-				src="https://img.shields.io/badge/Latest-v3.0.0-green" alt="Latest Release"></a></p>
-	<hr>
-	<h2 id="overview">Overview</h2>
-	<p>gfgLock is a focused Windows tool for encrypting files with modern, authenticated ciphers. It aims for a balance
-		of usability and security: fast batch processing, clear logs, and a small, responsive UI.</p>
-	<h2 id="key-features">Key Features</h2>
-	<ul>
-		<li>Multi-algorithm encryption: AES-256 GCM (<code>.gfglock</code>), AES-256 CFB (<code>.gfglck</code>),
-			ChaCha20-Poly1305 (<code>.gfgcha</code>)</li>
-		<li>Batch processing with multi-threading and configurable chunk sizes</li>
-		<li>Real-time file-based logging (<code>%APPDATA%\\gfgLock\\logs\\</code>)</li>
-		<li>Theme support: System / Light / Dark with live Apply</li>
-		<li>PySide6 + QML framework with Material-style interface</li>
-		<li>Preferences with Apply/Save and persistent <code>settings.json</code></li>
-		<li>Native C++ encryption engine backed by OpenSSL (AES-256-GCM, CFB, ChaCha20-Poly1305) with transparent Python fallback</li>
-	</ul>
-	<h2 id="screenshots">screenshots</h2>
-	<h4 id="main-window-dialogs-and-progress-examples">Main window, dialogs and progress examples:</h4>
-	<ul>
-		<li>
-			<p>Main Window</p>
-			<p><img src="./screenshots/main_window.png" alt="Main Window"></p>
-		</li>
-		<li>
-			<p>Encryption Window</p>
-			<p><img src="./screenshots/encryption_window_with_files.png" alt="Encryption"></p>
-		</li>
-		<li>
-			<p>Decryption Window</p>
-			<p><img src="./screenshots/decryption_window_with_files.png" alt="Decryption"></p>
-		</li>
-		<li>
-			<p>Progress Window</p>
-			<p><img src="./screenshots/encryption_progress_window.png" alt="Progress"></p>
-		</li>
-		<li>
-			<p>Operation Finished Window</p>
-			<p><img src="./screenshots/encryption_progress_window_complete.png" alt="Finished"></p>
-		</li>
-		<li>
-			<p>Main Screen Progress Logs</p>
-			<p><img src="./screenshots/main_window_with_logs.png" alt="Logs"></p>
-		</li>
-		<li>
-			<p>Prefrences Window</p>
-			<p><img src="./screenshots/prefrences_window_appearance.png" alt="Preferences"></p>
-		</li>
-		<li>
-			<p>About Window</p>
-			<p><img src="./screenshots/about_window.png" alt="About"></p>
-		</li>
-	</ul>
-	<h2 id="quick-start">Quick Start</h2>
-	<ol>
-		<li>Download <code>gfgLock_Setup_3.0.0.exe</code> from <a
-				href="https://github.com/ShahFaisalGfG/gfgLock/releases/">Releases</a> and install.</li>
-		<li>Add files/folders (drag &amp; drop supported).</li>
-		<li>Choose Encrypt or Decrypt, pick algorithm (Encrypt only), enter password, and Start.</li>
-	</ol>
-	<h3 id="portable">Portable</h3>
-	<p>Run <code><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/">gfgLock_v3.0.0_portable.exe</a></code> -
-		no
-		install required.
-	</p>
-	<h2 id="installation-brief">Installation (brief)</h2>
-	<ul>
-		<li>Installer: <code>gfgLock_Setup_3.0.0.exe</code> (recommended)</li>
-		<li>Developer: clone repo, create venv, <code>pip install -r requirements.txt</code>, run
-			<code>python -m gfglock</code>
-		</li>
-	</ul>
-	<h2 id="support--license">Support &amp; License</h2>
-	<ul>
-		<li>Issues: <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">gfgLock - Issues</a></li>
-		<li>License: MIT - see <code>LICENSE</code></li>
-	</ul>
-	<hr>
-	<p>Last Updated: June 2026</p>
-	<h2 id="file-extensions--compatibility">File Extensions &amp; Compatibility</h2>
-	<table>
-		<thead>
-			<tr>
-				<th>Algorithm</th>
-				<th>Extension</th>
-				<th>Format</th>
-				<th>Use Case</th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td>AES-256 GCM</td>
-				<td><code>.gfglock</code></td>
-				<td>AEAD</td>
-				<td><strong>Recommended</strong> - Modern standard</td>
-			</tr>
-			<tr>
-				<td>AES-256 CFB</td>
-				<td><code>.gfglck</code></td>
-				<td>Stream</td>
-				<td>Fast - Simple</td>
-			</tr>
-			<tr>
-				<td>ChaCha20-Poly1305</td>
-				<td><code>.gfgcha</code></td>
-				<td>AEAD</td>
-				<td>High-security, side-channel resistant</td>
-			</tr>
-		</tbody>
-	</table>
-	<p><strong>Important:</strong></p>
-	<ul>
-		<li>Files encrypted with one algorithm cannot be decrypted with another</li>
-		<li>Always use the same tool to decrypt that encrypted the file</li>
-		<li>Each algorithm produces unique file format headers for verification</li>
-		<li><strong>⚠️ Compatibility Notice:</strong> Files encrypted with v2.7.0 or lower cannot be decrypted with
-			v2.7.5 or higher versions due to file structure changes</li>
-	</ul>
-	<hr>
-	<h2 id="preferences--settings">Preferences &amp; Settings</h2>
-	<h3 id="appearance-tab">Appearance Tab</h3>
-	<ul>
-		<li><strong>Theme Selection:</strong> System (default), Light, or Dark mode</li>
-		<li>Live preview with Apply button</li>
-	</ul>
-	<h3 id="encryption-tab">Encryption Tab</h3>
-	<ul>
-		<li><strong>CPU Threads:</strong> 1 to (cores - 1) - balance speed vs. responsiveness</li>
-		<li><strong>Chunk Size:</strong> 8 MB (default) to 128 MB - memory vs. speed tradeoff</li>
-		<li><strong>Encrypt Filenames:</strong> Optional filename randomization</li>
-	</ul>
-	<h3 id="decryption-tab">Decryption Tab</h3>
-	<ul>
-		<li><strong>CPU Threads:</strong> Performance tuning</li>
-		<li><strong>Chunk Size:</strong> Processing efficiency</li>
-		<li>Algorithm auto-detected from file extension</li>
-	</ul>
-	<h3 id="advanced-tab">Advanced Tab</h3>
-	<ul>
-		<li><strong>Default Algorithm:</strong> Choose default for new encryptions</li>
-		<li><strong>Logging:</strong> Enable/disable comprehensive logging</li>
-		<li><strong>Log Level:</strong> All operations or only critical errors</li>
-		<li><strong>Log Actions:</strong> Clear all logs or open logs folder</li>
-	</ul>
-	<hr>
-	<h2 id="chunk-size-selection-guide">Chunk Size Selection Guide</h2>
-	<p>Choose the appropriate chunk size based on your file size and system resources:</p>
-	<table>
-		<thead>
-			<tr>
-				<th>Chunk Size</th>
-				<th>Best For</th>
-				<th>RAM Usage</th>
-				<th>Speed</th>
-				<th>Notes</th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td><strong>Off (no chunking)</strong></td>
-				<td>Files &lt;10 MB</td>
-				<td>Full file in RAM</td>
-				<td>⚡ <strong>Fastest</strong></td>
-				<td>Recommended for small files; entire file processed in memory</td>
-			</tr>
-			<tr>
-				<td>8 MB</td>
-				<td><strong>General use</strong></td>
-				<td>~8 MB buffer</td>
-				<td>Fast</td>
-				<td>Default; balanced for most systems</td>
-			</tr>
-			<tr>
-				<td>16 MB</td>
-				<td>Larger files</td>
-				<td>~16 MB buffer</td>
-				<td>Faster</td>
-				<td>Good for files &gt;50 MB; modern systems</td>
-			</tr>
-			<tr>
-				<td>32 MB</td>
-				<td>High-end systems</td>
-				<td>~32 MB buffer</td>
-				<td>⚡ Faster</td>
-				<td>Files &gt;100 MB; high-speed SSDs</td>
-			</tr>
-			<tr>
-				<td>64 MB+</td>
-				<td>Very large files</td>
-				<td>~64+ MB buffer</td>
-				<td>⚡⚡ Fastest</td>
-				<td>Enterprise/high-speed NVMe; files &gt;500 MB</td>
-			</tr>
-		</tbody>
-	</table>
-	<h3 id="recommendations">Recommendations</h3>
-	<ul>
-		<li><strong>Laptops/Low RAM (&lt;8 GB):</strong> Use &quot;Off&quot; (no chunking) for small files; or 8 MB
-			chunks for large ones</li>
-		<li><strong>Desktop PCs (8-16 GB RAM):</strong> Default 8 MB; use 16-32 MB for files &gt;100 MB</li>
-		<li><strong>High-end Systems (16+ GB RAM):</strong> Use 32 MB or 64 MB for best throughput on large files</li>
-		<li><strong>Network/Shared Drives:</strong> Use smaller chunks (8 MB) for stable, consistent performance</li>
-	</ul>
-	<hr>
-	<h2 id="encryption-algorithm-selection">Encryption Algorithm Selection</h2>
-	<p>Choose the right algorithm for your security and performance needs:</p>
-	<h3 id="aes-256-gcm-recommended---gfglock">AES-256 GCM (Recommended - <code>.gfglock</code>)</h3>
-	<ul>
-		<li><strong>Speed:</strong> (⚡⚡)</li>
-		<li><strong>Security:</strong> ✅ Authenticated encryption (AEAD)</li>
-		<li><strong>Use When:</strong> You need strong security with authentication; general-purpose encryption</li>
-		<li><strong>Best For:</strong> Documents, sensitive data, compliance requirements</li>
-		<li><strong>Overhead:</strong> Includes authentication tag (16 bytes per file)</li>
-	</ul>
-	<h3 id="aes-256-cfb-fast---gfglck">AES-256 CFB (Fast - <code>.gfglck</code>)</h3>
-	<ul>
-		<li><strong>Speed:</strong> (⚡⚡⚡)</li>
-		<li><strong>Security:</strong> ⚠️ No built-in authentication (stream cipher)</li>
-		<li><strong>Use When:</strong> You need maximum speed and authentication is handled separately</li>
-		<li><strong>Best For:</strong> Large file batches, archival, non-sensitive data, speed-critical applications
-		</li>
-		<li><strong>Advantage:</strong> ~40% faster than GCM; simpler encryption mode</li>
-		<li><strong>Note:</strong> Recommended to verify file integrity separately (e.g., checksums)</li>
-	</ul>
-	<h3 id="chacha20-poly1305-aead---gfgcha">ChaCha20-Poly1305 (AEAD - <code>.gfgcha</code>)</h3>
-	<ul>
-		<li><strong>Speed:</strong> (⚡)</li>
-		<li><strong>Security:</strong> ✅ Authenticated encryption (AEAD)</li>
-		<li><strong>Use When:</strong> You prioritize side-channel resistance; low-power/older CPU systems</li>
-		<li><strong>Best For:</strong> High-security applications, systems without AES-NI, cryptography purists</li>
-		<li><strong>Advantage:</strong> Resistant to timing attacks; excellent on CPU without hardware AES</li>
-		<li><strong>Note:</strong> OpenSSL-backed via native C++ engine when available; pure Python (pycryptodome) otherwise</li>
-	</ul>
-	<h3 id="quick-decision-matrix">Quick Decision Matrix</h3>
-	<pre class="hljs"><code><div>├─ Need Maximum Security?
-│  ├─ YES → Use <span class="hljs-number">AES-256 GCM</span> (AEAD + Hardware Accelerated)
-│  └─ NO  → Use <span class="hljs-number">AES-256 CFB</span> (Faster, no authentication)
-│
-└─ Concerned About Side-Channels?
-   ├─ YES → Use <span class="hljs-number">ChaCha20-Poly1305</span> (Timing-resistant)
-   └─ NO  → Use <span class="hljs-number">AES-256 GCM</span> (Default, balanced)
-</div></code></pre>
-	<hr>
-	<h2 id="logging">Logging</h2>
-	<p>Logs are stored in:</p>
-	<ul>
-		<li><strong>Windows:</strong> <code>%APPDATA%\gfgLock\logs\</code></li>
-		<li><strong>Development:</strong> <code>gfglock/logs/</code></li>
-	</ul>
-	<h3 id="log-files">Log Files</h3>
-	<table>
-		<thead>
-			<tr>
-				<th>File</th>
-				<th>Contents</th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td><code>gfglock_general.log</code></td>
-				<td>All operations (verbose, when &quot;All&quot; level selected)</td>
-			</tr>
-			<tr>
-				<td><code>gfglock_critical.log</code></td>
-				<td>Errors and critical issues only</td>
-			</tr>
-		</tbody>
-	</table>
-	<hr>
-	<h2 id="security-notes">Security Best Practices</h2>
-	<ul>
-		<li>✅ <strong>Strong Passwords:</strong> Use 12+ characters with mixed case, numbers, and symbols</li>
-		<li>✅ <strong>Unique Passwords:</strong> Use different passwords for different file sets</li>
-		<li>✅ <strong>Choose the Right Algorithm:</strong>
-			<ul>
-				<li><strong>AES-256 GCM</strong> (recommended) - Balanced security and speed</li>
-				<li><strong>AES-256 CFB</strong> - Maximum speed, use when simplicity is preferred</li>
-				<li><strong>ChaCha20-Poly1305</strong> - Best for high-security applications</li>
-			</ul>
-		</li>
-		<li>✅ <strong>Secure Storage:</strong> Keep encrypted files in safe locations with proper backups</li>
-		<li>✅ <strong>Logging:</strong> Enable logging to audit encryption/decryption activities</li>
-		<li>✅ <strong>Password Privacy:</strong> Never share passwords via email, chat, or unsecured channels</li>
-	</ul>
-	<hr>
-	<h2 id="troubleshooting">Troubleshooting</h2>
-	<h3 id="common-issues">Common Issues</h3>
-	<table>
-		<thead>
-			<tr>
-				<th>Issue</th>
-				<th>Solution</th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td>&quot;Could not parse stylesheet&quot; warning</td>
-				<td>Harmless Qt message; ignore (no data loss)</td>
-			</tr>
-			<tr>
-				<td>Files fail to decrypt</td>
-				<td>Verify extension (<code>.gfglock</code>, <code>.gfglck</code>, <code>.gfgcha</code>), password, file
-					integrity</td>
-			</tr>
-			<tr>
-				<td>Performance slow</td>
-				<td>Increase CPU Threads, reduce Chunk Size, close other apps</td>
-			</tr>
-			<tr>
-				<td>Logs not created</td>
-				<td>Enable logs in Advanced settings, check <code>%APPDATA%\gfgLock\logs\</code> permissions</td>
-			</tr>
-			<tr>
-				<td>Context menu missing</td>
-				<td>Re-run installer with admin privileges</td>
-			</tr>
-		</tbody>
-	</table>
-	<h3 id="getting-help">Getting Help</h3>
-	<ul>
-		<li>📝 <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">GitHub Issues</a> - Report bugs</li>
-		<li>💬 <a href="https://github.com/ShahFaisalGfG/gfgLock/discussions">GitHub Discussions</a> - Ask questions
-		</li>
-		<li>📧 <a href="mailto:shahfaisalgfg@outlook.com">Email</a> - Direct contact</li>
-	</ul>
-	<hr>
-	<h2 id="version-history">Version History</h2>
-	<h3 id="v300-current--june-2026">v3.0.0 (Current) - June 2026</h3>
-	<ul>
-		<li>🚀 <strong>Native Engine:</strong> C++ extension (<code>gfglock_native.pyd</code>) backed by OpenSSL - AES-256-GCM, CFB, ChaCha20-Poly1305, and PBKDF2 with transparent Python fallback</li>
-		<li>🔗 <strong>Bridge:</strong> <code>native_bridge.py</code> gateway with <code>NATIVE_AVAILABLE</code> flag and typed wrappers for all cipher operations and KDF</li>
-		<li>🧪 <strong>Tests:</strong> New <code>pytest</code> suite covering native path, Python fallback, and cross-path compatibility</li>
-		<li>🔧 <strong>Build:</strong> <code>build_native.ps1</code> automates MSVC, vcpkg, OpenSSL, and CMake compilation in one command</li>
-		<li>📦 <strong>Dev:</strong> Added <code>pytest&gt;=8.0</code>; relaxed <code>pycryptodome</code> to <code>&gt;=3.20</code></li>
-	</ul>
-	<h3 id="v275--may-2026">v2.7.5 - May 2026</h3>
-	<ul>
-		<li>🔄 <strong>Framework:</strong> Complete rewrite - PyQt6 widgets replaced with PySide6 + QML and Material-style interface</li>
-		<li>📦 <strong>Package:</strong> Restructured from flat <code>src/</code> layout to <code>gfglock/</code> MVC package (controllers, models, services, utils, qml)</li>
-		<li>⏱️ <strong>Time Estimation:</strong> Remaining time calculation displayed during encryption/decryption</li>
-		<li>🎨 <strong>UI/UX:</strong> Animated floating labels on password fields, compacted checkboxes, keyboard shortcuts (Enter, Delete, Ctrl+A, Ctrl+C)</li>
-		<li>🔑 <strong>Focus Flow:</strong> Auto-focus password field when files are added; Enter key starts operation or closes dialog when done</li>
-		<li>📊 <strong>Progress:</strong> Real-time file-by-file progress with bytes and file count tracking</li>
-		<li>🪵 <strong>Logging:</strong> Fixed log routing - critical and general log levels now correctly applied</li>
-		<li>🏗️ <strong>Build:</strong> Added <code>build.ps1</code> one-command Windows installer build script (PyInstaller + Inno Setup)</li>
-	</ul>
-	<h3 id="v270--december-21-2025">v2.7.0 - December 21, 2025</h3>
-	<ul>
-		<li>✨ Multi-algorithm support (AES-256 GCM/CFB, ChaCha20-Poly1305)</li>
-		<li>✨ Comprehensive logging system</li>
-		<li>✨ Dynamic theme support (System/Light/Dark)</li>
-		<li>✨ Smart file filtering by mode</li>
-	</ul>
-	<h3 id="v100-pre-release--december-11-2025-deprecated">v1.0.0 (Pre-release) - December 11, 2025 [DEPRECATED]</h3>
-	<ul>
-		<li>Initial packaged Windows GUI build</li>
-		<li>AES-256 CFB only</li>
-		<li>Basic logging</li>
-		<li>Drag &amp; drop support</li>
-	</ul>
-	<p><strong>Note:</strong> v1.0.0 was a pre-release and has been removed from GitHub releases. Upgrade to v2.7.0 for
-		latest features and security.</p>
-	<hr>
-	<h2 id="roadmap">Roadmap</h2>
-	<p>Future releases planned:</p>
-	<ul>
-		<li>🔮 <strong>v2.8.0</strong> - Resumable/pause operations for large files</li>
-		<li>🔮 <strong>v3.1.0</strong> - Context-Menu Fix</li>
-		<li>🔮 <strong>v3.1.0</strong> - Local Password Wallet</li>
-		<li>🔮 <strong>v3.2.0</strong> - File integrity verification (checksums)</li>
-		<li>🔮 <strong>v4.2.0</strong> - Cloud Integration for encrypted file password backup</li>
-	</ul>
-	<hr>
-	<h2 id="contributing">Contributing</h2>
-	<p>Contributions welcome! Please:</p>
-	<ol>
-		<li>Fork the repository: <a href="https://github.com/ShahFaisalGfG/gfgLock">github.com/ShahFaisalGfG/gfgLock</a>
-		</li>
-		<li>Create a feature branch (<code>git checkout -b feature/amazing-feature</code>)</li>
-		<li>Commit changes (<code>git commit -m 'Add amazing feature'</code>)</li>
-		<li>Push to branch (<code>git push origin feature/amazing-feature</code>)</li>
-		<li>Open a Pull Request</li>
-	</ol>
-	<p>For bugs/features, open an issue first.</p>
-	<hr>
-	<h2 id="license">License</h2>
-	<p>MIT License</p>
-	<p>This software is provided &quot;AS IS&quot; without warranty of any kind.</p>
-	<hr>
-	<h2 id="credits">Credits</h2>
-	<p><strong>Developer:</strong> Shah Faisal (gfgRoyal)</p>
-	<p><strong>Repository:</strong> <a
-			href="https://github.com/ShahFaisalGfG/gfgLock">github.com/ShahFaisalGfG/gfgLock</a></p>
-	<p><strong>Portfolio:</strong> <a
-			href="https://shahfaisalgfg.github.io/shahfaisal/">shahfaisalgfg.github.io/shahfaisal/</a></p>
-	<p><strong>Email:</strong> <a href="mailto:shahfaisalgfg@outlook.com">shahfaisalgfg@outlook.com</a></p>
-	<hr>
-	<h2 id="support--feedback">Support &amp; Feedback</h2>
-	<ul>
-		<li>📝 <strong>Issues:</strong> <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">GitHub Issues</a></li>
-		<li>💬 <strong>Discussions:</strong> <a href="https://github.com/ShahFaisalGfG/gfgLock/discussions">GitHub
-				Discussions</a></li>
-		<li>📧 <strong>Contact:</strong> <a href="mailto:shahfaisalgfg@outlook.com">shahfaisalgfg@outlook.com</a></li>
-		<li>🌐 <strong>Website:</strong> <a
-				href="https://shahfaisalgfg.github.io/shahfaisal/">shahfaisalgfg.github.io</a></li>
-	</ul>
-	<hr>
-	<p><strong>Stay Secure. Encrypt Responsibly.</strong> 🔐</p>
-	<p>Last Updated: June 2026</p>
+<div align="center">
+<p><img alt="gfgLock Logo" src="icons/Square150x150Logo.scale-100.png" /></p>
+<h1 id="gfglock">gfgLock</h1>
+<p><strong>Free, open-source file encryption for Windows - offline, private, and built to last.</strong></p>
+<p><a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
+<a href="https://github.com/ShahFaisalGfG/gfgLock/releases"><img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4.svg?logo=windows&amp;logoColor=white" /></a>
+<a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/ShahFaisalGfG/gfgLock?color=brightgreen&amp;label=Latest%20Release" /></a>
+<a href="https://winstall.app/apps/gfgRoyal.gfgLock"><img alt="winget" src="https://img.shields.io/badge/winget-gfgRoyal.gfgLock-0078D4.svg?logo=windows&amp;logoColor=white" /></a></p>
+</div>
+<hr />
+<p>gfgLock is a <strong>free, open-source</strong> desktop app that encrypts and decrypts files using battle-tested cryptography - AES-256 GCM, AES-256 CFB, and ChaCha20-Poly1305 - all powered by a native C++ engine backed by OpenSSL. Drop files onto the window, enter a password, done. No account, no cloud, no subscription, no telemetry. Ever.</p>
+<blockquote>
+<p><em>Your files. Your machine. Your rules.</em></p>
+</blockquote>
+<p><img alt="gfgLock, ready to encrypt six files" src="./screenshots/encrypt_ready.png" /></p>
+<hr />
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#gfglock">gfgLock</a><ul>
+<li><a href="#table-of-contents">Table of Contents</a></li>
+<li><a href="#who-is-this-for">Who Is This For?</a></li>
+<li><a href="#why-gfglock">Why gfgLock?</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#download--install">Download &amp; Install</a><ul>
+<li><a href="#option-1---windows-package-manager-recommended">Option 1 - Windows Package Manager (Recommended)</a></li>
+<li><a href="#option-2---installers">Option 2 - Installers</a></li>
+</ul>
+</li>
+<li><a href="#quick-start">Quick Start</a></li>
+<li><a href="#screenshots">Screenshots</a></li>
+<li><a href="#encryption-algorithms">Encryption Algorithms</a><ul>
+<li><a href="#quick-decision-guide">Quick Decision Guide</a></li>
+</ul>
+</li>
+<li><a href="#security">Security</a><ul>
+<li><a href="#key-derivation">Key Derivation</a></li>
+<li><a href="#privacy-guarantees">Privacy Guarantees</a></li>
+<li><a href="#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li><a href="#settings--preferences">Settings &amp; Preferences</a><ul>
+<li><a href="#appearance">Appearance</a></li>
+<li><a href="#encryption">Encryption</a></li>
+<li><a href="#speed">Speed</a></li>
+<li><a href="#notifications--logs">Notifications &amp; Logs</a></li>
+</ul>
+</li>
+<li><a href="#building-from-source">Building from Source</a><ul>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#development-setup">Development Setup</a></li>
+<li><a href="#full-build---native-extension--all-installers">Full Build - Native Extension + All Installers</a></li>
+</ul>
+</li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#contributing">Contributing</a></li>
+<li><a href="#roadmap">Roadmap</a></li>
+<li><a href="#changelog">Changelog</a><ul>
+<li><a href="#v310---october-2026-current">v3.1.0 - October 2026 <em>(current)</em></a></li>
+<li><a href="#v301---july-2026">v3.0.1 - July 2026</a></li>
+<li><a href="#v300---june-2026">v3.0.0 - June 2026</a></li>
+<li><a href="#v275---may-2026">v2.7.5 - May 2026</a></li>
+<li><a href="#v270---december-2025">v2.7.0 - December 2025</a></li>
+<li><a href="#v269---december-2025">v2.6.9 - December 2025</a></li>
+</ul>
+</li>
+<li><a href="#license--credits">License &amp; Credits</a></li>
+<li><a href="#support-the-project">Support the Project</a></li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="who-is-this-for">Who Is This For?</h2>
+<p>gfgLock is for anyone who takes file privacy seriously without wanting to become a cryptography expert first:</p>
+<ul>
+<li><strong>Developers</strong> storing sensitive config files, credentials, or client data locally</li>
+<li><strong>Freelancers &amp; contractors</strong> delivering confidential documents to clients</li>
+<li><strong>Students &amp; researchers</strong> protecting academic work, drafts, or datasets</li>
+<li><strong>Privacy-conscious users</strong> who simply don't trust cloud sync with everything</li>
+<li><strong>IT professionals</strong> needing a portable, no-admin-required encryption tool for remote work</li>
+<li><strong>Sensitive media owners</strong> - private photos, videos, or personal archives you'd rather keep completely off the cloud</li>
+</ul>
+<p>If you've ever thought <em>"I wish I could just lock this file"</em> - this is for you.</p>
+<hr />
+<h2 id="why-gfglock">Why gfgLock?</h2>
+<p>Most encryption tools make you choose between complexity and trust. Either the UI is a maze, the algorithm is outdated, or the app needs a cloud account to function. gfgLock was built to close that gap.</p>
+<ul>
+<li>🔒 <strong>100 % offline</strong> - no accounts, no cloud sync, no telemetry, no pinging home</li>
+<li>⚡ <strong>Hardware-accelerated</strong> - native C++ extension backed by OpenSSL; seamless Python fallback on any machine</li>
+<li>🎨 <strong>Modern, clean UI</strong> - PySide6 + QML with System, Light, and Dark themes</li>
+<li>🧩 <strong>Three ciphers</strong> - AES-256 GCM and ChaCha20-Poly1305 detect damaged or altered files; AES-256 CFB stays for older files</li>
+<li>📦 <strong>Three install modes</strong> - system-wide, per-user (no admin), and a portable exe that runs without installing</li>
+<li>🖱️ <strong>Context-menu integration</strong> - right-click any file in Windows Explorer to encrypt or decrypt</li>
+</ul>
+<hr />
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Multi-algorithm support</strong> - AES-256 GCM (<code>.gfglock</code>), AES-256 CFB (<code>.gfglck</code>), ChaCha20-Poly1305 (<code>.gfgcha</code>)</li>
+<li><strong>Native C++ engine</strong> - OpenSSL-backed AES-NI hardware acceleration with transparent Python fallback</li>
+<li><strong>Batch processing</strong> - encrypt or decrypt entire folders in one operation using multi-threading</li>
+<li><strong>A result for every file</strong> - each file shows its own progress, then <em>Done</em> with the name it was saved as, <em>Skipped</em>, or <em>Failed</em> with the reason (for example a wrong password). Failed files stay in the list, so you can fix the problem and run them again</li>
+<li><strong>Guided form</strong> - the Encrypt and Decrypt tabs say what is still missing before you can start, show password strength and mismatches, and explain what will happen to the files before anything changes</li>
+<li><strong>Fast on big files</strong> - each file is read, encrypted, and written at the same time, so one large file encrypts about as fast as the disk can copy it</li>
+<li><strong>File Explorer context menu</strong> - right-click any file → <em>Encrypt with gfgLock</em> / <em>Decrypt with gfgLock</em>; while gfgLock is open, more files you send this way join the same window</li>
+<li><strong>Drag &amp; drop</strong> - drop files or folders anywhere on the window; encrypted files go to the Decrypt tab and everything else to the Encrypt tab</li>
+<li><strong>Keyboard friendly</strong> - every control can be reached with Tab and shows a focus outline, and the main actions have shortcuts</li>
+<li><strong>Detailed logging</strong> - full activity or critical-only log levels saved to <code>%APPDATA%\gfgLock\logs\</code></li>
+<li><strong>Live theme switching</strong> - System / Light / Dark with instant preview</li>
+<li><strong>Zero dependencies at runtime</strong> - fully self-contained executable</li>
+</ul>
+<hr />
+<h2 id="download--install">Download &amp; Install</h2>
+<h3 id="option-1---windows-package-manager-recommended">Option 1 - Windows Package Manager (Recommended)</h3>
+<pre><code class="language-powershell">winget install gfgRoyal.gfgLock
+</code></pre>
+<h3 id="option-2---installers">Option 2 - Installers</h3>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th style="text-align: center;">Admin Required</th>
+<th>Best For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.1.0_system_installer.exe</code></a></td>
+<td style="text-align: center;">✅</td>
+<td>Shared / corporate machines</td>
+</tr>
+<tr>
+<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.1.0_user_installer.exe</code></a></td>
+<td style="text-align: center;">❌</td>
+<td>Personal machines - recommended</td>
+</tr>
+<tr>
+<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.1.0_portable.exe</code></a></td>
+<td style="text-align: center;">❌</td>
+<td>Running without installing; settings are kept in <code>%APPDATA%\gfgLock</code></td>
+</tr>
+</tbody>
+</table>
+<p>Compressed <code>.7z</code> archives for all three variants are also available on the <a href="https://github.com/ShahFaisalGfG/gfgLock/releases">Releases</a> page.</p>
+<hr />
+<h2 id="quick-start">Quick Start</h2>
+<p><strong>To lock files</strong></p>
+<ol>
+<li>On the <strong>Encrypt</strong> tab, add files or folders: drag them onto the window, use <strong>Add files</strong> / <strong>Add folder</strong>, or right-click them in File Explorer and choose <em>Encrypt with gfgLock</em></li>
+<li><strong>Type a password twice</strong> - 12+ characters strongly recommended; the strength meter helps</li>
+<li><strong>Optional:</strong> turn on <strong>Hide file names</strong>, or pick another encryption method (AES-256 GCM is the default; see <a href="#encryption-algorithms">Encryption Algorithms</a> if unsure)</li>
+<li>Press <strong>Encrypt</strong> - each file shows its progress, then <em>Done</em> and the name it was saved as</li>
+</ol>
+<p><strong>To open them again</strong></p>
+<ol>
+<li>On the <strong>Decrypt</strong> tab, add the encrypted files (or right-click them and choose <em>Decrypt with gfgLock</em>)</li>
+<li>Enter the password and press <strong>Decrypt</strong> - each file gets its original name back. With a wrong password the files are marked <em>Failed</em> and nothing changes; correct the password and press <strong>Decrypt</strong> again</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Ctrl+1</strong> / <strong>Ctrl+2</strong></td>
+<td>Encrypt tab / Decrypt tab</td>
+</tr>
+<tr>
+<td><strong>Ctrl+O</strong> / <strong>Ctrl+Shift+O</strong></td>
+<td>Add files / add a folder</td>
+</tr>
+<tr>
+<td><strong>Enter</strong> in a password box, <strong>Ctrl+Enter</strong>, or <strong>F5</strong></td>
+<td>Start</td>
+</tr>
+<tr>
+<td><strong>Esc</strong></td>
+<td>Stop a running job (files already being processed finish) or a folder scan</td>
+</tr>
+<tr>
+<td><strong>Ctrl+,</strong> / <strong>F1</strong></td>
+<td>Preferences / About</td>
+</tr>
+<tr>
+<td><strong>Ctrl+A</strong>, <strong>Space</strong>, <strong>Ctrl+C</strong>, <strong>Delete</strong> in the list</td>
+<td>Select all, select a file, copy the file names, remove from the list</td>
+</tr>
+<tr>
+<td><strong>Shift+F10</strong> or the <strong>Menu</strong> key in the list</td>
+<td>Show in folder, copy paths, and the other file actions</td>
+</tr>
+<tr>
+<td><strong>Ctrl+S</strong> / <strong>Esc</strong> in Preferences</td>
+<td>Save / close without saving</td>
+</tr>
+</tbody>
+</table>
+<p>Encrypted files are saved in the same folder as the original under its full name plus the algorithm's extension (<code>report.docx</code> → <code>report.docx.gfglock</code>), and the original is removed only after the encrypted copy is completely written to disk. To decrypt, drop an encrypted file onto gfgLock - the algorithm is auto-detected from the extension, no configuration needed. Neither step ever overwrites an existing file: if the name is taken, the new file gets a suffix such as <code>report (2).docx</code>. Dropping a folder adds every file inside it, including subfolders; even folders with tens of thousands of files load in about a second.</p>
+<hr />
+<h2 id="screenshots">Screenshots</h2>
+<details>
+<summary>📸 Click to expand screenshots</summary>
+<p><br /></p>
+<table>
+<thead>
+<tr>
+<th>First launch</th>
+<th>Ready to encrypt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="Empty Encrypt tab" src="./screenshots/encrypt_empty.png" /></td>
+<td><img alt="Files added and password typed twice" src="./screenshots/encrypt_ready.png" /></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Encrypted</th>
+<th>Wrong password</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="Every file done with its new name" src="./screenshots/encrypt_done.png" /></td>
+<td><img alt="Each file says why it failed" src="./screenshots/decrypt_wrong_password.png" /></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Decrypted</th>
+<th>Preferences</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="Original names restored" src="./screenshots/decrypt_done.png" /></td>
+<td><img alt="Preferences" src="./screenshots/preferences.png" /></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Dark theme</th>
+<th>Dark theme</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="Encrypt tab in the dark theme" src="./screenshots/encrypt_ready_dark.png" /></td>
+<td><img alt="Decrypt tab in the dark theme" src="./screenshots/decrypt_wrong_password_dark.png" /></td>
+</tr>
+</tbody>
+</table>
+</details>
+<hr />
+<h2 id="encryption-algorithms">Encryption Algorithms</h2>
+<table>
+<thead>
+<tr>
+<th>Algorithm</th>
+<th>Extension</th>
+<th>Type</th>
+<th>Recommended For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>AES-256 GCM</strong></td>
+<td><code>.gfglock</code></td>
+<td>AEAD</td>
+<td>✅ General purpose - the safe default</td>
+</tr>
+<tr>
+<td><strong>AES-256 CFB</strong></td>
+<td><code>.gfglck</code></td>
+<td>Stream</td>
+<td>Legacy: matching files made by older versions</td>
+</tr>
+<tr>
+<td><strong>ChaCha20-Poly1305</strong></td>
+<td><code>.gfgcha</code></td>
+<td>AEAD</td>
+<td>CPUs without AES-NI; timing-attack resistance</td>
+</tr>
+</tbody>
+</table>
+<h3 id="quick-decision-guide">Quick Decision Guide</h3>
+<pre><code>Need strong, authenticated encryption?
+  → AES-256 GCM  (authenticated, hardware-accelerated, fastest on most PCs, recommended)
 
+Need the same method as files made by older gfgLock versions?
+  → AES-256 CFB  (legacy; slower than GCM and can't detect a damaged or altered file)
+
+Older hardware or need constant-time, timing-attack-resistant encryption?
+  → ChaCha20-Poly1305  (AEAD, constant-time, no AES-NI required)
+</code></pre>
+<blockquote>
+<p>⚠️ <strong>Compatibility:</strong> Files encrypted with one algorithm cannot be decrypted with another. The algorithm is auto-detected on decryption from the file extension.</p>
+<p>⚠️ <strong>Version notice:</strong> Files encrypted with v2.7.0 or earlier are not compatible with v2.7.5 or later due to a file-structure change.</p>
+</blockquote>
+<hr />
+<h2 id="security">Security</h2>
+<h3 id="key-derivation">Key Derivation</h3>
+<p>Your password is never stored or transmitted anywhere. A unique encryption key is derived fresh for every single operation:</p>
+<pre><code>Password (UTF-8) + random 16-byte salt
+  ↓
+PBKDF2-HMAC-SHA256  (200 000 iterations)
+  ↓
+256-bit encryption key
+</code></pre>
+<h3 id="privacy-guarantees">Privacy Guarantees</h3>
+<ul>
+<li>❌ No telemetry or usage reporting</li>
+<li>❌ No cloud sync or remote backup</li>
+<li>❌ No accounts or registration required</li>
+<li>❌ No third-party analytics or tracking</li>
+</ul>
+<h3 id="best-practices">Best Practices</h3>
+<ul>
+<li>Use <strong>strong, unique passwords</strong> - 12+ characters, mixed case, numbers, and symbols</li>
+<li>Keep encrypted files in a <strong>secure location</strong> - gfgLock protects content, not storage</li>
+<li>Enable <strong>logging</strong> for audit trails in compliance-sensitive environments</li>
+<li><strong>Back up your passwords</strong> - there is no recovery mechanism by design</li>
+</ul>
+<hr />
+<h2 id="settings--preferences">Settings &amp; Preferences</h2>
+<p>Open <strong>Preferences</strong> from the title bar (<strong>Ctrl+,</strong>). Changes apply when you press <strong>Save</strong>; <strong>Reset to defaults</strong> asks before restoring everything.</p>
+<h3 id="appearance">Appearance</h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>App theme</strong></td>
+<td>System (follows your Windows light or dark mode), Light, or Dark</td>
+</tr>
+</tbody>
+</table>
+<h3 id="encryption">Encryption</h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Encryption method</strong></td>
+<td>The method the Encrypt tab starts with; each option explains its trade-offs. Decrypting picks the right method automatically</td>
+</tr>
+<tr>
+<td><strong>Hide file names</strong></td>
+<td>Give encrypted files random names by default; the original name comes back when you decrypt</td>
+</tr>
+</tbody>
+</table>
+<h3 id="speed">Speed</h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Files at a time</strong></td>
+<td>How many files are encrypted or decrypted at once, set separately for each (1 up to your processor threads). Each file is already read, encrypted, and written at the same time, so this mostly speeds up batches of smaller files</td>
+</tr>
+<tr>
+<td><strong>Keep the PC responsive</strong></td>
+<td>Leave one processor thread free for Windows (on by default; turn off to use every thread)</td>
+</tr>
+<tr>
+<td><strong>Read size</strong></td>
+<td>How much of a file is read at once, set separately for encrypting and decrypting. <strong>Automatic</strong> (4 MB) suits most PCs; 1 MB to 64 MB can be picked by hand. Each file being worked on holds about four times the size in memory</td>
+</tr>
+<tr>
+<td><strong>Run speed test</strong></td>
+<td>Encrypts and decrypts a 256 MB test file in the temp folder with every read size (about a minute), then selects the fastest for this PC. Automatic is kept unless another size is at least 5% faster; press <strong>Save</strong> to keep the result</td>
+</tr>
+</tbody>
+</table>
+<h3 id="notifications--logs">Notifications &amp; Logs</h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Notify when finished</strong></td>
+<td>Show a Windows notification when encrypting or decrypting ends</td>
+</tr>
+<tr>
+<td><strong>Keep logs</strong> / <strong>What to log</strong></td>
+<td>Write log files with errors only, or every file processed. Logs list file names, never passwords</td>
+</tr>
+<tr>
+<td><strong>Open logs folder</strong> / <strong>Clear logs</strong></td>
+<td>Show the log files in File Explorer, or empty them</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="building-from-source">Building from Source</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li>Python 3.11+</li>
+<li><a href="https://visualstudio.microsoft.com/downloads/">Visual Studio 2022 Build Tools</a> - <em>Desktop development with C++</em> workload</li>
+<li>CMake ≥ 3.25</li>
+<li><a href="https://jrsoftware.org/isinfo.php">Inno Setup 6</a></li>
+</ul>
+<h3 id="development-setup">Development Setup</h3>
+<pre><code class="language-powershell"># 1. Clone the repository
+git clone https://github.com/ShahFaisalGfG/gfgLock.git
+cd gfgLock
+
+# 2. Create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 3. Install Python dependencies
+pip install -r requirements.txt
+
+# 4. Run directly (no native build required)
+python -m gfglock
+</code></pre>
+<h3 id="full-build---native-extension--all-installers">Full Build - Native Extension + All Installers</h3>
+<pre><code class="language-powershell">.\scripts\build.ps1
+</code></pre>
+<p>This single script runs <code>scripts\build_native.ps1</code> (bootstraps vcpkg, installs OpenSSL through it, and builds the CMake project), then PyInstaller bundling, Inno Setup compilation, and the portable exe. Each build runs the app's <code>--self-test</code> before it counts as done. The installers land in <code>build\installer\</code> and the portable exe in <code>build\</code>. See <a href="dev_setup.md">dev_setup.md</a> for the individual scripts.</p>
+<blockquote>
+<p><strong>First-run note:</strong> vcpkg will clone from GitHub and download OpenSSL - internet access is required for the first build only.</p>
+</blockquote>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>"Could not parse stylesheet"</em> warning</td>
+<td>Harmless Qt startup message - no data loss, safe to ignore</td>
+</tr>
+<tr>
+<td>A file is marked <em>Failed</em></td>
+<td>Its row says why. "Wrong password or the file was modified" means the password is wrong or the file was damaged; correct the password and press <strong>Decrypt</strong> again. Nothing is changed when a file fails</td>
+</tr>
+<tr>
+<td>A file I added isn't in the list</td>
+<td>The Encrypt tab leaves out files that are already encrypted, and the Decrypt tab leaves out files that aren't; a notice says how many. Use the other tab for them</td>
+</tr>
+<tr>
+<td>Slow performance</td>
+<td>For many small files, raise <strong>Files at a time</strong> in <strong>Preferences → Speed</strong>. A single large file goes about as fast as the disk allows; close background apps that use the same disk</td>
+</tr>
+<tr>
+<td>Context menu not appearing</td>
+<td>Re-run the installer; use <em>Run as administrator</em> for the system installer</td>
+</tr>
+<tr>
+<td>Logs not created</td>
+<td>Turn on <strong>Keep logs</strong> in <strong>Preferences → Notifications &amp; logs</strong>; check write permissions on <code>%APPDATA%\gfgLock\logs\</code></td>
+</tr>
+</tbody>
+</table>
+<p>Still stuck? <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">Open an issue</a> with your log file and gfgLock version - I'll get back to you.</p>
+<hr />
+<h2 id="contributing">Contributing</h2>
+<p>Contributions of all kinds are welcome - bug reports, fixes, new features, translations, or just improving a sentence in the docs.</p>
+<ol>
+<li><strong>Fork</strong> the repository and clone your fork</li>
+<li>Create a feature branch: <code>git checkout -b feature/your-feature</code></li>
+<li>Make your changes and ensure:<ul>
+<li><code>pyright</code> passes on all edited Python files</li>
+<li><code>qmllint</code> passes on all edited <code>.qml</code> files</li>
+</ul>
+</li>
+<li>Commit with a clear message and open a <strong>Pull Request</strong> targeting the <code>development</code> branch</li>
+</ol>
+<p>For significant changes, please <a href="https://github.com/ShahFaisalGfG/gfgLock/issues">open an issue</a> first to discuss the approach - it saves time for everyone and increases the chance your PR gets merged quickly.</p>
+<p>Not sure where to start? Look for issues tagged <a href="https://github.com/ShahFaisalGfG/gfgLock/issues?q=is%3Aopen+label%3A%22good+first+issue%22"><code>good first issue</code></a>.</p>
+<hr />
+<h2 id="roadmap">Roadmap</h2>
+<table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Planned Feature</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>v3.2.0</td>
+<td>Local Password Wallet</td>
+</tr>
+<tr>
+<td>v3.3.0</td>
+<td>File integrity verification (SHA-256 checksums)</td>
+</tr>
+<tr>
+<td>v3.4.0</td>
+<td>Resumable / pause-and-continue for large file operations</td>
+</tr>
+<tr>
+<td>v4.0.0</td>
+<td>Cloud-encrypted password backup</td>
+</tr>
+</tbody>
+</table>
+<p>Have a feature idea or a use case we haven't thought of? <a href="https://github.com/ShahFaisalGfG/gfgLock/discussions">Start a discussion</a> - feature requests that get traction move up the roadmap.</p>
+<hr />
+<h2 id="changelog">Changelog</h2>
+<h3 id="v310---october-2026-current">v3.1.0 - October 2026 <em>(current)</em></h3>
+<ul>
+<li>🛡️ <strong>Fixed data loss:</strong> files with the same name but different extensions (<code>report.docx</code>, <code>report.pdf</code>) were both encrypted to <code>report.gfglock</code>, so one original was lost. Encrypted files now keep the full original name, and no operation ever overwrites an existing file.</li>
+<li>🛡️ <strong>Fixed unsafe decryption names:</strong> the file name stored inside an encrypted file is now validated. A tampered file can no longer write outside its folder, to a device name such as <code>NUL</code>, or into a hidden NTFS stream.</li>
+<li>🛡️ <strong>Safer writes:</strong> output goes to a temporary file, is size-checked and flushed to disk, and only then replaces the name and removes the source. Failed or wrong-password operations leave the original untouched, and authenticated modes (GCM, ChaCha20-Poly1305) never expose plaintext before the authentication tag is verified.</li>
+<li>🛡️ <strong>Nothing is left in both forms:</strong> a read-only file, or one open in another program, now fails with the reason before anything is written, or has its new copy removed again, instead of ending up both encrypted and unencrypted. Interrupted jobs no longer leave temporary files behind.</li>
+<li>🛡️ <strong>Links are skipped:</strong> encrypting a symbolic link used to remove the link and leave the file it points to readable. Folder scans also no longer follow junctions, which could loop forever.</li>
+<li>🛡️ <strong>Closing during a job asks first,</strong> then lets the files in progress finish before gfgLock closes.</li>
+<li>🐛 <strong>Fixed:</strong> files with non-ASCII names (<code>résumé.txt</code>) failed to encrypt on the native path, and names like <code>café.txt</code> were restored garbled.</li>
+<li>🐛 <strong>Fixed:</strong> encrypting a file named like <code>A.GFGLOCK</code> could delete it; dropping a folder added the folder itself instead of its files.</li>
+<li>🐛 <strong>Fixed:</strong> turning <strong>Keep the PC responsive</strong> on or off reset <strong>Files at a time</strong> to 1.</li>
+<li>⚡ <strong>Faster encryption:</strong> reading, encrypting, and writing a file now overlap instead of taking turns, so a large file encrypts and decrypts about 1.5 times faster, at about the speed of the disk (a 1 GB file on a SATA SSD: about 3.8 s instead of 5.5 s).</li>
+<li>⚡ <strong>Read size:</strong> now <strong>Automatic</strong> by default (4 MB, which measured fastest on a typical desktop), applies to decrypting as well (it used to be ignored there), and <strong>Run speed test</strong> in <strong>Preferences → Speed</strong> times every size on your PC and selects the fastest. A read size picked in an earlier version is kept (128 MB becomes 64 MB, the new maximum); the old defaults become Automatic.</li>
+<li>⚡ <strong>Large folders:</strong> folders are scanned in the background (also from the Explorer context menu) with a live count and a Stop button; removing thousands of files from the list is instant.</li>
+<li>🎨 <strong>Redesigned interface:</strong> one window with <strong>Encrypt</strong> and <strong>Decrypt</strong> tabs replaces the launcher and its pop-up dialogs, in the same design as CC-Gen-Ultimate. Each tab keeps its own file list, and every file shows its progress and result (<em>Done</em> with the name it was saved as, <em>Skipped</em>, or <em>Failed</em> with the reason). Failed files stay in the list to retry, finished ones can be removed, and the right-click menu offers <strong>Show in folder</strong> and copying names or paths. The number of files at a time moved to <strong>Preferences → Speed</strong>, so the tabs only ask for what each job needs.</li>
+<li>🎨 Dialogs dim the window with a dark layer in both themes; in the dark theme they used to fade it to a pale grey that looked like a frozen app.</li>
+<li>🧭 <strong>Easier to use:</strong> each tab says what is missing before it can start, shows password strength (in words as well as a bar) and mismatches, and explains what will happen to the files. Notices explain files that were left out. Every control can be reached with Tab and shows a focus outline. Shortcuts: <strong>Ctrl+1</strong> / <strong>Ctrl+2</strong> tabs, <strong>Ctrl+O</strong> add files, <strong>Ctrl+Shift+O</strong> add folder, <strong>Ctrl+Enter</strong> or <strong>F5</strong> start, <strong>Esc</strong> stop, <strong>Ctrl+,</strong> preferences, <strong>F1</strong> about.</li>
+<li>🧭 Files can be added while a job runs; they wait for the next run, and a notice says so. Rows can't be removed mid-run, and a stopped or partly failed run keeps the password so the rest can run without typing it again.</li>
+<li>🖱️ <strong>One window:</strong> dropping files anywhere sends encrypted files to Decrypt and the rest to Encrypt, and files sent from the Explorer context menu while gfgLock is open join that window instead of opening another.</li>
+<li>🧩 <strong>Context menu:</strong> "Decrypt with gfgLock" only appears when the selection contains encrypted files or folders, and launch failures are reported instead of being ignored.</li>
+<li>🏷️ AES-256 CFB is now labelled <em>legacy</em>: measured on current PCs it is the slowest of the three methods, and it can't detect a damaged or altered file.</li>
+<li>🧪 <strong>Release checks:</strong> every build runs the frozen app with <code>--self-test</code> (native engine, all algorithms on both the native and Python paths, every QML screen, and every image the app shows), so a missing module or DLL fails the build instead of reaching users. The release workflow also runs the test suite.</li>
+<li>🔧 The Python fallback uses AES-CFB from its new location in <code>cryptography</code>, so future <code>cryptography</code> releases keep opening <code>.gfglck</code> files.</li>
+<li>🔧 <strong>Installers:</strong> the system-wide uninstaller no longer deletes every user's <code>%APPDATA%\gfgLock</code> folder (which held other users' per-user installs and settings), and uninstalling never deletes other files in the install folder. Explorer refreshes file icons after install, and <code>THIRD_PARTY_NOTICES.md</code> and the offline readme are installed under <code>docs</code>.</li>
+<li>🔧 A damaged or hand-edited settings file can no longer stop Start from working; values of the wrong type fall back to their defaults.</li>
+<li>🔧 The native engine (<code>gfglock_native</code>) now exposes API version 4; an outdated module is ignored in favour of the Python fallback. Files from earlier versions decrypt unchanged.</li>
+</ul>
+<h3 id="v301---july-2026">v3.0.1 - July 2026</h3>
+<ul>
+<li>🖼️ <strong>Startup splash screen:</strong> live dependency-loading progress shown while the app boots</li>
+<li>🐛 <strong>Fixed:</strong> unified system/user installer AppIds - resolves duplicate Add/Remove Programs entries</li>
+<li>🐛 <strong>Fixed:</strong> user (non-admin) installer no longer schedules a reboot-time file replacement for the shell extension DLL, which required admin rights it doesn't have</li>
+</ul>
+<h3 id="v300---june-2026">v3.0.0 - June 2026</h3>
+<ul>
+<li>🚀 <strong>Native engine:</strong> C++ extension backed by OpenSSL - hardware-accelerated AES-256 GCM/CFB and ChaCha20-Poly1305 with seamless Python fallback</li>
+<li>🧪 <strong>Test suite:</strong> Full <code>pytest</code> coverage - native path, Python fallback, and cross-path round-trip compatibility</li>
+<li>🔧 <strong>Build:</strong> <code>scripts/build_native.ps1</code> automates MSVC + vcpkg + CMake compilation in one command</li>
+<li>📁 Build scripts reorganised under <code>scripts/</code></li>
+</ul>
+<h3 id="v275---may-2026">v2.7.5 - May 2026</h3>
+<ul>
+<li>🎨 <strong>UI rewrite:</strong> PyQt6 widgets replaced with PySide6 + QML, Material-style interface</li>
+<li>⏱️ Remaining time estimation during operations</li>
+<li>🔑 Auto-focus password field; Enter key starts operation</li>
+<li>🪵 Fixed log routing - critical and full log levels now correctly separated</li>
+<li>🏗️ Added <code>scripts/build.ps1</code> one-command installer build</li>
+</ul>
+<h3 id="v270---december-2025">v2.7.0 - December 2025</h3>
+<ul>
+<li>⚡ Optimised cipher performance; AES-NI hardware detection</li>
+<li>🔁 Stream mode (chunk size <em>Off</em>) for small files</li>
+</ul>
+<h3 id="v269---december-2025">v2.6.9 - December 2025</h3>
+<ul>
+<li>✨ Multi-algorithm support (AES-256 GCM/CFB, ChaCha20-Poly1305)</li>
+<li>✨ Comprehensive logging, dynamic theme support, smart file filtering</li>
+</ul>
+<p><a href="release_notes/">Full release notes →</a></p>
+<hr />
+<h2 id="license--credits">License &amp; Credits</h2>
+<p>Released under the <a href="LICENSE">MIT License</a> - free to use, modify, and distribute.</p>
+<p>Built with ❤️ by <strong>Shah Faisal</strong> · <a href="https://shahfaisalgfg.github.io/shahfaisal/">Portfolio</a> · <a href="mailto:shahfaisalgfg@outlook.com">shahfaisalgfg@outlook.com</a></p>
+<hr />
+<h2 id="support-the-project">Support the Project</h2>
+<p>gfgLock is free and will always stay free. If it's saved you time, protected a file that mattered, or just made your workflow a little smoother, here are a few ways to give back:</p>
+<ul>
+<li>⭐ <strong>Star the repo</strong> - it takes two seconds and helps others find the project</li>
+<li>🐛 <strong>Report a bug</strong> - honest feedback makes the tool better for everyone</li>
+<li>💡 <strong>Suggest a feature</strong> - if you need it, chances are someone else does too</li>
+<li>🔁 <strong>Share it</strong> - tell a friend, post it in a forum, or mention it in a blog post</li>
+<li>🛠️ <strong>Contribute code</strong> - PRs are always welcome; see <a href="#contributing">Contributing</a></li>
+</ul>
+<p><strong><a href="https://github.com/ShahFaisalGfG/gfgLock">★ Star gfgLock on GitHub</a></strong></p>
+<hr />
+<p><em>Stay secure. Encrypt responsibly.</em> 🔐</p>
 </body>
 
 </html>

@@ -3,6 +3,8 @@
 import subprocess
 import sys
 
+from gfglock.utils.logging import write_log
+
 # PowerShell AUMID guaranteed registered on every Windows installation
 _PS_AUMID = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"
 
@@ -35,5 +37,5 @@ def send_notification(title: str, body: str) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    except Exception:
-        pass
+    except OSError as error:  # a notification is optional; the operation already finished
+        write_log(f"Could not show a notification: {error}", "critical")

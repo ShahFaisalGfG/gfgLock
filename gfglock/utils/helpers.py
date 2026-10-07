@@ -3,7 +3,6 @@
 import os
 import sys
 from datetime import datetime
-from multiprocessing import cpu_count
 from secrets import token_hex
 
 from gfglock.core import native_bridge as _bridge
@@ -17,37 +16,6 @@ def resource_path(relative_path: str) -> str:
         utils_dir = os.path.dirname(os.path.abspath(__file__))
         base = os.path.dirname(os.path.dirname(utils_dir))  # project root
     return os.path.normpath(os.path.join(base, relative_path))
-
-
-def get_cpu_thread_count() -> int:
-    """Return the number of logical CPU threads available."""
-    count = os.cpu_count()
-    return 0 if count is None else count
-
-
-def clamp_threads(threads: int) -> int:
-    """Clamp thread count to a safe maximum (CPU count - 1, min 1)."""
-    try:
-        max_safe = max(cpu_count() - 1, 1)
-    except Exception:
-        max_safe = 1
-    if not isinstance(threads, int) or threads < 1:
-        return 1
-    return min(threads, max_safe)
-
-
-def format_duration(seconds: float) -> str:
-    """Format a duration in seconds to a human-readable string."""
-    seconds = int(seconds)
-    if seconds < 60:
-        return f"{seconds} seconds"
-    elif seconds < 3600:
-        mins, secs = divmod(seconds, 60)
-        return f"{mins} mins {secs} sec"
-    else:
-        hours, remainder = divmod(seconds, 3600)
-        mins, secs = divmod(remainder, 60)
-        return f"{hours} hrs {mins} mins {secs} sec"
 
 
 def format_bytes(bytes_val: float, strip_zeros: bool = False) -> str:
@@ -66,38 +34,6 @@ def _format_size(value: float, unit: str, strip_zeros: bool) -> str:
     if strip_zeros:
         number = number.rstrip("0").rstrip(".")
     return f"{number} {unit}"
-
-
-def format_time(seconds: float) -> str:
-    """Format seconds to HH:MM:SS string."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-
-
-def choose_scale(total_bytes: float) -> tuple:
-    """Choose a (scale, unit, scaled_total) that fits in a signed 32-bit int."""
-    units = ["B", "KB", "MB", "GB", "TB"]
-    scaled = float(total_bytes)
-    idx = 0
-    MAX_INT32 = 2_147_483_647
-    while scaled > MAX_INT32 and idx < len(units) - 1:
-        scaled = (scaled + 1023) / 1024
-        idx += 1
-    return 1024 ** idx, units[idx], int(scaled)
-
-
-def calculate_files_total_size(file_paths: list) -> float:
-    """Return total size in bytes of all existing files in the list."""
-    total = 0
-    for file_path in file_paths:
-        try:
-            if os.path.isfile(file_path):
-                total += os.path.getsize(file_path)
-        except Exception:
-            pass
-    return total
 
 
 def predict_encrypted_size(file_path: str, mode: str = "GCM") -> int:

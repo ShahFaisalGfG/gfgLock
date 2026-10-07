@@ -181,6 +181,17 @@ $VcpkgExit = $LASTEXITCODE
 $ErrorActionPreference = $SavedPref
 if ($VcpkgExit -ne 0) { Fail "vcpkg install failed (exit $VcpkgExit)." }
 
+# vcvarsall does not always put the CMake bundled with VS on PATH; use it when none is found.
+# Done after the venv step, since activating a venv can restore an older PATH.
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue) -and $VsInstallPath) {
+    $VsCmakeBin = Join-Path $VsInstallPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+    if (Test-Path (Join-Path $VsCmakeBin "cmake.exe")) { $env:PATH = "$VsCmakeBin;$env:PATH" }
+}
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    Fail "Could not find cmake.exe (checked PATH and the VS install). Install the C++ CMake tools for Windows workload."
+}
+Write-Host "   CMake: $((Get-Command cmake).Source)" -ForegroundColor DarkGray
+
 # --- CMake configure ---------------------------------------------------------
 
 Write-Step "CMake configure"
@@ -233,9 +244,9 @@ Write-Host "Shell extension     : $ShellDll  ($DllKb KB)" -ForegroundColor Green
 # --- Quick smoke test --------------------------------------------------------
 
 Write-Step "Smoke test"
-python -c "import sys; sys.path.insert(0,'gfglock/core'); import gfglock_native as n; print('  NATIVE_AVAILABLE: True')"
+# Loads the module the way the app does, so an API version mismatch fails here, not for users.
+python -c "import sys; from gfglock.core import native_bridge as b; print('   native API', getattr(b._native, 'API_VERSION', None), '/ required', b.REQUIRED_API_VERSION); sys.exit(0 if b.NATIVE_AVAILABLE else 1)"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "   Smoke test FAILED - check build output" -ForegroundColor Red
-} else {
-    Write-Host "   Smoke test PASSED" -ForegroundColor Green
+    Fail "Smoke test failed: the app can't load the native module it just built."
 }
+Write-Host "   Smoke test PASSED" -ForegroundColor Green

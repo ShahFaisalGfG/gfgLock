@@ -5,6 +5,8 @@ import json
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
+from gfglock.utils.logging import write_log
+
 _SERVER_NAME = "gfgLock_AppServer_v3"
 _CONNECT_MS = 300
 _RETRY_MS = 500
@@ -15,6 +17,8 @@ class SingleInstance(QObject):
     """Routes secondary instances to the primary via a named-pipe socket."""
 
     filesReceived = Signal(str, list)   # (mode, paths)
+    # Every message from a second launch, with or without files: the primary shows its window.
+    activationRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -85,8 +89,8 @@ class SingleInstance(QObject):
             while self._server and self._server.hasPendingConnections():
                 sock = self._server.nextPendingConnection()
                 sock.readyRead.connect(lambda s=sock: self._readMessage(s))
-        except Exception:
-            pass
+        except Exception as error:
+            write_log(f"Could not accept a message from another gfgLock window: {error}", "critical")
 
     def _readMessage(self, sock: QLocalSocket) -> None:
         """Parse incoming JSON message, emit filesReceived, and ack the sender."""
@@ -95,10 +99,11 @@ class SingleInstance(QObject):
             payload = json.loads(raw)
             mode = payload.get("mode", "")
             paths = payload.get("paths", [])
+            self.activationRequested.emit()
             if mode and paths:
                 self.filesReceived.emit(mode, paths)
             sock.write(b"OK")
             sock.flush()
             sock.waitForBytesWritten(300)
-        except Exception:
-            pass
+        except Exception as error:
+            write_log(f"Could not read a message from another gfgLock window: {error}", "critical")

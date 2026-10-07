@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=70", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "gfglock"
-version = "3.0.1"
+version = "3.1.0"
 description = "Secure AES-256 file encryption and decryption - fast, simple, reliable"
 authors = [{ name = "Shah Faisal", email = "shahfaisalgfg@gmail.com" }]
 readme = "readme.md"
@@ -14,7 +14,6 @@ dependencies = [
     "PySide6>=6.7",
     "cryptography>=46.0",
     "pycryptodome>=3.20",
-    "py-cpuinfo>=9.0",
 ]
 
 [project.scripts]
@@ -37,6 +36,8 @@ gfglock = [
     "assets/icons/*.ico",
     "qml/*.qml",
     "qml/components/*.qml",
+    "qml/components/qmldir",
+    "qml/pages/*.qml",
 ]
 
 [tool.gfglock]

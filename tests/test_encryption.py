@@ -266,8 +266,7 @@ class TestCrossCompatibility:
         )
 
 
-_LARGE = 11 * 1024 * 1024  # 1 MiB above SMALL_FILE_THRESHOLD (10 MiB) to force chunked path
-_CHUNK = 1 * 1024 * 1024   # 1 MiB explicit chunk size → ~11 iterations per encrypt
+_LARGE = 11 * 1024 * 1024 + 123  # three 4 MiB native blocks, the last one partial
 
 
 class TestNegativePaths:
@@ -353,61 +352,54 @@ class TestNegativePaths:
         assert src.read_bytes() == data
 
 
-class TestChunkedProcessing:
-    """Verify roundtrip integrity for files exceeding SMALL_FILE_THRESHOLD with chunk_size > 0."""
+class TestLargeFiles:
+    """Files spanning several native 4 MiB blocks must round-trip on every path and pairing."""
 
-    def test_gcm_chunked(self, tmp_path, password, monkeypatch):
-        """AES-256-GCM Python fallback must roundtrip an 11 MiB file with 1 MiB chunks."""
-        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
+    @pytest.mark.parametrize("encrypt_native, decrypt_native", [
+        pytest.param(True, True, marks=requires_native),
+        pytest.param(True, False, marks=requires_native),
+        pytest.param(False, True, marks=requires_native),
+        (False, False),
+    ])
+    @pytest.mark.parametrize("algorithm, ext", [("gcm", ".gfglock"), ("cfb", ".gfglck"), ("chacha", ".gfgcha")])
+    def test_roundtrip(self, tmp_path, password, monkeypatch, algorithm, ext, encrypt_native, decrypt_native):
         data = os.urandom(_LARGE)
         src = tmp_path / "large.bin"
         src.write_bytes(data)
-        ok, msg = aes_core.encrypt_file(str(src), password, AEAD=True, chunk_size=_CHUNK)
+        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", encrypt_native)
+        if algorithm == "chacha":
+            ok, msg = chacha_core.encrypt_file(str(src), password)
+        else:
+            ok, msg = aes_core.encrypt_file(str(src), password, AEAD=algorithm == "gcm")
         assert ok, f"Encrypt failed: {msg}"
+        enc = _find_enc(str(tmp_path), ext)
+        with open(enc, "rb") as f:
+            header = f.read(16 + (16 if algorithm == "cfb" else 12) + 4)
+        assert header[-4:] == bytes(4), "the chunk field must say the data is one stream"
+        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", decrypt_native)
+        decrypt = chacha_core.decrypt_file if algorithm == "chacha" else aes_core.decrypt_file
+        ok, msg = decrypt(enc, password)
+        assert ok, f"Decrypt failed: {msg}"
+        assert src.read_bytes() == data
+
+    @requires_native
+    def test_truncated_file_fails_and_is_kept(self, tmp_path, password):
+        src = tmp_path / "large.bin"
+        src.write_bytes(os.urandom(_LARGE))
+        ok, msg = aes_core.encrypt_file(str(src), password)
+        assert ok, msg
         enc = _find_enc(str(tmp_path), ".gfglock")
+        with open(enc, "r+b") as f:
+            f.truncate(os.path.getsize(enc) - 5 * 1024 * 1024)
         ok, msg = aes_core.decrypt_file(enc, password)
-        assert ok, f"Decrypt failed: {msg}"
-        with open(str(tmp_path / "large.bin"), "rb") as f:
-            assert f.read() == data
+        assert not ok
+        assert sorted(os.listdir(tmp_path)) == [os.path.basename(enc)]
 
-    def test_cfb_chunked(self, tmp_path, password, monkeypatch):
-        """AES-256-CFB Python fallback must roundtrip an 11 MiB file with 1 MiB chunks."""
-        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
-        data = os.urandom(_LARGE)
+    @requires_native
+    def test_progress_reports_every_byte(self, tmp_path, password):
         src = tmp_path / "large.bin"
-        src.write_bytes(data)
-        ok, msg = aes_core.encrypt_file(str(src), password, AEAD=False, chunk_size=_CHUNK)
-        assert ok, f"Encrypt failed: {msg}"
-        enc = _find_enc(str(tmp_path), ".gfglck")
-        ok, msg = aes_core.decrypt_file(enc, password)
-        assert ok, f"Decrypt failed: {msg}"
-        with open(str(tmp_path / "large.bin"), "rb") as f:
-            assert f.read() == data
-
-    def test_chacha_chunked(self, tmp_path, password, monkeypatch):
-        """ChaCha20-Poly1305 Python fallback must roundtrip an 11 MiB file with 1 MiB chunks."""
-        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
-        data = os.urandom(_LARGE)
-        src = tmp_path / "large.bin"
-        src.write_bytes(data)
-        ok, msg = chacha_core.encrypt_file(str(src), password, chunk_size=_CHUNK)
-        assert ok, f"Encrypt failed: {msg}"
-        enc = _find_enc(str(tmp_path), ".gfgcha")
-        ok, msg = chacha_core.decrypt_file(enc, password)
-        assert ok, f"Decrypt failed: {msg}"
-        with open(str(tmp_path / "large.bin"), "rb") as f:
-            assert f.read() == data
-
-    def test_gcm_chunk_zero(self, tmp_path, password, monkeypatch):
-        """AES-256-GCM Python fallback must roundtrip an 11 MiB file with chunk_size=0."""
-        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
-        data = os.urandom(_LARGE)
-        src = tmp_path / "large.bin"
-        src.write_bytes(data)
-        ok, msg = aes_core.encrypt_file(str(src), password, AEAD=True, chunk_size=0)
-        assert ok, f"Encrypt failed: {msg}"
-        enc = _find_enc(str(tmp_path), ".gfglock")
-        ok, msg = aes_core.decrypt_file(enc, password)
-        assert ok, f"Decrypt failed: {msg}"
-        with open(str(tmp_path / "large.bin"), "rb") as f:
-            assert f.read() == data
+        src.write_bytes(os.urandom(_LARGE))
+        reported: list[float] = []
+        ok, msg = aes_core.encrypt_file(str(src), password, progress_callback=reported.append)
+        assert ok, msg
+        assert sum(reported) == _LARGE + len("large.bin") + 1  # the data plus the stored name and NUL

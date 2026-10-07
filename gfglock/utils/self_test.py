@@ -8,6 +8,7 @@
 # reported as one failed check, not as a crash that hides every other result.
 
 import os
+import re
 import sys
 import tempfile
 import traceback
@@ -114,11 +115,26 @@ def _check_qml() -> None:
         raise RuntimeError("; ".join(errors))
 
 
+def _check_images() -> None:
+    """Every image the app shows is bundled; QML shows a missing image as a blank, not an error."""
+    from gfglock.app import SPLASH_LOGO, WINDOW_ICONS
+
+    missing = [path for path in (SPLASH_LOGO, *WINDOW_ICONS.values()) if not os.path.isfile(resource_path(path))]
+    for qml in _qml_files():
+        with open(qml, encoding="utf-8") as fh:
+            for source in re.findall(r'source:\s*"([^"]+\.(?:png|ico|svg))"', fh.read()):
+                if not os.path.isfile(os.path.join(os.path.dirname(qml), source)):
+                    missing.append(f"{source} (from {os.path.basename(qml)})")
+    if missing:
+        raise RuntimeError("missing images: " + ", ".join(missing))
+
+
 CHECKS: list[Check] = [
     ("Native extension", _check_native_extension),
     ("Encrypt and decrypt files", _check_file_round_trip),
     ("Python fallback matches native", _check_python_fallback),
     ("QML", _check_qml),
+    ("Images", _check_images),
 ]
 
 

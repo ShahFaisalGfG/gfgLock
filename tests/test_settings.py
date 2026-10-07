@@ -32,7 +32,7 @@ class TestGetDefaultSettings:
     def test_top_level_keys_present(self):
         """All expected top-level setting groups must be present."""
         defaults = settings_mod.get_default_settings()
-        assert set(defaults.keys()) == {"theme", "appearance", "encryption", "decryption", "advanced"}
+        assert set(defaults.keys()) == {"theme", "encryption", "decryption", "advanced"}
 
     def test_known_default_values(self):
         """A few representative default values must match the documented defaults."""
@@ -132,3 +132,71 @@ class TestMergeSettings:
         settings_mod.merge_settings(defaults, overrides)
         assert defaults == {"a": {"x": 1, "y": 2}}
         assert overrides == {"a": {"x": 9}}
+
+
+class TestDropUnknownKeys:
+    """Settings written by older versions lose the options this version no longer has."""
+
+    def test_obsolete_keys_are_dropped_on_load(self, monkeypatch, tmp_path):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({
+            "theme": "dark",
+            "appearance": {"log_text_wrap": False},
+            "decryption": {"cpu_threads": 3, "encrypt_filenames": True},
+        }), encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(path))
+        loaded = settings_mod.load_settings()
+        assert "appearance" not in loaded
+        assert loaded["theme"] == "dark"
+        assert loaded["decryption"]["cpu_threads"] == 3
+        assert "encrypt_filenames" not in loaded["decryption"]
+
+    def test_scalar_in_place_of_a_section_is_dropped(self):
+        defaults = {"advanced": {"enable_logs": False}, "theme": "system"}
+        assert settings_mod.drop_unknown_keys({"advanced": "oops", "theme": "dark"}, defaults) == {"theme": "dark"}
+
+    def test_wrong_typed_values_fall_back_to_defaults(self):
+        defaults = {"encryption": {"cpu_threads": 4, "read_size": 0}, "advanced": {"enable_logs": False}, "theme": "system"}
+        loaded = {"encryption": {"cpu_threads": "abc", "read_size": None}, "advanced": {"enable_logs": 1}, "theme": 7}
+        assert settings_mod.drop_unknown_keys(loaded, defaults) == {"encryption": {}, "advanced": {}}
+
+    def test_bool_and_int_are_told_apart(self):
+        defaults = {"encryption": {"cpu_threads": 4}, "advanced": {"enable_logs": False}}
+        loaded = {"encryption": {"cpu_threads": True}, "advanced": {"enable_logs": True}}
+        assert settings_mod.drop_unknown_keys(loaded, defaults) == {"encryption": {}, "advanced": {"enable_logs": True}}
+
+    def test_damaged_file_loads_the_defaults(self, monkeypatch, tmp_path):
+        path = tmp_path / "settings.json"
+        path.write_text("{not json", encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(path))
+        assert settings_mod.load_settings() == settings_mod.get_default_settings()
+
+
+class TestMigrateSettings:
+    """A read size picked in 3.0.x ("chunk_size") carries over; the old defaults become Automatic."""
+
+    MB = 1024 * 1024
+
+    def test_chosen_size_carries_over_to_the_nearest_offered_size(self):
+        old = {"encryption": {"chunk_size": 32 * self.MB}, "decryption": {"chunk_size": 128 * self.MB}}
+        migrated = settings_mod.migrate_settings(old)
+        assert migrated["encryption"]["read_size"] == 32 * self.MB
+        assert migrated["decryption"]["read_size"] == 64 * self.MB
+
+    def test_old_defaults_and_off_become_automatic(self):
+        old = {"encryption": {"chunk_size": 16 * self.MB}, "decryption": {"chunk_size": None}}
+        migrated = settings_mod.migrate_settings(old)
+        assert "read_size" not in migrated["encryption"] and "read_size" not in migrated["decryption"]
+
+    def test_existing_read_size_wins(self):
+        old = {"encryption": {"chunk_size": 64 * self.MB, "read_size": 0}}
+        assert settings_mod.migrate_settings(old)["encryption"]["read_size"] == 0
+
+    def test_load_applies_the_migration_and_drops_the_old_key(self, monkeypatch, tmp_path):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"encryption": {"chunk_size": 8 * self.MB}}), encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(path))
+        loaded = settings_mod.load_settings()
+        assert loaded["encryption"]["read_size"] == 8 * self.MB
+        assert "chunk_size" not in loaded["encryption"]
+        assert loaded["decryption"]["read_size"] == 0

@@ -1,10 +1,11 @@
 # test_encrypt_ctrl.py - unit tests for gfglock.controllers.encrypt_ctrl
 
 import os
+import time
 from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtCore import QThreadPool, Qt, QUrl
+from PySide6.QtCore import QThreadPool, QUrl
 from PySide6.QtWidgets import QApplication
 
 from gfglock.controllers import encrypt_ctrl
@@ -20,459 +21,282 @@ def qt_app():
     return QApplication.instance() or QApplication([])
 
 
-def _raise(*_args, **_kwargs):
-    """Stand-in for a monkeypatched call that must fail."""
-    raise RuntimeError("simulated failure")
+@pytest.fixture
+def quiet(monkeypatch):
+    """Keep tests from writing log files or showing Windows notifications."""
+    monkeypatch.setattr(encrypt_ctrl, "write_log", MagicMock())
+    monkeypatch.setattr(encrypt_ctrl, "write_session_separator", MagicMock())
+    monkeypatch.setattr(encrypt_ctrl, "send_notification", MagicMock())
 
 
 @pytest.fixture
-def controller():
-    """A fresh EncryptController with its real FileListModel."""
-    return EncryptController()
+def encryptor(quiet):
+    return EncryptController("encrypt")
 
 
-class TestModeFiltering:
-    """setMode()/_isAllowed() gate which files are accepted for the current operation."""
+@pytest.fixture
+def decryptor(quiet):
+    return EncryptController("decrypt")
+
+
+def _notices(controller) -> list:
+    notices: list = []
+    controller.notice.connect(notices.append)
+    return notices
+
+
+def _wait_until_idle(controller, qt_app, timeout=20.0) -> None:
+    """Let the worker run and deliver its queued signals until the controller is idle."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        qt_app.processEvents()
+        if not controller.busy:
+            QThreadPool.globalInstance().waitForDone(1000)
+            qt_app.processEvents()
+            return
+        time.sleep(0.01)
+    pytest.fail("the run did not finish in time")
+
+
+def _rows(model: FileListModel) -> list[tuple[str, str]]:
+    """(status, message) for every row."""
+    return [(model.data(model.index(r), FileListModel.StatusRole), model.data(model.index(r), FileListModel.MessageRole))
+            for r in range(model.count)]
+
+
+class TestModes:
+    """Each controller accepts only the files its tab works on."""
 
     @pytest.mark.parametrize("path,allowed", [
-        ("plain.txt", True),
-        ("secret.gfglock", False),
-        ("secret.gfglck", False),
-        ("secret.gfgcha", False),
+        ("plain.txt", True), ("secret.gfglock", False), ("secret.GFGLCK", False), ("secret.gfgcha", False),
     ])
-    def test_encrypt_mode_rejects_encrypted_exts(self, controller, path, allowed):
-        """In encrypt mode, only non-encrypted extensions are allowed."""
-        controller.setMode("encrypt")
-        assert controller._isAllowed(path) is allowed
+    def test_encrypt_tab_rejects_encrypted_files(self, encryptor, path, allowed):
+        assert encryptor._isAllowed(path) is allowed
 
-    @pytest.mark.parametrize("path,allowed", [
-        ("plain.txt", False),
-        ("secret.gfglock", True),
-    ])
-    def test_decrypt_mode_requires_encrypted_ext(self, controller, path, allowed):
-        """In decrypt mode, only encrypted extensions are allowed."""
-        controller.setMode("decrypt")
-        assert controller._isAllowed(path) is allowed
+    @pytest.mark.parametrize("path,allowed", [("plain.txt", False), ("secret.gfglock", True)])
+    def test_decrypt_tab_requires_encrypted_files(self, decryptor, path, allowed):
+        assert decryptor._isAllowed(path) is allowed
 
-    def test_unknown_mode_allows_everything(self, controller):
-        """An unrecognized mode falls back to allowing any path."""
-        controller.setMode("preview")
-        assert controller._isAllowed("anything.xyz") is True
+    def test_unknown_mode_means_encrypt(self, quiet):
+        assert EncryptController("preview").mode == "encrypt"
 
 
 class TestUrlToPath:
-    """_url_to_path() must resolve file:// URLs and pass through plain strings."""
-
     def test_file_url_converted_to_local_path(self, tmp_path):
-        """A file:/// URL must be converted to its local filesystem path."""
         target = tmp_path / "sample.txt"
         target.write_text("x")
         url = QUrl.fromLocalFile(str(target)).toString()
-        result = EncryptController._url_to_path(url)
-        assert os.path.normpath(result) == os.path.normpath(str(target))
+        assert os.path.normpath(EncryptController._url_to_path(url)) == os.path.normpath(str(target))
 
     def test_non_url_string_passthrough(self):
-        """A plain string with no recognizable URL scheme is returned unchanged."""
         assert EncryptController._url_to_path("not a url") == "not a url"
 
 
-class TestFileManagementSlots:
-    """File-management slots must filter by mode and delegate to the file model."""
-
-    def test_add_files_filters_by_mode_and_converts_urls(self, controller, tmp_path):
-        """addFiles() converts URLs and drops already-encrypted files in encrypt mode."""
-        controller.setMode("encrypt")
-        controller._file_model = MagicMock()
+class TestAddingFiles:
+    def test_add_files_keeps_allowed_files_and_reports_the_rest(self, encryptor, tmp_path):
         plain = tmp_path / "plain.txt"
         plain.write_text("x")
-        plain_url = QUrl.fromLocalFile(str(plain)).toString()
-        encrypted_url = QUrl.fromLocalFile(str(tmp_path / "already.gfglock")).toString()
+        locked = tmp_path / "already.gfglock"
+        locked.write_text("x")
+        notices = _notices(encryptor)
+        encryptor.addFiles([QUrl.fromLocalFile(str(plain)).toString(), str(locked), ""])
+        assert [os.path.normpath(p) for p in encryptor.fileModel.getPaths()] == [os.path.normpath(str(plain))]
+        assert notices == ["1 file already encrypted was left out. Use the Decrypt tab to open them."]
 
-        controller.addFiles([plain_url, encrypted_url, ""])
+    def test_decrypt_tab_explains_left_out_files(self, decryptor, tmp_path):
+        for name in ("a.txt", "b.txt"):
+            (tmp_path / name).write_text("x")
+        notices = _notices(decryptor)
+        decryptor.addFiles([str(tmp_path / "a.txt"), str(tmp_path / "b.txt")])
+        assert decryptor.fileModel.count == 0
+        assert notices == ["2 files not encrypted by gfgLock were left out."]
 
-        called_paths = controller._file_model.addFiles.call_args[0][0]
-        assert len(called_paths) == 1
-        assert os.path.normpath(called_paths[0]) == os.path.normpath(str(plain))
-
-    def test_add_files_empty_list_still_calls_model(self, controller):
-        """addFiles([]) must still invoke the model, with an empty list."""
-        controller._file_model = MagicMock()
-        controller.addFiles([])
-        controller._file_model.addFiles.assert_called_once_with([])
-
-    def test_add_files_swallows_failure(self, controller):
-        """A file-model failure while adding files must not propagate."""
-        controller._file_model = MagicMock()
-        controller._file_model.addFiles.side_effect = RuntimeError("boom")
-        try:
-            controller.addFiles(["file:///x.txt"])
-        except Exception as exc:
-            pytest.fail(f"addFiles() must not raise: {exc}")
-
-    def test_add_folder_walks_and_filters(self, controller, tmp_path, qt_app):
-        """addFolder() must walk the directory and keep only mode-allowed files."""
-        controller.setMode("encrypt")
+    def test_add_folder_scans_and_filters(self, encryptor, tmp_path, qt_app):
         (tmp_path / "a.txt").write_text("x")
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "b.gfglock").write_text("x")
         (sub / "c.txt").write_text("x")
-        controller._file_model = FileListModel()
-        folder_url = QUrl.fromLocalFile(str(tmp_path)).toString()
-
-        controller.addFolder(folder_url)
+        encryptor.addFolder(QUrl.fromLocalFile(str(tmp_path)).toString())
         assert QThreadPool.globalInstance().waitForDone(5000)
         qt_app.processEvents()
+        found = {os.path.normpath(p) for p in encryptor.fileModel.getPaths()}
+        assert found == {os.path.normpath(str(tmp_path / "a.txt")), os.path.normpath(str(sub / "c.txt"))}
+        assert not encryptor.scanning
 
-        called = {os.path.normpath(p) for p in controller._file_model.getPaths()}
-        assert os.path.normpath(str(tmp_path / "a.txt")) in called
-        assert os.path.normpath(str(sub / "c.txt")) in called
-        assert os.path.normpath(str(sub / "b.gfglock")) not in called
+    def test_empty_folder_is_reported(self, decryptor, tmp_path, qt_app):
+        (tmp_path / "a.txt").write_text("x")
+        notices = _notices(decryptor)
+        decryptor.addFolder(str(tmp_path))
+        assert QThreadPool.globalInstance().waitForDone(5000)
+        qt_app.processEvents()
+        assert notices == ["No gfgLock-encrypted files in that folder."]
 
-    def test_add_folder_missing_directory_noop(self, controller):
-        """A nonexistent folder must be silently ignored."""
-        controller._file_model = MagicMock()
-        controller.addFolder(QUrl.fromLocalFile("Z:\\does\\not\\exist").toString())
-        controller._file_model.addFiles.assert_not_called()
+    def test_missing_folder_is_ignored(self, encryptor):
+        encryptor.addFolder(QUrl.fromLocalFile("Z:\\does\\not\\exist").toString())
+        assert not encryptor.scanning and encryptor.fileModel.count == 0
 
-    def test_add_path_respects_mode(self, controller, tmp_path):
-        """addPath() must only add the file when it passes the mode filter."""
-        controller.setMode("decrypt")
-        controller._file_model = MagicMock()
-        controller.addPath(str(tmp_path / "plain.txt"))
-        controller._file_model.addFile.assert_not_called()
-        controller.addPath(str(tmp_path / "secret.gfglock"))
-        controller._file_model.addFile.assert_called_once_with(str(tmp_path / "secret.gfglock"))
-
-    def test_remove_selected_delegates(self, controller):
-        """removeSelected() must delegate to the file model."""
-        controller._file_model = MagicMock()
-        controller.removeSelected()
-        controller._file_model.removeSelected.assert_called_once()
-
-    def test_clear_files_delegates(self, controller):
-        """clearFiles() must delegate to the file model."""
-        controller._file_model = MagicMock()
-        controller.clearFiles()
-        controller._file_model.clearAll.assert_called_once()
+    def test_clear_files_empties_the_list(self, encryptor, tmp_path):
+        (tmp_path / "a.txt").write_text("x")
+        encryptor.addFiles([str(tmp_path / "a.txt")])
+        encryptor.clearFiles()
+        assert encryptor.fileModel.count == 0
 
 
-class TestClipboardSlots:
-    """copySelectedNames()/copySelectedPaths() must copy model text to the clipboard."""
-
-    def test_copy_selected_names_sets_clipboard(self, controller, monkeypatch):
-        """Non-empty selected-names text must be written to the clipboard."""
-        controller._file_model = MagicMock()
-        controller._file_model.getSelectedNamesText.return_value = "a.txt\nb.txt"
+class TestClipboard:
+    def test_copy_selected_names_sets_clipboard(self, encryptor, monkeypatch):
+        encryptor._file_model = MagicMock()
+        encryptor._file_model.getSelectedNamesText.return_value = "a.txt\nb.txt"
         fake_app = MagicMock()
         monkeypatch.setattr(encrypt_ctrl, "QApplication", fake_app)
-        controller.copySelectedNames()
+        encryptor.copySelectedNames()
         fake_app.clipboard.return_value.setText.assert_called_once_with("a.txt\nb.txt")
 
-    def test_copy_selected_names_skips_empty_text(self, controller, monkeypatch):
-        """An empty selection must not touch the clipboard."""
-        controller._file_model = MagicMock()
-        controller._file_model.getSelectedNamesText.return_value = ""
+    def test_empty_selection_leaves_clipboard_alone(self, encryptor, monkeypatch):
+        encryptor._file_model = MagicMock()
+        encryptor._file_model.getSelectedPathsText.return_value = ""
         fake_app = MagicMock()
         monkeypatch.setattr(encrypt_ctrl, "QApplication", fake_app)
-        controller.copySelectedNames()
+        encryptor.copySelectedPaths()
         fake_app.clipboard.assert_not_called()
 
-    def test_copy_selected_paths_sets_clipboard(self, controller, monkeypatch):
-        """Non-empty selected-paths text must be written to the clipboard."""
-        controller._file_model = MagicMock()
-        controller._file_model.getSelectedPathsText.return_value = "C:\\a.txt"
-        fake_app = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "QApplication", fake_app)
-        controller.copySelectedPaths()
-        fake_app.clipboard.return_value.setText.assert_called_once_with("C:\\a.txt")
 
+class TestStartSettings:
+    """start() reads the thread count and read size from preferences for its own mode."""
 
-class TestStartOperation:
-    """startOperation() must validate state, resolve settings, and launch the worker."""
+    def _capture_worker(self, controller, monkeypatch, settings):
+        made: dict = {}
 
-    _SETTINGS = {
-        "encryption": {"cpu_threads": 3, "chunk_size": 4096},
-        "advanced": {"clamp_cpu_threads": False, "encryption_mode": "aes256_gcm"},
-    }
+        def fake_worker(**kwargs):
+            made.update(kwargs)
+            worker = MagicMock()
+            return worker
 
-    def _ready_controller(self, controller, monkeypatch, settings=None):
-        """Wire a controller with one queued path and stubbed settings/logging."""
-        controller._file_model = MagicMock()
-        controller._file_model.getPaths.return_value = ["a.txt"]
-        controller._file_model.totalSize = "1.0 MB"
-        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: dict(settings or self._SETTINGS))
-        log_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "write_log", log_mock)
+        monkeypatch.setattr(encrypt_ctrl, "EncryptDecryptWorker", fake_worker)
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: settings)
         controller._threadpool = MagicMock()
-        return controller, log_mock
+        return made
 
-    def test_noop_when_already_busy(self, controller):
-        """A second call while busy must be ignored."""
-        controller._busy = True
-        controller._threadpool = MagicMock()
-        controller._file_model = MagicMock()
-        controller.startOperation("pw", "encrypt", False, 1, None, "aes256_gcm")
-        controller._threadpool.start.assert_not_called()
-
-    def test_noop_when_no_files(self, controller):
-        """No files in the model must skip launching a worker entirely."""
-        controller._file_model = MagicMock()
-        controller._file_model.getPaths.return_value = []
-        controller._threadpool = MagicMock()
-        controller.startOperation("pw", "encrypt", False, 1, None, "aes256_gcm")
-        controller._threadpool.start.assert_not_called()
-
-    def test_launches_worker_with_resolved_settings(self, controller, monkeypatch):
-        """Falsy threads/chunk_size/enc_algo must fall back to settings values."""
-        controller, log_mock = self._ready_controller(controller, monkeypatch)
+    def test_uses_decryption_preferences(self, decryptor, monkeypatch, tmp_path):
+        (tmp_path / "a.gfglock").write_text("x")
+        decryptor.addFiles([str(tmp_path / "a.gfglock")])
+        made = self._capture_worker(decryptor, monkeypatch, {
+            "decryption": {"cpu_threads": 2, "read_size": 8 * 1024 * 1024},
+            "encryption": {"cpu_threads": 9, "read_size": 0},
+            "advanced": {"clamp_cpu_threads": False},
+        })
         monkeypatch.setattr(encrypt_ctrl.os, "cpu_count", lambda: 8)
-        worker_cls = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "EncryptDecryptWorker", worker_cls)
-        started_spy = MagicMock()
-        busy_spy = MagicMock()
-        controller.operationStarted.connect(started_spy)
-        controller.busyChanged.connect(busy_spy)
+        decryptor.start("pw", False, "")
+        assert made["threads"] == 2 and made["read_size"] == 8 * 1024 * 1024 and made["mode"] == "decrypt"
+        assert decryptor.busy
 
-        controller.startOperation("pw", "encrypt", True, 0, None, "")
+    def test_threads_are_clamped_to_leave_one_free(self, encryptor, monkeypatch, tmp_path):
+        (tmp_path / "a.txt").write_text("x")
+        encryptor.addFiles([str(tmp_path / "a.txt")])
+        made = self._capture_worker(encryptor, monkeypatch, {
+            "encryption": {"cpu_threads": 20}, "advanced": {"clamp_cpu_threads": True},
+        })
+        monkeypatch.setattr(encrypt_ctrl.os, "cpu_count", lambda: 4)
+        encryptor.start("pw", True, "aes256_cfb")
+        assert made["threads"] == 3 and made["enc_algo"] == "aes256_cfb" and made["encrypt_name"] is True
 
-        _, kwargs = worker_cls.call_args
-        assert kwargs["paths"] == ["a.txt"]
-        assert kwargs["password"] == "pw"
-        assert kwargs["threads"] == 3
-        assert kwargs["chunk_size"] == 4096
-        assert kwargs["enc_algo"] == "aes256_gcm"
-        assert controller.isBusy is True
-        started_spy.assert_called_once()
-        busy_spy.assert_called_once_with(True)
-        controller._threadpool.start.assert_called_once_with(worker_cls.return_value)
-        assert log_mock.call_count == 2
-
-    def test_threads_clamped_when_enabled(self, controller, monkeypatch):
-        """clamp_cpu_threads=True must reserve one CPU thread."""
-        settings = {
-            "encryption": {"cpu_threads": 1, "chunk_size": None},
-            "advanced": {"clamp_cpu_threads": True, "encryption_mode": "aes256_gcm"},
-        }
-        controller, _ = self._ready_controller(controller, monkeypatch, settings)
-        monkeypatch.setattr(encrypt_ctrl.os, "cpu_count", lambda: 8)
-        worker_cls = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "EncryptDecryptWorker", worker_cls)
-
-        controller.startOperation("pw", "encrypt", False, 20, None, "aes256_cfb")
-
-        _, kwargs = worker_cls.call_args
-        assert kwargs["threads"] == 7
-
-    def test_error_path_emits_error_signal(self, controller, monkeypatch):
-        """A worker-construction failure must emit errorOccurred and leave state unbusy."""
-        controller, _ = self._ready_controller(controller, monkeypatch)
-        monkeypatch.setattr(
-            encrypt_ctrl, "EncryptDecryptWorker", MagicMock(side_effect=RuntimeError("boom"))
-        )
-        error_spy = MagicMock()
-        controller.errorOccurred.connect(error_spy)
-
-        controller.startOperation("pw", "encrypt", False, 1, None, "aes256_gcm")
-
-        error_spy.assert_called_once_with("boom")
-        assert controller.isBusy is False
-        controller._threadpool.start.assert_not_called()
+    def test_no_password_or_no_files_does_nothing(self, encryptor, monkeypatch, tmp_path):
+        made = self._capture_worker(encryptor, monkeypatch, {})
+        encryptor.start("pw", False, "")
+        (tmp_path / "a.txt").write_text("x")
+        encryptor.addFiles([str(tmp_path / "a.txt")])
+        encryptor.start("", False, "")
+        assert made == {} and not encryptor.busy
 
 
-class TestCancelOperation:
-    """cancelOperation() must forward the cancel request to an active worker."""
+class TestRuns:
+    """End-to-end encrypt and decrypt runs through the worker, checked row by row."""
 
-    def test_cancels_active_worker(self, controller):
-        """An active worker's cancel() must be invoked."""
-        controller._worker = MagicMock()
-        controller.cancelOperation()
-        controller._worker.cancel.assert_called_once()
+    def test_encrypt_then_decrypt_round_trip(self, encryptor, decryptor, tmp_path, qt_app, monkeypatch):
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": False}})
+        source = tmp_path / "notes.txt"
+        source.write_text("secret notes")
+        encryptor.addFiles([str(source)])
+        encryptor.start("correct horse", False, "aes256_gcm")
+        _wait_until_idle(encryptor, qt_app)
 
-    def test_noop_without_active_worker(self, controller):
-        """No worker present must not raise."""
-        controller._worker = None
-        try:
-            controller.cancelOperation()
-        except Exception as exc:
-            pytest.fail(f"cancelOperation() must not raise: {exc}")
+        locked = tmp_path / "notes.txt.gfglock"
+        assert locked.exists() and not source.exists()
+        assert _rows(encryptor.fileModel) == [("done", "Saved as notes.txt.gfglock")]
+        assert encryptor.summary.startswith("All 1 file encrypted in ")
+        assert encryptor.lastFolder == str(tmp_path)
+        assert encryptor.fileModel.runnableCount == 0
+
+        decryptor.addFiles([str(locked)])
+        decryptor.start("wrong password", False, "")
+        _wait_until_idle(decryptor, qt_app)
+        status, message = _rows(decryptor.fileModel)[0]
+        assert status == "failed" and "wrong password" in message.lower()
+        assert locked.exists()
+        assert decryptor.summary.startswith("0 of 1 file decrypted") and "1 failed" in decryptor.summary
+
+        # A failed file stays in the list and runs again with the right password.
+        assert decryptor.fileModel.runnableCount == 1
+        decryptor.start("correct horse", False, "")
+        _wait_until_idle(decryptor, qt_app)
+        assert _rows(decryptor.fileModel) == [("done", "Saved as notes.txt")]
+        assert source.read_text() == "secret notes"
+
+    def test_finished_rows_are_not_run_again(self, encryptor, tmp_path, qt_app, monkeypatch):
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {})
+        (tmp_path / "a.txt").write_text("a")
+        encryptor.addFiles([str(tmp_path / "a.txt")])
+        encryptor.start("pw", False, "chacha20_poly1305")
+        _wait_until_idle(encryptor, qt_app)
+        (tmp_path / "b.txt").write_text("b")
+        encryptor.addFiles([str(tmp_path / "b.txt")])
+        assert encryptor.fileModel.runnableCount == 1
+        encryptor.start("pw", False, "chacha20_poly1305")
+        _wait_until_idle(encryptor, qt_app)
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["a.txt.gfgcha", "b.txt.gfgcha"]
+        encryptor.fileModel.removeFinished()
+        assert encryptor.fileModel.count == 0
 
 
-class TestConnectWorker:
-    """_connect_worker() must wire every worker signal to the matching controller signal."""
+class TestSummary:
+    @pytest.mark.parametrize("args,expected", [
+        ((2.04, 3, 3, 0, 0, False), "All 3 files encrypted in 2.0 s."),
+        ((1.0, 4, 2, 1, 1, False), "2 of 4 files encrypted in 1.0 s, 1 failed, 1 skipped."),
+        ((1.0, 5, 2, 0, 0, True), "Stopped after 2 files: 2 encrypted. The rest were not changed."),
+    ])
+    def test_summary_lines(self, encryptor, args, expected):
+        assert encryptor._build_summary(*args) == expected
 
-    def test_wires_all_signals_with_queued_connection(self, controller):
-        """Each worker signal must be forwarded via a queued connection."""
+    def test_summary_clears_when_the_list_changes(self, encryptor, tmp_path):
+        encryptor._summary = "All 1 file encrypted in 0.1 s."
+        cleared = []
+        encryptor.summaryChanged.connect(lambda: cleared.append(encryptor.summary))
+        (tmp_path / "new.txt").write_text("x")
+        encryptor.addFiles([str(tmp_path / "new.txt")])
+        assert encryptor.summary == "" and cleared == [""]
+
+    def test_notification_respects_preference(self, encryptor, monkeypatch):
+        send = MagicMock()
+        monkeypatch.setattr(encrypt_ctrl, "send_notification", send)
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": False}})
+        encryptor._notify_complete(1, 0)
+        send.assert_not_called()
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": True}})
+        encryptor._notify_complete(1, 1)
+        assert send.call_args[0][0] == "gfgLock - Encryption finished with errors"
+
+
+class TestCancel:
+    def test_cancel_marks_cancelling_until_finished(self, encryptor):
         worker = MagicMock()
-        controller._worker = worker
-        controller._connect_worker()
-        conn = Qt.ConnectionType.QueuedConnection
-        worker.signals.progress.connect.assert_called_once_with(controller.progressChanged, conn)
-        worker.signals.files_progress.connect.assert_called_once_with(controller.filesProgressChanged, conn)
-        worker.signals.file_changed.connect.assert_called_once_with(controller.currentFileChanged, conn)
-        worker.signals.status.connect.assert_called_once_with(controller.statusChanged, conn)
-        worker.signals.error.connect.assert_called_once_with(controller.errorOccurred, conn)
-        worker.signals.file_result.connect.assert_called_once_with(controller._log_file_result, conn)
-        worker.signals.finished.connect.assert_called_once_with(controller._on_finished, conn)
+        encryptor._worker = worker
+        encryptor._busy = True
+        encryptor.cancel()
+        worker.cancel.assert_called_once()
+        assert encryptor.cancelling
+        encryptor.cancel()
+        worker.cancel.assert_called_once()
 
-    def test_noop_without_worker(self, controller):
-        """No worker present must not raise."""
-        controller._worker = None
-        try:
-            controller._connect_worker()
-        except Exception as exc:
-            pytest.fail(f"_connect_worker() must not raise: {exc}")
-
-
-class TestLogFileResult:
-    """_log_file_result() must always log generally, and additionally on failure."""
-
-    def test_success_logs_general_only(self, controller, monkeypatch):
-        """A successful result must only write to the general log."""
-        log_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "write_log", log_mock)
-        controller._log_file_result(True, "done")
-        log_mock.assert_called_once_with("done", "general")
-
-    def test_failure_logs_general_and_critical(self, controller, monkeypatch):
-        """A failed result must additionally write to the critical log."""
-        log_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "write_log", log_mock)
-        controller._log_file_result(False, "oops")
-        assert log_mock.call_args_list == [
-            (("oops", "general"),),
-            (("oops", "critical"),),
-        ]
-
-
-class TestOnFinished:
-    """_on_finished() must reset busy state, log a summary, and emit operationFinished."""
-
-    def test_success_summary_no_critical_log(self, controller, monkeypatch):
-        """A run with zero failures must not touch the critical log."""
-        controller._busy = True
-        controller._worker = MagicMock()
-        log_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "write_log", log_mock)
-        monkeypatch.setattr(encrypt_ctrl, "write_session_separator", MagicMock())
-        monkeypatch.setattr(
-            encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": False}}
-        )
-        finished_spy = MagicMock()
-        controller.operationFinished.connect(finished_spy)
-
-        controller._on_finished(1.5, 2, 2, 0, 0)
-
-        assert controller.isBusy is False
-        assert controller._worker is None
-        log_mock.assert_called_once()
-        assert log_mock.call_args[0][1] == "general"
-        finished_spy.assert_called_once_with(1.5, 2, 2, 0, 0)
-
-    def test_failure_summary_also_writes_critical_log(self, controller, monkeypatch):
-        """A run with failures must additionally write the critical log."""
-        log_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "write_log", log_mock)
-        monkeypatch.setattr(encrypt_ctrl, "write_session_separator", MagicMock())
-        monkeypatch.setattr(
-            encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": False}}
-        )
-
-        controller._on_finished(1.0, 3, 1, 2, 0)
-
-        assert log_mock.call_count == 2
-        assert log_mock.call_args_list[1][0][1] == "critical"
-
-    def test_swallows_internal_failure(self, controller, monkeypatch):
-        """A logging failure mid-summary must not propagate, and busy is still cleared."""
-        controller._busy = True
-        monkeypatch.setattr(encrypt_ctrl, "write_log", _raise)
-        finished_spy = MagicMock()
-        controller.operationFinished.connect(finished_spy)
-        try:
-            controller._on_finished(1.0, 1, 1, 0, 0)
-        except Exception as exc:
-            pytest.fail(f"_on_finished() must not raise: {exc}")
-        assert controller.isBusy is False
-        finished_spy.assert_not_called()
-
-
-class TestNotifyComplete:
-    """_notify_complete() must respect the notification setting and word the message correctly."""
-
-    def test_disabled_setting_skips_notification(self, controller, monkeypatch):
-        """operation_notifications == False must skip sending any notification."""
-        monkeypatch.setattr(
-            encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": False}}
-        )
-        notify_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "send_notification", notify_mock)
-        controller._notify_complete(1.0, 1, 0, 0)
-        notify_mock.assert_not_called()
-
-    def test_all_succeeded_message(self, controller, monkeypatch):
-        """A fully successful encrypt run must report a simple success message."""
-        monkeypatch.setattr(
-            encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": True}}
-        )
-        notify_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "send_notification", notify_mock)
-        controller._operation_mode = "encrypt"
-        controller._notify_complete(2.0, 3, 0, 0)
-        title, body = notify_mock.call_args[0]
-        assert "Encryption Complete" in title
-        assert "3 file(s) encrypted" in body
-
-    def test_partial_failure_message(self, controller, monkeypatch):
-        """A run with failures must report the ok/failed/skipped breakdown."""
-        monkeypatch.setattr(
-            encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": True}}
-        )
-        notify_mock = MagicMock()
-        monkeypatch.setattr(encrypt_ctrl, "send_notification", notify_mock)
-        controller._operation_mode = "decrypt"
-        controller._notify_complete(2.0, 1, 1, 1)
-        title, body = notify_mock.call_args[0]
-        assert "Decryption Complete" in title
-        assert "1 ok" in body and "1 failed" in body and "1 skipped" in body
-
-    def test_swallows_settings_failure(self, controller, monkeypatch):
-        """A load_settings() failure must not propagate."""
-        monkeypatch.setattr(encrypt_ctrl, "load_settings", _raise)
-        try:
-            controller._notify_complete(1.0, 1, 0, 0)
-        except Exception as exc:
-            pytest.fail(f"_notify_complete() must not raise: {exc}")
-
-
-class TestSetBusy:
-    """_set_busy() must emit busyChanged only on an actual state transition."""
-
-    def test_emits_on_change(self, controller):
-        """Toggling busy from False to True must emit once."""
-        spy = MagicMock()
-        controller.busyChanged.connect(spy)
-        controller._set_busy(True)
-        spy.assert_called_once_with(True)
-        assert controller.isBusy is True
-
-    def test_no_emit_when_unchanged(self, controller):
-        """Setting busy to its current value must not emit."""
-        spy = MagicMock()
-        controller.busyChanged.connect(spy)
-        controller._set_busy(False)
-        spy.assert_not_called()
-
-
-class TestProperties:
-    """Property getters must expose internal state as-is."""
-
-    def test_file_model_property_identity(self, controller):
-        """fileModel must return the same FileListModel instance created in __init__."""
-        assert controller.fileModel is controller._file_model
-
-    def test_is_busy_reflects_internal_flag(self, controller):
-        """isBusy must mirror the private _busy flag."""
-        assert controller.isBusy is False
-        controller._busy = True
-        assert controller.isBusy is True
+    def test_cancel_without_worker_is_harmless(self, encryptor):
+        encryptor.cancel()
+        assert not encryptor.cancelling

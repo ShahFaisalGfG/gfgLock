@@ -19,26 +19,29 @@ struct DecryptResult {
 };
 
 /// Encrypt input_path into output_path (both UTF-8). Writes the header, the encrypted
-/// `original_name` + NUL + file data, and the tag for AEAD ciphers. Never deletes or renames
-/// anything: choosing the output name and removing the source is the caller's job.
+/// `original_name` + NUL + file data, and the tag for AEAD ciphers. `block_size` is the read
+/// size in bytes, 0 for the default. Never deletes or renames anything: choosing the output name
+/// and removing the source is the caller's job.
 std::pair<bool, std::string> encryptFile(
     Algorithm algorithm,
     const std::string& input_path,
     const std::string& output_path,
     const std::string& original_name,
     const std::string& password,
-    int chunk_size,
+    size_t block_size,
     const ProgressFn& progress
 );
 
 /// Decrypt input_path into output_path (plaintext data only). For AEAD ciphers the result is
 /// only reported as successful after the tag verifies; on any failure the caller must discard
-/// output_path. Never deletes or renames anything.
+/// output_path. `block_size` is the read size in bytes, 0 for the default. Never deletes or
+/// renames anything.
 DecryptResult decryptFile(
     Algorithm algorithm,
     const std::string& input_path,
     const std::string& output_path,
     const std::string& password,
+    size_t block_size,
     const ProgressFn& progress
 );
 

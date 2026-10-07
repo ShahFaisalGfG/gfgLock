@@ -334,13 +334,18 @@ class TestModelInterface:
         assert model.data(model.index(0), Qt.ItemDataRole.DisplayRole) == "a.txt"
 
     def test_role_names_mapping(self, model):
-        """roleNames() must expose exactly the five documented byte-string roles."""
+        """roleNames() must expose every documented byte-string role."""
         assert model.roleNames() == {
             FileListModel.NameRole: b"name",
             FileListModel.PathRole: b"path",
             FileListModel.SizeRole: b"size",
             FileListModel.ExtRole: b"ext",
             FileListModel.SelectedRole: b"selected",
+            FileListModel.FolderRole: b"folder",
+            FileListModel.StatusRole: b"status",
+            FileListModel.ProgressRole: b"progress",
+            FileListModel.MessageRole: b"message",
+            FileListModel.OutputRole: b"output",
         }
 
 
@@ -357,3 +362,66 @@ class TestMakeItem:
         assert item["ext"] == "PDF"
         assert item["bytes"] == 10
         assert item["size"] == "10.0 B"
+
+
+class TestResults:
+    """Each row carries its result, and a run only picks up the rows that aren't finished."""
+
+    def _status(self, model, row):
+        return model.data(model.index(row), FileListModel.StatusRole)
+
+    def test_new_rows_wait_and_are_runnable(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt", "b.txt"])
+        assert [self._status(model, r) for r in range(2)] == ["waiting", "waiting"]
+        assert model.runnableCount == 2 and model.finishedCount == 0
+
+    def test_set_status_updates_roles_and_counts(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt", "b.txt", "c.txt"])
+        changes = []
+        model.statusCountsChanged.connect(lambda: changes.append(True))
+        model.set_status(str(tmp_path / "a.txt"), "done", progress=1.0, message="Saved as a.txt.gfglock",
+                         output=str(tmp_path / "a.txt.gfglock"))
+        model.set_status(str(tmp_path / "b.txt"), "failed", message="Wrong password")
+        model.set_status(str(tmp_path / "c.txt"), "skipped", message="Already encrypted")
+        assert model.data(model.index(0), FileListModel.MessageRole) == "Saved as a.txt.gfglock"
+        assert (model.finishedCount, model.failedCount, model.runnableCount) == (2, 1, 1)
+        assert model.runnable_paths() == [str(tmp_path / "b.txt")]
+        assert changes
+
+    def test_unknown_path_is_ignored(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        model.set_status(str(tmp_path / "other.txt"), "done")
+        assert self._status(model, 0) == "waiting"
+
+    def test_reset_for_run_clears_an_earlier_failure(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        path = str(tmp_path / "a.txt")
+        model.set_status(path, "failed", message="Wrong password")
+        model.reset_for_run([path])
+        assert self._status(model, 0) == "waiting"
+        assert model.data(model.index(0), FileListModel.MessageRole) == ""
+
+    def test_progress_updates_only_the_progress_role(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        roles = []
+        model.dataChanged.connect(lambda _a, _b, r: roles.append(list(r)))
+        model.set_progress(str(tmp_path / "a.txt"), 0.5)
+        assert model.data(model.index(0), FileListModel.ProgressRole) == 0.5
+        assert roles == [[FileListModel.ProgressRole]]
+
+    def test_remove_finished_keeps_waiting_and_failed(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt", "b.txt", "c.txt"])
+        model.set_status(str(tmp_path / "a.txt"), "done")
+        model.set_status(str(tmp_path / "b.txt"), "failed")
+        model.removeFinished()
+        assert [os.path.basename(p) for p in model.getPaths()] == ["b.txt", "c.txt"]
+        # Status updates still find the right rows after removal.
+        model.set_status(str(tmp_path / "c.txt"), "done")
+        assert self._status(model, 1) == "done"
+
+    def test_location_is_the_written_file_once_done(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        assert model.locationAt(0) == str(tmp_path / "a.txt")
+        model.set_status(str(tmp_path / "a.txt"), "done", output=str(tmp_path / "a.txt.gfglock"))
+        assert model.locationAt(0) == str(tmp_path / "a.txt.gfglock")
+        assert model.locationAt(5) == ""

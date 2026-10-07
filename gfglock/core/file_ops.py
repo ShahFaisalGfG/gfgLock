@@ -2,10 +2,14 @@
 #
 # The cipher backends (native C++ or pure Python) only turn one file into another. Everything that
 # decides which files exist afterwards lives here, in one place:
-#   * output goes to a fresh hidden temp file in the same folder, created exclusively;
-#   * the result is size-checked and flushed to disk before anything else happens;
+#   * output goes to a fresh temp file (".<random>.gfgpart") in the same folder, created exclusively;
+#   * the result is checked (its size after encrypting, the stored name after decrypting) and
+#     flushed to disk before anything else happens;
 #   * it is then renamed to a name that does not exist yet (never overwriting a file);
-#   * only after that is the source deleted.
+#   * only after that is the source deleted. If the source can't be deleted (read-only, or open in
+#     another program), the new copy is removed again, so a file never ends up in both forms.
+# Links and leftover temp files are skipped: encrypting a link would remove the link and leave
+# the file it points to readable.
 # The file name stored inside an encrypted file is untrusted (AES-CFB is malleable, and files can
 # come from anyone), so it is validated as a single plain Windows file name before use.
 
@@ -41,6 +45,28 @@ class _OperationError(Exception):
     """A failure with a message meant for the user."""
 
 
+class FileResult(tuple):
+    """What happened to one file. Unpacks as (ok, message) for callers that only need that.
+
+    `outcome` is "done", "skipped", or "failed"; `reason` says why in a few words for the file
+    list, and `output` is the file that was written ("" unless done).
+    """
+
+    outcome: str
+    reason: str
+    output: str
+
+    def __new__(cls, ok: bool, message: str, outcome: str, reason: str = "", output: str = "") -> "FileResult":
+        result = super().__new__(cls, (ok, message))
+        result.outcome = outcome
+        result.reason = reason
+        result.output = output
+        return result
+
+
+_NOT_FOUND = "File not found; it may have been moved or deleted"
+
+
 def is_encrypted_path(path: str) -> bool:
     """True when the path has one of gfgLock's encrypted extensions (any letter case)."""
     return os.path.splitext(path)[1].lower() in ENCRYPTED_EXTS
@@ -51,26 +77,29 @@ def encrypt_file(
     password: str,
     algorithm: str,
     encrypt_name: bool = False,
-    chunk_size: int | None = None,
+    read_size: int = 0,
     progress: ProgressFn = None,
-) -> tuple[bool, str]:
+) -> FileResult:
     """Encrypt one file next to itself and delete the original once the result is safely on disk.
 
     The encrypted file keeps the full original name (report.docx -> report.docx.gfglock) so files
     that differ only by extension can't collide, and gets " (2)" etc. if the name is taken.
     """
     if algorithm not in EXTENSIONS:
-        return False, f"Critical error while encrypting {path}: unknown algorithm {algorithm!r}"
-    if not os.path.isfile(path):
-        return False, f"Critical error: {path} not found"
+        return FileResult(False, f"Critical error while encrypting {path}: unknown algorithm {algorithm!r}",
+                          "failed", f"Unknown encryption method {algorithm!r}")
+    skipped = _skip_reason(path)
+    if skipped:
+        return skipped
     if is_encrypted_path(path):
-        return False, f"{path} is already encrypted"
+        return FileResult(False, f"{path} is already encrypted", "skipped", "Already encrypted")
 
     folder = os.path.dirname(os.path.abspath(path))
     temp = None
     try:
+        _check_removable(path)
         temp = _create_temp(folder)
-        ok, error = _backend_encrypt(algorithm, path, temp, os.path.basename(path), password, chunk_size, progress)
+        ok, error = _backend_encrypt(algorithm, path, temp, os.path.basename(path), password, read_size, progress)
         if not ok:
             raise _OperationError(error or "encryption failed")
         expected = predict_encrypted_size(path, _SIZE_MODE[algorithm])
@@ -79,14 +108,16 @@ def encrypt_file(
         _flush_to_disk(temp)
         final = _move_to_unique_name(temp, folder, generate_encrypted_name(path, encrypt_name, EXTENSIONS[algorithm]))
         temp = None
-        os.remove(path)
-        return _report(True, f"Encrypted: {path} -> {final}")
+        _remove_source(path, final)
+        return _report(FileResult(True, f"Encrypted: {path} -> {final}", "done", output=final))
     except (_OperationError, OSError) as error:
-        _discard(temp)
-        return _report(False, f"Critical error while encrypting {path}: {_describe(error)}")
+        reason = _describe(error)
+        return _report(FileResult(False, f"Critical error while encrypting {path}: {reason}", "failed", _sentence(reason)))
+    finally:
+        _discard(temp)  # set to None once the output is in place
 
 
-def decrypt_file(path: str, password: str, progress: ProgressFn = None) -> tuple[bool, str]:
+def decrypt_file(path: str, password: str, read_size: int = 0, progress: ProgressFn = None) -> FileResult:
     """Decrypt one file next to itself under its original name, then delete the encrypted file.
 
     An existing file with the original name is never overwritten; the restored copy gets a
@@ -94,15 +125,17 @@ def decrypt_file(path: str, password: str, progress: ProgressFn = None) -> tuple
     """
     algorithm = ALGORITHM_FOR_EXT.get(os.path.splitext(path)[1].lower())
     if algorithm is None:
-        return False, f"{path} is already decrypted"
-    if not os.path.isfile(path):
-        return False, f"Critical error: {path} not found"
+        return FileResult(False, f"{path} is already decrypted", "skipped", "Not an encrypted gfgLock file")
+    skipped = _skip_reason(path)
+    if skipped:
+        return skipped
 
     folder = os.path.dirname(os.path.abspath(path))
     temp = None
     try:
+        _check_removable(path)
         temp = _create_temp(folder)
-        ok, error, raw_name = _backend_decrypt(algorithm, path, temp, password, progress)
+        ok, error, raw_name = _backend_decrypt(algorithm, path, temp, password, read_size, progress)
         if not ok:
             raise _OperationError(error or "decryption failed")
         name = safe_original_name(raw_name)
@@ -113,11 +146,13 @@ def decrypt_file(path: str, password: str, progress: ProgressFn = None) -> tuple
         _flush_to_disk(temp)
         final = _move_to_unique_name(temp, folder, name)
         temp = None
-        os.remove(path)
-        return _report(True, f"Decrypted: {path} -> {final}")
+        _remove_source(path, final)
+        return _report(FileResult(True, f"Decrypted: {path} -> {final}", "done", output=final))
     except (_OperationError, OSError) as error:
-        _discard(temp)
-        return _report(False, f"Critical error while decrypting {path}: {_describe(error)}")
+        reason = _describe(error)
+        return _report(FileResult(False, f"Critical error while decrypting {path}: {reason}", "failed", _sentence(reason)))
+    finally:
+        _discard(temp)  # set to None once the output is in place
 
 
 def safe_original_name(raw: bytes) -> str | None:
@@ -157,19 +192,45 @@ def unique_path(folder: str, name: str) -> str:
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _backend_encrypt(algorithm, src, dst, name, password, chunk_size, progress) -> tuple[bool, str]:
-    """Run the native cipher when available, else the pure-Python one."""
-    cs = int(chunk_size or 0)
-    if native_bridge.NATIVE_AVAILABLE:
-        return native_bridge.encrypt_file(algorithm, src, dst, name, password, cs, progress)
-    return py_cipher.encrypt_stream(algorithm, src, dst, name, password, cs, progress)
-
-
-def _backend_decrypt(algorithm, src, dst, password, progress) -> tuple[bool, str, bytes]:
+def _backend_encrypt(algorithm, src, dst, name, password, read_size, progress) -> tuple[bool, str]:
     """Run the native cipher when available, else the pure-Python one."""
     if native_bridge.NATIVE_AVAILABLE:
-        return native_bridge.decrypt_file(algorithm, src, dst, password, progress)
-    return py_cipher.decrypt_stream(algorithm, src, dst, password, progress)
+        return native_bridge.encrypt_file(algorithm, src, dst, name, password, read_size, progress)
+    return py_cipher.encrypt_stream(algorithm, src, dst, name, password, read_size, progress)
+
+
+def _backend_decrypt(algorithm, src, dst, password, read_size, progress) -> tuple[bool, str, bytes]:
+    """Run the native cipher when available, else the pure-Python one."""
+    if native_bridge.NATIVE_AVAILABLE:
+        return native_bridge.decrypt_file(algorithm, src, dst, password, read_size, progress)
+    return py_cipher.decrypt_stream(algorithm, src, dst, password, read_size, progress)
+
+
+def _skip_reason(path: str) -> FileResult | None:
+    """A failed or skipped result for paths that must not be processed, else None."""
+    if os.path.islink(path):
+        return FileResult(False, f"{path} is a link", "skipped", "Links are skipped; add the file the link points to")
+    if not os.path.isfile(path):
+        return FileResult(False, f"Critical error: {path} not found", "failed", _NOT_FOUND)
+    if path.lower().endswith(TEMP_SUFFIX):
+        return FileResult(False, f"{path} is a temporary file", "skipped", "Temporary file left by an unfinished job")
+    return None
+
+
+def _check_removable(path: str) -> None:
+    """Fail before any work when the source can't be deleted afterwards."""
+    if not os.access(path, os.W_OK):
+        raise _OperationError("the file is read-only; clear Read-only in its Properties and try again")
+
+
+def _remove_source(source: str, output: str) -> None:
+    """Delete the source now that output is in place; if that fails, delete output instead."""
+    try:
+        os.remove(source)
+    except OSError as error:
+        _discard(output)
+        raise _OperationError(f"the original couldn't be removed ({_describe(error)}), so nothing was changed. "
+                              "Close any program using it and try again") from error
 
 
 def _create_temp(folder: str) -> str:
@@ -222,7 +283,13 @@ def _describe(error: Exception) -> str:
     return str(error)
 
 
-def _report(ok: bool, message: str) -> tuple[bool, str]:
+def _sentence(reason: str) -> str:
+    """A reason as shown on its own in the file list: capitalized, without a trailing period."""
+    reason = reason.strip().rstrip(".")
+    return reason[:1].upper() + reason[1:]
+
+
+def _report(result: FileResult) -> FileResult:
     """Echo the result to the console log and return it."""
-    safe_print(message)
-    return ok, message
+    safe_print(result[1])
+    return result

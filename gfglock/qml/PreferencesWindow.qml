@@ -1,588 +1,466 @@
 // qmllint disable unqualified
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick.Layouts
-import QtQuick.Window
 import "components"
 
-ApplicationWindow {
+AppWindow {
     id: prefsWin
 
-    width: 560
-    height: 650
-    minimumWidth: 480
-    minimumHeight: 560
+    width: 760
+    height: 560
+    minimumWidth: 600
+    minimumHeight: 460
     title: "Preferences"
-    flags: Qt.FramelessWindowHint | Qt.Window
+    showMaximize: false
     modality: Qt.ApplicationModal
 
-    Material.theme: appController && appController.currentTheme === "dark" ? Material.Dark : Material.Light
-    Material.accent: "#0078d4"
+    property bool dirty: false
+    property bool _closeAfterSave: false
+    property string _statusMessage: ""
+    property string _speedTestMessage: ""
+    property bool _statusIsError: false
+    property var _values: ({})
 
-    Component.onCompleted: {
-        x = Screen.virtualX + Math.round((Screen.desktopAvailableWidth  - width)  / 2)
-        y = Screen.virtualY + Math.round((Screen.desktopAvailableHeight - height) / 2)
-        prefsWin.loadValues()
+    readonly property var sections: [
+        { name: "Appearance", icon: "settings" },
+        { name: "Encryption", icon: "lock" },
+        { name: "Speed", icon: "speed" },
+        { name: "Notifications & logs", icon: "notify" }
+    ]
+
+    // 1 up to every thread, or one fewer when a thread is kept free for Windows.
+    readonly property var threadOptions: {
+        var total = prefsController.cpuCount
+        var max = prefsWin.value("advanced.clamp_cpu_threads", prefsController.clampThreads) ? Math.max(1, total - 1) : total
+        var list = []
+        for (var i = 1; i <= max; i++) list.push({ label: i === 1 ? "1 file" : i + " files", code: i })
+        return list
     }
 
-    onClosing: prefsWin.destroy()
-
-    property bool _dirty: false
-    property var  _algOpts:   prefsController.encryptionModeOptions
-    property var  _chunkOpts: prefsController.chunkSizeOptions
+    Component.onCompleted: prefsWin.loadValues()
+    onClosing: {
+        prefsController.cancelReadSizeTest()
+        prefsWin.destroy()
+    }
 
     Connections {
         target: prefsController
-        function onSettingsChanged() { prefsWin.loadValues() }
+        // The speed test picks a size for each direction; like any edit, Save keeps it.
+        function onReadSizeTestFinished(encryptSize, decryptSize, message) {
+            if (encryptSize >= 0) {
+                var changed = encryptSize !== encReadCombo.value || decryptSize !== decReadCombo.value
+                if (encryptSize !== encReadCombo.value) prefsWin.set("encryption.read_size", encryptSize)
+                if (decryptSize !== decReadCombo.value) prefsWin.set("decryption.read_size", decryptSize)
+                message += changed ? " Press Save to keep them." : " They are already selected."
+            }
+            prefsWin._speedTestMessage = message
+        }
+        function onSaveFinished(success, message) {
+            if (success && prefsWin._closeAfterSave) { prefsWin.close(); return }
+            prefsWin._closeAfterSave = false
+            prefsWin._statusMessage = message
+            prefsWin._statusIsError = !success
+        }
     }
 
-    // ── Background ────────────────────────────────────────────────────────
-    Rectangle {
-        anchors.fill: parent
-        color: Material.theme === Material.Dark ? "#1e1e1e" : "#f3f3f3"
-        border.color: Material.theme === Material.Dark ? "#3c3c3c" : "#c8c8c8"
-        border.width: 1
+    Shortcut { sequences: [StandardKey.Save]; onActivated: prefsWin.save() }
+    Shortcut { sequence: "Escape"; onActivated: prefsWin.close() }
+
+    // ── Value plumbing ─────────────────────────────────────────────────────
+
+    // Record an edited value; controls call this from their change handlers.
+    function set(key, value) {
+        var values = Object.assign({}, prefsWin._values)
+        values[key] = value
+        prefsWin._values = values
+        prefsWin.dirty = true
+        prefsWin._statusMessage = ""
     }
+
+    function value(key, fallback) {
+        return key in prefsWin._values ? prefsWin._values[key] : fallback
+    }
+
+    function loadValues() {
+        prefsWin._values = {}
+        themeCombo.value = prefsController.theme
+        algorithmCombo.value = prefsController.encMode
+        hideNamesSwitch.checked = prefsController.encFilenames
+        reserveSwitch.checked = prefsController.clampThreads
+        notifySwitch.checked = prefsController.operationNotifications
+        logsSwitch.checked = prefsController.enableLogs
+        logLevelCombo.value = prefsController.logLevel
+        prefsWin.dirty = false
+    }
+
+    function save() {
+        if (!prefsWin.dirty) { prefsWin.close(); return }
+        if ("theme" in prefsWin._values) appController.applyTheme(prefsWin._values["theme"])
+        prefsWin._closeAfterSave = true
+        prefsController.saveSettings(prefsWin._values)
+    }
+
+    AppDialog {
+        id: resetDialog
+        title: "Reset all preferences?"
+        standardButtons: Dialog.Reset | Dialog.Cancel
+        Text {
+            width: 340
+            text: "Every preference returns to its default. Your files are not affected."
+            wrapMode: Text.WordWrap
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBody
+            color: Theme.text
+        }
+        onReset: {
+            prefsController.resetDefaults()
+            appController.applyTheme("system")
+            prefsWin.loadValues()
+            resetDialog.close()
+        }
+    }
+
+    // ── Layout ─────────────────────────────────────────────────────────────
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        TitleBar {
-            Layout.fillWidth: true
-            window: prefsWin
-            title: "Preferences"
-        }
-
-        TabBar {
-            id: tabBar
-            Layout.fillWidth:       true
-            Layout.preferredHeight: 44
-            Material.accent: "#0078d4"
-
-            TabButton { text: "Appearance"; font.pixelSize: 12; implicitHeight: 44 }
-            TabButton { text: "Encryption"; font.pixelSize: 12; implicitHeight: 44 }
-            TabButton { text: "Decryption"; font.pixelSize: 12; implicitHeight: 44 }
-            TabButton { text: "Advanced";   font.pixelSize: 12; implicitHeight: 44 }
-        }
-
-        StackLayout {
-            id: tabContent
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            currentIndex: tabBar.currentIndex
-
-            // ── Appearance tab ───────────────────────────────────────────
-            Flickable {
-                contentHeight: appearanceCol.implicitHeight
-                clip: true
-
-                ColumnLayout {
-                    id: appearanceCol
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Item { implicitHeight: 8 }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Theme"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 6
-
-                            Text {
-                                text: "Application theme"
-                                font.pixelSize: 12
-                                color: Material.foreground
-                            }
-                            StyledComboBox {
-                                id: themeCombo
-                                Layout.fillWidth:       true
-                                Layout.preferredHeight: 34
-                                font.pixelSize:         12
-                                model: ["System (auto)", "Light", "Dark"]
-                                onCurrentIndexChanged: prefsWin._dirty = true
-                            }
-                            Text {
-                                text: "System will follow your Windows light/dark setting."
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
-                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
-                                Layout.fillWidth: true
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Logs Panel"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 8
-
-                            CheckBox {
-                                id: logTextWrapCheck
-                                text: "Text Wrap"
-                                font.pixelSize: 12
-                                onCheckedChanged: prefsWin._dirty = true
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "When enabled, long log lines wrap instead of scrolling horizontally."
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
-                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
-                            }
-                        }
-                    }
-
-
-                    Item { implicitHeight: 4 }
-                }
-            }
-
-            // ── Encryption tab ───────────────────────────────────────────
-            Flickable {
-                contentHeight: encCol.implicitHeight
-                clip: true
-
-                ColumnLayout {
-                    id: encCol
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Item { implicitHeight: 8 }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Encryption Defaults"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 10
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text {
-                                    text: "CPU Threads"
-                                    font.pixelSize: 12
-                                    color: Material.foreground
-                                    Layout.fillWidth: true
-                                }
-                                StyledComboBox {
-                                    id:                     encThreadsCombo
-                                    font.pixelSize:         12
-                                    Layout.preferredWidth:  86
-                                    Layout.preferredHeight: 34
-                                    model: {
-                                        var a = []
-                                        for (var i = 1; i <= prefsController.maxThreads; i++) a.push(String(i))
-                                        return a
-                                    }
-                                    onCurrentIndexChanged: prefsWin._dirty = true
-                                }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text {
-                                    text: "Chunk Size"
-                                    font.pixelSize: 12
-                                    color: Material.foreground
-                                    Layout.fillWidth: true
-                                }
-                                StyledComboBox {
-                                    id:                     encChunkCombo
-                                    font.pixelSize:         12
-                                    Layout.preferredWidth:  155
-                                    Layout.preferredHeight: 34
-                                    model:                  prefsWin._chunkOpts.map(o => o.label)
-                                    onCurrentIndexChanged: prefsWin._dirty = true
-                                }
-                            }
-
-                            CheckBox {
-                                id: encFilenamesCheck
-                                text: "Encrypt filenames by default"
-                                font.pixelSize: 12
-                                onCheckedChanged: prefsWin._dirty = true
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Default Algorithm"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 6
-
-                            StyledComboBox {
-                                id:                     algCombo
-                                Layout.fillWidth:       true
-                                Layout.preferredHeight: 34
-                                font.pixelSize:         12
-                                model:                  prefsWin._algOpts.map(o => o.label)
-                                onCurrentIndexChanged: prefsWin._dirty = true
-                            }
-                            Text {
-                                text: "AES-256 GCM is recommended (AEAD authenticated encryption)."
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
-                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
-                                Layout.fillWidth: true
-                            }
-                        }
-                    }
-
-                    Item { implicitHeight: 4 }
-                }
-            }
-
-            // ── Decryption tab ───────────────────────────────────────────
-            Flickable {
-                contentHeight: decCol.implicitHeight
-                clip: true
-
-                ColumnLayout {
-                    id: decCol
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Item { implicitHeight: 8 }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Decryption Defaults"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 10
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text {
-                                    text: "CPU Threads"
-                                    font.pixelSize: 12
-                                    color: Material.foreground
-                                    Layout.fillWidth: true
-                                }
-                                StyledComboBox {
-                                    id:                     decThreadsCombo
-                                    font.pixelSize:         12
-                                    Layout.preferredWidth:  86
-                                    Layout.preferredHeight: 34
-                                    model: {
-                                        var a = []
-                                        for (var i = 1; i <= prefsController.maxThreads; i++) a.push(String(i))
-                                        return a
-                                    }
-                                    onCurrentIndexChanged: prefsWin._dirty = true
-                                }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text {
-                                    text: "Chunk Size"
-                                    font.pixelSize: 12
-                                    color: Material.foreground
-                                    Layout.fillWidth: true
-                                }
-                                StyledComboBox {
-                                    id:                     decChunkCombo
-                                    font.pixelSize:         12
-                                    Layout.preferredWidth:  155
-                                    Layout.preferredHeight: 34
-                                    model:                  prefsWin._chunkOpts.map(o => o.label)
-                                    onCurrentIndexChanged: prefsWin._dirty = true
-                                }
-                            }
-
-                        }
-                    }
-
-                    Item { implicitHeight: 4 }
-                }
-            }
-
-            // ── Advanced tab ─────────────────────────────────────────────
-            Flickable {
-                contentHeight: advCol.implicitHeight
-                clip: true
-
-                ColumnLayout {
-                    id: advCol
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Item { implicitHeight: 8 }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Performance"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 8
-
-                            CheckBox {
-                                id: reserveThreadCheck
-                                text: "Keep one CPU thread free for Windows"
-                                font.pixelSize: 12
-                                onCheckedChanged: prefsWin._dirty = true
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Keeps the computer responsive during large jobs. Turn it off to use every thread."
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
-                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Logging"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 10
-
-                            CheckBox {
-                                id: enableLogsCheck
-                                text: "Enable logging"
-                                font.pixelSize: 12
-                                onCheckedChanged: prefsWin._dirty = true
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                enabled: enableLogsCheck.checked
-
-                                Text {
-                                    text: "Log level"
-                                    font.pixelSize: 12
-                                    color: Material.foreground
-                                    Layout.fillWidth: true
-                                }
-                                StyledComboBox {
-                                    id:                     logLevelCombo
-                                    font.pixelSize:         12
-                                    Layout.preferredWidth:  135
-                                    Layout.preferredHeight: 34
-                                    model: ["Critical", "Full"]
-                                    onCurrentIndexChanged: prefsWin._dirty = true
-                                }
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Critical records only errors. Full also records each operation."
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
-                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
-                            }
-                            RowLayout {
-                                spacing: 10
-
-                                Button {
-                                    text: "Clear Logs"
-                                    flat: true
-                                    font.pixelSize: 11
-                                    Material.foreground: "#e0004f"
-                                    onClicked: {
-                                        prefsController.clearLogs()
-                                        appController.clearLogs()
-                                    }
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Empty the log files and the activity log (your files are not affected)"
-                                    ToolTip.delay: 500
-                                }
-                                Button {
-                                    text: "Open Logs Folder"
-                                    flat: true
-                                    font.pixelSize: 11
-                                    onClicked: prefsController.openLogsFolder()
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Show the log files in File Explorer"
-                                    ToolTip.delay: 500
-                                }
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        Layout.fillWidth: true
-                        title: "Notifications"
-                        font.pixelSize: 12
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 8
-
-                            CheckBox {
-                                id: opNotificationsCheck
-                                text: "Operation Completed Notifications"
-                                font.pixelSize: 12
-                                onCheckedChanged: prefsWin._dirty = true
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Show a Windows notification when an encryption or decryption session completes."
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
-                                color: Material.theme === Material.Dark ? "#888888" : "#777777"
-                            }
-                        }
-                    }
-
-
-                    Item { implicitHeight: 4 }
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 1
-            color: Material.theme === Material.Dark ? "#3c3c3c" : "#e0e0e0"
-        }
-
-        // ── Bottom button bar ──────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
-            Layout.margins: 16
-            spacing: 10
+            Layout.fillHeight: true
+            spacing: 0
 
-            Button {
-                text: "Reset to Defaults"
-                flat: true
-                font.pixelSize: 12
-                Layout.preferredHeight: 48
-                Material.foreground: "#e0004f"
-                onClicked: {
-                    prefsController.resetDefaults()
-                    prefsWin.loadValues()
-                    prefsWin._dirty = false
+            // Section navigation (Up/Down to move, Tab to the content)
+            Rectangle {
+                Layout.fillHeight: true
+                Layout.preferredWidth: 210
+                color: Theme.surfaceAlt
+
+                ListView {
+                    id: nav
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceSm
+                    model: prefsWin.sections
+                    spacing: 2
+                    focus: true
+                    activeFocusOnTab: true
+                    keyNavigationEnabled: true
+                    Accessible.role: Accessible.List
+                    Accessible.name: "Preference sections"
+
+                    delegate: ItemDelegate {
+                        id: navItem
+                        required property var modelData
+                        required property int index
+                        width: ListView.view.width
+                        height: 38
+                        highlighted: ListView.isCurrentItem
+                        onClicked: nav.currentIndex = navItem.index
+                        Accessible.name: navItem.modelData.name
+
+                        contentItem: RowLayout {
+                            spacing: Theme.spaceSm
+                            Icon {
+                                name: navItem.modelData.icon
+                                size: 14
+                                color: navItem.highlighted ? Theme.accent : Theme.textMuted
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: navItem.modelData.name
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBody
+                                font.weight: navItem.highlighted ? Font.DemiBold : Font.Normal
+                                color: Theme.text
+                                elide: Text.ElideRight
+                            }
+                        }
+                        background: Rectangle {
+                            radius: Theme.radius
+                            color: navItem.highlighted ? Theme.accentSoft : (navItem.hovered ? Theme.surfaceHover : "transparent")
+                            border.width: nav.activeFocus && navItem.highlighted ? 2 : 0
+                            border.color: Theme.focusRing
+                        }
+                    }
                 }
-                ToolTip.visible: hovered
-                ToolTip.text: "Restore every setting on all tabs to its default and save right away"
-                ToolTip.delay: 500
             }
-            Item { Layout.fillWidth: true }
-            Button {
+
+            Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 1; color: Theme.border }
+
+            StackLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: nav.currentIndex
+
+                // Appearance
+                PrefsPage {
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Theme"
+                        description: "System follows your Windows light or dark mode setting."
+                        FormRow {
+                            label: "App theme"
+                            StyledComboBox {
+                                id: themeCombo
+                                Layout.fillWidth: true
+                                accessibleName: "App theme"
+                                toolTipText: "Light, dark, or follow the Windows setting."
+                                model: prefsController.themeOptions
+                                onActivated: prefsWin.set("theme", currentValue)
+                            }
+                        }
+                    }
+                }
+
+                // Encryption
+                PrefsPage {
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Encryption defaults"
+                        description: "Used each time the app opens; you can still change them on the Encrypt tab."
+                        FormRow {
+                            label: "Encryption method"
+                            hint: algorithmCombo.currentIndex >= 0
+                                ? prefsController.algorithmOptions[algorithmCombo.currentIndex].hint : ""
+                            StyledComboBox {
+                                id: algorithmCombo
+                                Layout.fillWidth: true
+                                accessibleName: "Encryption method"
+                                toolTipText: "Decrypting picks the right method automatically."
+                                model: prefsController.algorithmOptions
+                                onActivated: prefsWin.set("advanced.encryption_mode", currentValue)
+                            }
+                        }
+                        FormRow {
+                            label: "Hide file names"
+                            hint: "Give encrypted files random names; the original name comes back when you decrypt."
+                            Item { Layout.fillWidth: true }
+                            AppSwitch {
+                                id: hideNamesSwitch
+                                accessibleName: "Hide file names by default"
+                                toolTipText: "Turn on to hide file names by default"
+                                onToggled: prefsWin.set("encryption.encrypt_filenames", checked)
+                            }
+                        }
+                    }
+                }
+
+                // Speed
+                PrefsPage {
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Files at a time"
+                        description: "Each file is read, encrypted, and saved at the same time, so a big file goes about as fast as the disk allows. Working on several files at once speeds up batches of smaller files."
+                        FormRow {
+                            label: "When encrypting"
+                            StyledComboBox {
+                                id: encThreadsCombo
+                                Layout.fillWidth: true
+                                accessibleName: "Files encrypted at a time"
+                                model: prefsWin.threadOptions
+                                // Bound to the edited value so rebuilding the list keeps the choice.
+                                value: Math.min(prefsWin.value("encryption.cpu_threads", prefsController.encThreads),
+                                                prefsWin.threadOptions.length)
+                                onActivated: prefsWin.set("encryption.cpu_threads", currentValue)
+                            }
+                        }
+                        FormRow {
+                            label: "When decrypting"
+                            StyledComboBox {
+                                id: decThreadsCombo
+                                Layout.fillWidth: true
+                                accessibleName: "Files decrypted at a time"
+                                model: prefsWin.threadOptions
+                                value: Math.min(prefsWin.value("decryption.cpu_threads", prefsController.decThreads),
+                                                prefsWin.threadOptions.length)
+                                onActivated: prefsWin.set("decryption.cpu_threads", currentValue)
+                            }
+                        }
+                        FormRow {
+                            label: "Keep the PC responsive"
+                            hint: "Leaves one processor thread free for Windows during large jobs."
+                            Item { Layout.fillWidth: true }
+                            AppSwitch {
+                                id: reserveSwitch
+                                accessibleName: "Keep one processor thread free"
+                                toolTipText: "Turn off to use every processor thread"
+                                onToggled: prefsWin.set("advanced.clamp_cpu_threads", checked)
+                            }
+                        }
+                    }
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Read size"
+                        description: "How much of a file is read at once. The fastest size depends on the disk and processor; Automatic (4 MB) suits most PCs. Each file being worked on holds about four times the size in memory."
+                        FormRow {
+                            label: "When encrypting"
+                            StyledComboBox {
+                                id: encReadCombo
+                                Layout.fillWidth: true
+                                accessibleName: "Read size when encrypting"
+                                model: prefsController.readSizeOptions
+                                value: prefsWin.value("encryption.read_size", prefsController.encReadSize)
+                                onActivated: prefsWin.set("encryption.read_size", currentValue)
+                            }
+                        }
+                        FormRow {
+                            label: "When decrypting"
+                            StyledComboBox {
+                                id: decReadCombo
+                                Layout.fillWidth: true
+                                accessibleName: "Read size when decrypting"
+                                model: prefsController.readSizeOptions
+                                value: prefsWin.value("decryption.read_size", prefsController.decReadSize)
+                                onActivated: prefsWin.set("decryption.read_size", currentValue)
+                            }
+                        }
+                        FormRow {
+                            label: "Find the fastest"
+                            hint: prefsController.readSizeTestRunning
+                                ? "Testing each size... " + Math.round(prefsController.readSizeTestProgress * 100) + "%"
+                                : prefsWin._speedTestMessage
+                                  || "Encrypts and decrypts a 256 MB test file in the temp folder with every size, then selects the fastest. Takes about a minute; the test file is deleted afterwards."
+                            Item { Layout.fillWidth: true }
+                            AppButton {
+                                text: prefsController.readSizeTestRunning ? "Stop" : "Run speed test"
+                                iconName: prefsController.readSizeTestRunning ? "stop" : "speed"
+                                toolTipText: prefsController.readSizeTestRunning
+                                    ? "Stop the speed test; nothing is changed"
+                                    : "Time every read size on this PC and select the fastest"
+                                onClicked: {
+                                    if (prefsController.readSizeTestRunning) {
+                                        prefsController.cancelReadSizeTest()
+                                    } else {
+                                        prefsWin._speedTestMessage = ""
+                                        prefsController.startReadSizeTest(
+                                            prefsWin.value("advanced.encryption_mode", prefsController.encMode))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Notifications & logs
+                PrefsPage {
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Notifications"
+                        FormRow {
+                            label: "Notify when finished"
+                            hint: "Show a Windows notification when encrypting or decrypting ends."
+                            Item { Layout.fillWidth: true }
+                            AppSwitch {
+                                id: notifySwitch
+                                accessibleName: "Notify when finished"
+                                toolTipText: "Useful for long jobs while you work in another window"
+                                onToggled: prefsWin.set("advanced.operation_notifications", checked)
+                            }
+                        }
+                    }
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Logs"
+                        description: "Log files help when reporting a problem. They list file names, never passwords."
+                        FormRow {
+                            label: "Keep logs"
+                            Item { Layout.fillWidth: true }
+                            AppSwitch {
+                                id: logsSwitch
+                                accessibleName: "Keep logs"
+                                toolTipText: "Write log files on this PC"
+                                onToggled: prefsWin.set("advanced.enable_logs", checked)
+                            }
+                        }
+                        FormRow {
+                            label: "What to log"
+                            enabled: logsSwitch.checked
+                            StyledComboBox {
+                                id: logLevelCombo
+                                Layout.fillWidth: true
+                                accessibleName: "What to log"
+                                toolTipText: "Errors only, or every file processed"
+                                model: prefsController.logLevelOptions
+                                onActivated: prefsWin.set("advanced.log_level", currentValue)
+                            }
+                        }
+                        RowLayout {
+                            spacing: Theme.spaceSm
+                            AppButton {
+                                text: "Open logs folder"
+                                iconName: "folderOpen"
+                                toolTipText: "Show the log files in File Explorer"
+                                onClicked: prefsController.openLogsFolder()
+                            }
+                            AppButton {
+                                kind: "danger"
+                                text: "Clear logs"
+                                iconName: "delete"
+                                toolTipText: "Empty the log files (your files are not affected)"
+                                onClicked: prefsController.clearLogs()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.margins: Theme.spaceMd
+            spacing: Theme.spaceSm
+
+            AppButton {
+                kind: "ghost"
+                text: "Reset to defaults"
+                toolTipText: "Restore every preference to its original value"
+                onClicked: resetDialog.open()
+            }
+            Text {
+                id: statusText
+                Layout.fillWidth: true
+                text: prefsWin._statusMessage || (prefsWin.dirty ? "Unsaved changes" : "")
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                color: prefsWin._statusIsError && prefsWin._statusMessage ? Theme.danger : Theme.textMuted
+                wrapMode: Text.WordWrap
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+            AppButton {
                 text: "Cancel"
-                font.pixelSize: 12
-                Layout.preferredHeight: 48
+                toolTipText: "Close without saving (Esc)"
                 onClicked: prefsWin.close()
-                ToolTip.visible: hovered
-                ToolTip.text: "Close and discard changes that were not applied"
-                ToolTip.delay: 500
             }
-            Button {
-                text: "Apply"
-                font.pixelSize: 12
-                Layout.preferredHeight: 48
-                enabled: prefsWin._dirty
-                onClicked: prefsWin.applyValues()
-                ToolTip.visible: hovered
-                ToolTip.text: "Save changes and keep this window open"
-                ToolTip.delay: 500
-            }
-            Button {
+            AppButton {
+                kind: "primary"
                 text: "Save"
-                highlighted: true
-                font.pixelSize: 12
-                Layout.preferredHeight: 48
-                onClicked: { prefsWin.applyValues(); prefsWin.close() }
-                ToolTip.visible: hovered
-                ToolTip.text: "Save changes and close"
-                ToolTip.delay: 500
+                toolTipText: "Save and close (Ctrl+S)"
+                onClicked: prefsWin.save()
             }
         }
     }
 
-    // ── Value helpers ──────────────────────────────────────────────────────────
+    // A scrollable column of cards for one preferences section.
+    component PrefsPage: ScrollView {
+        id: page
+        default property alias cards: column.data
+        contentWidth: availableWidth
+        contentHeight: column.implicitHeight + 2 * Theme.spaceLg
+        clip: true
 
-    function loadValues() {
-        try {
-            var themeMap = { "system": 0, "light": 1, "dark": 2 }
-            themeCombo.currentIndex = themeMap[prefsController.theme] ?? 0
-            encThreadsCombo.currentIndex = Math.min(
-                Math.max(0, prefsController.encThreads - 1), encThreadsCombo.count - 1)
-            decThreadsCombo.currentIndex = Math.min(
-                Math.max(0, prefsController.decThreads - 1), decThreadsCombo.count - 1)
-            encFilenamesCheck.checked   = prefsController.encFilenames
-            logTextWrapCheck.checked    = prefsController.logTextWrap
-            reserveThreadCheck.checked  = prefsController.clampThreads
-            enableLogsCheck.checked     = prefsController.enableLogs
-            logLevelCombo.currentIndex  = prefsController.logLevel === "all" ? 1 : 0
-            opNotificationsCheck.checked = prefsController.operationNotifications
-
-            var encChunk = prefsController.encChunkSize
-            for (var i = 0; i < _chunkOpts.length; i++) {
-                if (_chunkOpts[i].value === encChunk) { encChunkCombo.currentIndex = i; break }
-            }
-            var decChunk = prefsController.decChunkSize
-            for (var j = 0; j < _chunkOpts.length; j++) {
-                if (_chunkOpts[j].value === decChunk) { decChunkCombo.currentIndex = j; break }
-            }
-            var encMode = prefsController.encMode
-            for (var k = 0; k < _algOpts.length; k++) {
-                if (_algOpts[k].value === encMode) { algCombo.currentIndex = k; break }
-            }
-            prefsWin._dirty = false
-        } catch(e) {
-            console.error("loadValues:", e)
-        }
-    }
-
-    function applyValues() {
-        try {
-            var themeValues = ["system", "light", "dark"]
-            var encChunkVal = _chunkOpts[encChunkCombo.currentIndex].value
-            var decChunkVal = _chunkOpts[decChunkCombo.currentIndex].value
-
-            var updates = {
-                "theme":                              themeValues[themeCombo.currentIndex],
-                "appearance.log_text_wrap":           logTextWrapCheck.checked,
-                "encryption.cpu_threads":             encThreadsCombo.currentIndex + 1,
-                "encryption.chunk_size":              encChunkVal,
-                "encryption.encrypt_filenames":       encFilenamesCheck.checked,
-                "decryption.cpu_threads":             decThreadsCombo.currentIndex + 1,
-                "decryption.chunk_size":              decChunkVal,
-                "advanced.encryption_mode":           _algOpts[algCombo.currentIndex].value,
-                "advanced.enable_logs":               enableLogsCheck.checked,
-                "advanced.log_level":                 logLevelCombo.currentIndex === 1 ? "all" : "critical",
-                "advanced.clamp_cpu_threads":         reserveThreadCheck.checked,
-                "advanced.operation_notifications":   opNotificationsCheck.checked
-            }
-            prefsController.saveSettings(updates)
-            appController.applyTheme(themeValues[themeCombo.currentIndex])
-            prefsWin._dirty = false
-        } catch(e) {
-            console.error("applyValues:", e)
+        ColumnLayout {
+            id: column
+            x: Theme.spaceXl
+            y: Theme.spaceLg
+            width: page.availableWidth - 2 * Theme.spaceXl
+            spacing: Theme.spaceLg
         }
     }
 }
