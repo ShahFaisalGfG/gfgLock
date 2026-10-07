@@ -91,3 +91,5 @@ Every script runs from the repository root, writes its output under `build\`, an
 | `.\scripts\build_portable.ps1` | `build\gfgLock_<version>_portable.exe` (one file, no install) |
 
 The PyInstaller options (hidden imports, Qt hooks, bundled data) live in `scripts\bundle.ps1`, shared by every build. The version comes from `pyproject.toml`; keep `APP_VERSION` in `gfglock\config\defaults.py` the same (a test checks it).
+
+Every icon size and `gfgLock.ico` are drawn by `scripts\make_icons.py`; after changing it, run `python scripts\make_icons.py` to regenerate them.

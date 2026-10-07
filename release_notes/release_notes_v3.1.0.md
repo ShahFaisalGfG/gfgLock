@@ -35,6 +35,7 @@ None for your files. Everything encrypted with earlier versions decrypts unchang
 - **AES-256 CFB** is labelled *legacy*. Measured on current PCs it is the slowest of the three methods (about 580 MB/s against 1.4 GB/s for GCM), and it can't detect a damaged or altered file. GCM remains the default.
 - Files can be added while a job runs; they wait for the next run, and a notice says so.
 - Closing gfgLock during a job asks first, then lets the files in progress finish.
+- **New icon:** a bold white padlock on a blue-to-indigo tile, readable at taskbar size (the old icon's built-in "gfgLock" text wasn't). It shares its shape with CC-Gen-Ultimate's icon, and the splash screen uses its colours.
 - Dialogs dim the window with a dark layer in both themes.
 - The installers ship the licence, `THIRD_PARTY_NOTICES.md`, and the offline readme under `docs`, and Explorer refreshes file icons after installing.
 - **The portable exe keeps its settings and logs beside itself** in a `gfgLock data` folder, instead of in `%APPDATA%`, so it leaves nothing behind on the PC. On its first start it takes over the settings of an earlier version; on a drive it can't write to, it uses `%APPDATA%\gfgLock`.
