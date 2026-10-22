@@ -2,13 +2,17 @@
 
 ## Requirements
 
-- Python 3.11+
-- [Inno Setup 6](https://jrsoftware.org/isinfo.php) (for building the Windows installer)
-- Visual Studio 2022+ Build Tools with the C++ workload, CMake ≥ 3.25 (for the native C++ extension)
+- Windows 10 version 1809 or later, x64
+- Python 3.12 (x64) from python.org, with its default `include` and `libs` folders (the native build links against them)
+- PowerShell 7.2 or later (`pwsh`) for the build scripts; Windows PowerShell 5.1 can't run them
+- Visual Studio 2022 (17.x) Build Tools with the C++ workload and the "C++ CMake tools for Windows" component (for the native extension; the build script uses the CMake and Ninja that come with it)
+- [Inno Setup 6](https://jrsoftware.org/isinfo.php), 6.7 or later (for the installers; the release workflow uses 6.7.1)
 
 ---
 
 ## 1. Virtual Environment
+
+Run these from the repository root in `pwsh`:
 
 ```powershell
 # Create
@@ -21,6 +25,8 @@ python -m venv .venv
 .venv\Scripts\activate.bat
 ```
 
+The build scripts activate `.venv` themselves, so it only needs to exist.
+
 ---
 
 ## 2. Install Dependencies
@@ -29,7 +35,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-This installs: `PySide6`, `cryptography`, `pycryptodome`, `pyinstaller`, `py-cpuinfo`, `pytest`.
+This installs the exact versions every build uses: `PySide6`, `cryptography`, `pycryptodome`, `pyinstaller`, `pybind11`, and `pytest`, plus the packages they depend on. `pyproject.toml` lists the looser version ranges the code supports.
 
 ---
 
@@ -39,25 +45,26 @@ This installs: `PySide6`, `cryptography`, `pycryptodome`, `pyinstaller`, `py-cpu
 python -m gfglock
 ```
 
-Pass a file path to pre-populate the encrypt/decrypt dialog:
+Open files on a tab the way the Explorer context menu does:
 
 ```powershell
-python -m gfglock "C:\path\to\file.txt"
+python -m gfglock encrypt "C:\path\to\file.txt"
+python -m gfglock decrypt "C:\path\to\file.txt.gfglock"
 ```
+
+In development mode, settings are kept in `gfglock\utils\settings.json` and logs in `logs\`. The installed app keeps them in `%APPDATA%\gfgLock`, and the portable builds in a `gfgLock data` folder beside the exe (`gfglock\utils\paths.py`).
 
 ---
 
 ## 4. Native C++ Extension
 
-Compiles the `gfglock_native.pyd` extension (OpenSSL-backed AES-256-GCM, CFB, ChaCha20-Poly1305, KDF) and places it in `gfglock/core/`.
-
-**Requirements:** Visual Studio 2022+ Build Tools (C++ workload), CMake ≥ 3.25.
+Compiles `gfglock_native.pyd` (the OpenSSL-backed native engine) into `gfglock\core\`, and the Explorer shell extension `gfglock_shell.dll` into `build\shell\`.
 
 ```powershell
-.\build_native.ps1
+.\scripts\build_native.ps1
 ```
 
-The build script bootstraps vcpkg automatically if `.vcpkg/` is missing.
+The script downloads a source archive of vcpkg at the commit pinned in `native\vcpkg-commit.txt` into `.vcpkg\` (no git clone; the commit fixes the OpenSSL version), installs OpenSSL through it, takes pybind11 from the venv (installed by `pip` in step 2), and finishes by loading the new module the way the app does; the build fails if the app couldn't use it. Without the native module the app runs on the slower pure-Python ciphers, which read and write the same files.
 
 ---
 
@@ -67,81 +74,47 @@ The build script bootstraps vcpkg automatically if `.vcpkg/` is missing.
 pytest
 ```
 
-Runs tests covering:
+The tests cover the native engine and the Python fallback (every cipher, and files encrypted by one and decrypted by the other), files made by gfgLock 3.1.0 and older (`tests\fixtures\v1`, which both engines must keep opening), file safety (no overwrites, no data loss on failures), the controllers, the file list model, settings, and the read size speed test. Set `QT_QPA_PLATFORM=offscreen` to run them without a display.
 
-- **Native acceleration** (AES-256-GCM, CFB, ChaCha20-Poly1305)
-- **Python fallback** (all cipher modes with native C++ disabled)
-- **Cross-path compatibility** (native-encrypted files decryptable by Python fallback and vice versa)
-
----
-
-## 6. Debug Build (PyInstaller)
-
-Produces a multi-file `dist/gfgLock/` folder - faster iteration, no compression:
+Check the types the way CI does (pyright is an npm package):
 
 ```powershell
-pyinstaller `
-  --name gfgLock `
-  --icon gfglock\assets\icons\gfgLock.ico `
-  --add-data "gfglock\assets;gfglock\assets" `
-  --add-data "gfglock\qml;gfglock\qml" `
-  --collect-data PySide6 `
-  --hidden-import PySide6.QtQml `
-  --hidden-import PySide6.QtQuick `
-  --hidden-import PySide6.QtQuickControls2 `
-  --noconfirm `
-  gfglock\__main__.py
+pyright --pythonpath .venv\Scripts\python.exe gfglock
 ```
 
-Run the result:
+Check a build the way the release workflow does:
 
 ```powershell
-.\dist\gfgLock\gfgLock.exe
+python -m gfglock --self-test
 ```
 
 ---
 
-## 7. Release Build (PyInstaller)
+## 6. Builds
 
-Adds `--optimize 2` and `--windowed` to strip bytecode assertions and suppress the console window:
+Every script runs from the repository root, writes its output under `build\` (the one-folder app bundle goes to `dist\gfgLock\`), and runs the built app with `--self-test` before it reports success.
 
-```powershell
-pyinstaller `
-  --name gfgLock `
-  --icon gfglock\assets\icons\gfgLock.ico `
-  --add-data "gfglock\assets;gfglock\assets" `
-  --add-data "gfglock\qml;gfglock\qml" `
-  --collect-data PySide6 `
-  --hidden-import PySide6.QtQml `
-  --hidden-import PySide6.QtQuick `
-  --hidden-import PySide6.QtQuickControls2 `
-  --windowed `
-  --optimize 2 `
-  --noconfirm `
-  gfglock\__main__.py
-```
+| Command | Output |
+|---|---|
+| `.\scripts\build.ps1` | Native extension, both installers, and the portable exe |
+| `.\scripts\build_installer.ps1 -Kind User` | `build\installer\gfgLock_<version>_user_installer.exe` (no admin rights; installs to `%APPDATA%\gfgLock`) |
+| `.\scripts\build_installer.ps1 -Kind System` | `build\installer\gfgLock_<version>_system_installer.exe` (admin; installs to `Program Files`) |
+| `.\scripts\build_portable.ps1` | `build\gfgLock_<version>_portable.exe` (one file, no install; uses the native module last built) |
 
-The output directory `dist\gfgLock\` is what the Inno Setup scripts reference as `SourceDir`.
+The release workflow also packs the one-folder bundle as `gfgLock_<version>_portable.7z` with `New-PortableArchive` in `scripts\bundle.ps1`.
+
+- `scripts\common.ps1` holds the helpers every script shares (the venv, app metadata, the native build, Inno Setup).
+- `scripts\bundle.ps1` holds the PyInstaller options, the self-test run, and the portable archive. The hooks in `hooks\` keep only the Qt modules, plugins, and QML modules the app uses, and PyInstaller runs with PATH folders that hold another OpenSSL build hidden, so the bundle gets the pinned one.
+- `installer\common.iss` holds what both installer scripts share; `gfglock_system_installer.iss` and `gfglock_user_installer.iss` add what differs.
+
+The version comes from `pyproject.toml`; keep `APP_VERSION` in `gfglock\config\defaults.py` the same (a test checks it).
+
+Every icon size and `gfgLock.ico` are drawn by `scripts\make_icons.py`; after changing it, run `python scripts\make_icons.py` to regenerate them.
+
+The `licenses` folder holds the full licence text of every bundled component, and `THIRD_PARTY_NOTICES.md` lists the components and every bundled DLL. When a bundled component changes, copy its licence from the package's `*.dist-info` folder (or `native\vcpkg_installed\x64-windows\share\<port>\copyright` for vcpkg ports) and update both.
 
 ---
 
-## 8. Windows Installer (Inno Setup)
+## 7. Contributing
 
-Run either script with Inno Setup's command-line compiler (`iscc.exe`).
-
-**System-wide installer** (requires admin, installs to `Program Files`):
-
-```powershell
-& "C:\Program Files (x86)\Inno Setup 6\iscc.exe" installer\gfglock_system_installer.iss
-```
-
-**Per-user installer** (no admin required, installs to `AppData\Local`):
-
-```powershell
-& "C:\Program Files (x86)\Inno Setup 6\iscc.exe" installer\gfglock_user_installer.iss
-```
-
-The compiled `.exe` installer is written to `installer\Output\`.
-
-> Build the release PyInstaller bundle first (step 7) before running the installer script,
-> because the `.iss` files reference `dist\gfgLock\` as the source directory.
+Branch from `dev` and open pull requests against `dev`. The Tests workflow runs pytest (with and without the native engine), pyright, and qmllint on every push and pull request.

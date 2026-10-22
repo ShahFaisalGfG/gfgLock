@@ -1,17 +1,21 @@
+#Requires -Version 7.2
 <#
 .SYNOPSIS
-    Build the gfglock_native C++ extension (.pyd) and place it in gfglock/core/.
+    Build the gfglock_native C++ extension (.pyd) into gfglock\core\ and the Explorer shell
+    extension (gfglock_shell.dll) into build\shell\.
 .DESCRIPTION
-    Step 1 - Find and activate MSVC via vcvarsall.bat
-    Step 2 - Bootstrap vcpkg if not present
-    Step 3 - Install OpenSSL and pybind11 via vcpkg
-    Step 4 - Install pybind11 into the Python venv
-    Step 5c - CMake configure (release-x64-msvc preset)
+    Step 1 - Activate the venv, then find and activate MSVC via vcvarsall.bat
+    Step 2 - Locate pybind11 (installed by pip from requirements.txt)
+    Step 3 - Download vcpkg at the commit in native\vcpkg-commit.txt if .vcpkg\ is missing
+    Step 4 - Install OpenSSL via vcpkg
+    Step 5 - CMake configure (release-x64-msvc preset)
     Step 6 - CMake build (Release)
-    Step 7 - Verify gfglock_native.pyd landed in gfglock/core/
+    Step 7 - Verify the outputs and load the module the way the app does
 .NOTES
-    Requirements: Visual Studio 2022 or newer Build Tools (MSVC, x64)
-    vcpkg is bootstrapped automatically if .vcpkg/ is missing.
+    Requirements: PowerShell 7.2+, Visual Studio 2022 (17.x) or its Build Tools (MSVC, x64), and
+    the venv from requirements.txt. vcpkg is downloaded automatically if .vcpkg\ is missing.
+    A newer toolset is not used: the app loads the VC++ runtime that PySide6 and Python ship, and
+    code built with a newer toolset than that runtime is not supported by Microsoft.
 #>
 
 param()
@@ -28,14 +32,7 @@ $OutPydGlob  = Join-Path $ProjectRoot "gfglock\core\gfglock_native*.pyd"
 
 # --- Helpers -----------------------------------------------------------------
 
-function Write-Step([string]$Msg) {
-    Write-Host "`n>> $Msg" -ForegroundColor Cyan
-}
-
-function Fail([string]$Msg) {
-    Write-Host "`nERROR: $Msg" -ForegroundColor Red
-    exit 1
-}
+. "$PSScriptRoot\common.ps1"
 
 function Invoke-VcVars([string]$VcVarsPath) {
     Write-Host "   Sourcing: $VcVarsPath" -ForegroundColor DarkGray
@@ -51,6 +48,11 @@ function Invoke-VcVars([string]$VcVarsPath) {
 
 Set-Location $ProjectRoot
 
+# --- Virtual environment -----------------------------------------------------
+
+# Before vcvarsall: activating a venv puts back the PATH it saved, which would drop the MSVC tools.
+Enable-Venv
+
 # --- MSVC environment --------------------------------------------------------
 
 Write-Step "Locating MSVC (vcvarsall.bat)"
@@ -60,7 +62,8 @@ $VcVarsAll = $null
 $VsInstallPath = $null
 
 if (Test-Path $VsWhere) {
-    $VsInstallPath = & $VsWhere -latest -products * -property installationPath 2>$null
+    $VsInstallPath = & $VsWhere -latest -products * -version "[17.0,18.0)" `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
     if ($VsInstallPath) {
         $Candidate = Join-Path $VsInstallPath "VC\Auxiliary\Build\vcvarsall.bat"
         if (Test-Path $Candidate) { $VcVarsAll = $Candidate }
@@ -73,14 +76,14 @@ if (-not $VcVarsAll) {
         "${env:ProgramFiles}\Microsoft Visual Studio"
     )
     foreach ($Root in $SearchRoots) {
-        $Found = Get-ChildItem "$Root\*\*\VC\Auxiliary\Build\vcvarsall.bat" -ErrorAction SilentlyContinue |
+        $Found = Get-ChildItem "$Root\2022\*\VC\Auxiliary\Build\vcvarsall.bat" -ErrorAction SilentlyContinue |
                  Sort-Object FullName -Descending | Select-Object -First 1
         if ($Found) { $VcVarsAll = $Found.FullName; $VsInstallPath = $Found.Directory.Parent.Parent.Parent.FullName; break }
     }
 }
 
 if (-not $VcVarsAll) {
-    Fail "Could not find vcvarsall.bat. Install Visual Studio Build Tools with the C++ workload."
+    Fail "Could not find vcvarsall.bat. Install Visual Studio 2022 Build Tools with the C++ workload."
 }
 
 Invoke-VcVars $VcVarsAll
@@ -109,44 +112,31 @@ if (-not $NinjaExe) {
 }
 Write-Host "   Ninja: $NinjaExe" -ForegroundColor DarkGray
 
-# --- Virtual environment -----------------------------------------------------
-
-Write-Step "Activating virtual environment"
-
-$VenvFound = $false
-foreach ($v in @(".venv\Scripts\Activate.ps1", "venv\Scripts\Activate.ps1")) {
-    if (Test-Path $v) { . $v; $VenvFound = $true; break }
-}
-if (-not $VenvFound) {
-    Write-Host "   No venv found - using system Python" -ForegroundColor Yellow
-}
-
 # --- pybind11 ----------------------------------------------------------------
 
 Write-Step "Checking pybind11"
 
 $Pybind11Dir = python -c "import pybind11; print(pybind11.get_cmake_dir())" 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $Pybind11Dir) {
-    Write-Host "   Installing pybind11..." -ForegroundColor DarkGray
-    pip install "pybind11[global]>=2.12" --quiet
-    $Pybind11Dir = python -c "import pybind11; print(pybind11.get_cmake_dir())"
-    if ($LASTEXITCODE -ne 0) { Fail "pybind11 install failed." }
+    Fail "pybind11 not found. Install the pinned build tools with: pip install -r requirements.txt"
 }
 Write-Host "   pybind11 cmake dir: $Pybind11Dir" -ForegroundColor DarkGray
 
 $PythonExe = python -c "import sys; print(sys.executable)"
+if ($LASTEXITCODE -ne 0 -or -not $PythonExe) { Fail "Could not run the venv's Python." }
 Write-Host "   Python executable : $PythonExe" -ForegroundColor DarkGray
 
 # vcpkg's bundled python3 port registers a find-module wrapper that searches
 # its own tree for Development headers/libs before FindPython ever sees our
 # -DPython_INCLUDE_DIR hint, so that hint alone arrives too late to matter.
 # Presetting its private (underscore) result variables directly makes its
-# search a no-op instead, letting the real target Python's files through.
+# search a no-op instead, letting the target Python's files through.
 # sys.base_prefix (not sys.prefix) so this also resolves correctly in a venv.
 $PyDevPaths = python -c "import sys, sysconfig, os; print(sysconfig.get_path('include')); print(os.path.join(sys.base_prefix, 'libs', 'python' + sysconfig.get_config_var('py_version_nodot') + '.lib'))"
+if ($LASTEXITCODE -ne 0) { Fail "Could not ask Python where its development headers are." }
 $PyIncludeDir, $PyLibrary = $PyDevPaths
 if (-not (Test-Path $PyIncludeDir) -or -not (Test-Path $PyLibrary)) {
-    Fail "Could not locate Python development headers/library ($PyIncludeDir / $PyLibrary). Install the full Python distribution (not just the interpreter)."
+    Fail "Could not locate Python development headers/library ($PyIncludeDir / $PyLibrary). Install Python from python.org with its include and libs folders."
 }
 Write-Host "   Python include     : $PyIncludeDir" -ForegroundColor DarkGray
 Write-Host "   Python import lib  : $PyLibrary" -ForegroundColor DarkGray
@@ -155,15 +145,36 @@ Write-Host "   Python import lib  : $PyLibrary" -ForegroundColor DarkGray
 
 Write-Step "Checking vcpkg"
 
+# vcpkg is pinned to the commit in native\vcpkg-commit.txt, which fixes the OpenSSL version, so a
+# release can be rebuilt exactly. A cached .vcpkg from another commit is replaced.
+$VcpkgCommit = (Get-Content (Join-Path $NativeDir "vcpkg-commit.txt") -Raw).Trim()
+$VcpkgMarker = Join-Path $VcpkgDir ".gfglock-vcpkg-commit"
+$VcpkgPinned = (Test-Path $VcpkgMarker) -and ((Get-Content $VcpkgMarker -Raw).Trim() -eq $VcpkgCommit)
+if ((Test-Path $VcpkgDir) -and -not $VcpkgPinned) {
+    Write-Host "   .vcpkg is not at the pinned commit; replacing it" -ForegroundColor DarkGray
+    Remove-Item -Recurse -Force $VcpkgDir
+}
+
 if (-not (Test-Path $VcpkgDir)) {
-    Write-Host "   Bootstrapping vcpkg at $VcpkgDir ..." -ForegroundColor DarkGray
-    git clone "https://github.com/microsoft/vcpkg.git" $VcpkgDir --depth 1 --quiet
-    if ($LASTEXITCODE -ne 0) { Fail "vcpkg clone failed." }
+    # A source archive of the commit, over HTTPS: needs no git history and no SSH key, and is
+    # unaffected by git settings that rewrite GitHub URLs.
+    Write-Host "   Downloading vcpkg $VcpkgCommit ..." -ForegroundColor DarkGray
+    $VcpkgZip = Join-Path $env:TEMP "vcpkg-$VcpkgCommit.zip"
+    $VcpkgUnpack = Join-Path $env:TEMP "vcpkg-$VcpkgCommit"
+    try {
+        Invoke-WebRequest -Uri "https://github.com/microsoft/vcpkg/archive/$VcpkgCommit.zip" -OutFile $VcpkgZip -UseBasicParsing
+    } catch {
+        Fail "vcpkg download failed: $_"
+    }
+    if (Test-Path $VcpkgUnpack) { Remove-Item -Recurse -Force $VcpkgUnpack }
+    New-Item -ItemType Directory -Path $VcpkgUnpack | Out-Null
+    tar -xf $VcpkgZip -C $VcpkgUnpack
+    if ($LASTEXITCODE -ne 0) { Fail "vcpkg archive could not be unpacked." }
+    Move-Item (Join-Path $VcpkgUnpack "vcpkg-$VcpkgCommit") $VcpkgDir
+    Remove-Item -Recurse -Force $VcpkgUnpack, $VcpkgZip
     & "$VcpkgDir\bootstrap-vcpkg.bat" -disableMetrics 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail "vcpkg bootstrap failed." }
-    foreach ($item in @(".git", ".github", ".gitignore", ".gitattributes")) {
-        Remove-Item -Recurse -Force (Join-Path $VcpkgDir $item) -ErrorAction SilentlyContinue
-    }
+    Set-Content -Path $VcpkgMarker -Value $VcpkgCommit -NoNewline
 }
 
 $VcpkgExe = Join-Path $VcpkgDir "vcpkg.exe"
@@ -181,6 +192,16 @@ $VcpkgExit = $LASTEXITCODE
 $ErrorActionPreference = $SavedPref
 if ($VcpkgExit -ne 0) { Fail "vcpkg install failed (exit $VcpkgExit)." }
 
+# vcvarsall does not always put the CMake bundled with VS on PATH; use it when none is found.
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue) -and $VsInstallPath) {
+    $VsCmakeBin = Join-Path $VsInstallPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+    if (Test-Path (Join-Path $VsCmakeBin "cmake.exe")) { $env:PATH = "$VsCmakeBin;$env:PATH" }
+}
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    Fail "Could not find cmake.exe (checked PATH and the VS install). Install the C++ CMake tools for Windows workload."
+}
+Write-Host "   CMake: $((Get-Command cmake).Source)" -ForegroundColor DarkGray
+
 # --- CMake configure ---------------------------------------------------------
 
 Write-Step "CMake configure"
@@ -188,7 +209,9 @@ Write-Step "CMake configure"
 $Preset = "release-x64-msvc"
 Write-Host "   Preset : $Preset" -ForegroundColor DarkGray
 
+# --fresh: a cache made by another compiler (a Visual Studio update, say) mixes two toolsets.
 $CmakeArgs = @(
+    "--fresh",
     "--preset", $Preset,
     "-S", $NativeDir,
     "-B", $BuildDir,
@@ -233,9 +256,9 @@ Write-Host "Shell extension     : $ShellDll  ($DllKb KB)" -ForegroundColor Green
 # --- Quick smoke test --------------------------------------------------------
 
 Write-Step "Smoke test"
-python -c "import sys; sys.path.insert(0,'gfglock/core'); import gfglock_native as n; print('  NATIVE_AVAILABLE: True')"
+# Loads the module the way the app does, so an API version mismatch fails here, not for users.
+python -c "import sys; from gfglock.core import native_bridge as b; print('   native API', getattr(b._native, 'API_VERSION', None), '/ required', b.REQUIRED_API_VERSION); sys.exit(0 if b.NATIVE_AVAILABLE else 1)"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "   Smoke test FAILED - check build output" -ForegroundColor Red
-} else {
-    Write-Host "   Smoke test PASSED" -ForegroundColor Green
+    Fail "Smoke test failed: the app can't load the native module it just built."
 }
+Write-Host "   Smoke test PASSED" -ForegroundColor Green

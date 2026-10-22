@@ -1,17 +1,9 @@
 # utils - public API for gfglock utility modules
 
+from gfglock.utils.console import safe_print
 from gfglock.utils.helpers import (
     resource_path,
-    get_cpu_thread_count,
-    clamp_threads,
-    format_duration,
     format_bytes,
-    format_time,
-    choose_scale,
-    calculate_files_total_size,
-    predict_encrypted_size,
-    derive_key,
-    safe_print,
     generate_encrypted_name,
 )
 from gfglock.utils.settings import (
@@ -33,15 +25,7 @@ from gfglock.utils.logging import (
 
 __all__ = [
     "resource_path",
-    "get_cpu_thread_count",
-    "clamp_threads",
-    "format_duration",
     "format_bytes",
-    "format_time",
-    "choose_scale",
-    "calculate_files_total_size",
-    "predict_encrypted_size",
-    "derive_key",
     "safe_print",
     "generate_encrypted_name",
     "get_settings_file",

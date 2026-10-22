@@ -6,10 +6,10 @@
 # top-level imports before running any other code in it, so live
 # per-dependency progress on screen is only possible if the heavy imports
 # happen after the splash is already visible, i.e. inside a function body.
+# Nothing imported before the splash loads the engine (gfglock.core imports
+# nothing by itself), so its cost is paid here, off the GUI thread.
 
 from PySide6.QtCore import QThread, Signal
-
-from gfglock.utils.logging import write_log
 
 
 class BootThread(QThread):
@@ -20,12 +20,11 @@ class BootThread(QThread):
     boot_failed = Signal(str)
 
     def run(self) -> None:
-        """Load the native bridge and cipher backends, then controllers."""
+        """Load the native engine (and its OpenSSL DLL), the file operations, then the controllers."""
         try:
             self.stage_changed.emit("Loading encryption engine...", 40)
             import gfglock.core.native_bridge  # noqa: F401
-            import gfglock.core.aes256_gcm_cfb  # noqa: F401
-            import gfglock.core.chacha20_poly1305  # noqa: F401
+            import gfglock.core.file_ops  # noqa: F401
 
             self.stage_changed.emit("Preparing interface...", 85)
             import gfglock.controllers.app_ctrl  # noqa: F401
@@ -33,6 +32,5 @@ class BootThread(QThread):
             import gfglock.controllers.prefs_ctrl  # noqa: F401
 
             self.boot_ready.emit()
-        except Exception as e:
-            write_log(f"Startup failed: {e}", level="critical")
-            self.boot_failed.emit(str(e))
+        except Exception as error:  # reported (and logged) by the window's start-up, which quits
+            self.boot_failed.emit(f"{type(error).__name__}: {error}")

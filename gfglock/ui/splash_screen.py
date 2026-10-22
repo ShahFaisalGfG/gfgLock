@@ -18,7 +18,7 @@ _BAR_STYLE = (
     "QProgressBar { background: rgba(255,255,255,0.08); border: none;"
     " border-radius: 3px; }"
     "QProgressBar::chunk { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-    " stop:0 #0078d4, stop:1 #00b4d8); border-radius: 3px; }"
+    " stop:0 #3b82f6, stop:1 #4338ca); border-radius: 3px; }"  # the icon gradient (scripts/make_icons.py)
 )
 
 
@@ -114,11 +114,3 @@ class SplashScreen(QWidget):
             anim.start()
         except Exception as e:
             write_log(f"Splash progress update failed: {e}", level="critical")
-
-    def set_error(self, message: str) -> None:
-        """Switch the status text into an error state."""
-        try:
-            self._status.setText(message)
-            self._status.setStyleSheet("color: #f85149; font-size: 12px;")
-        except Exception as e:
-            write_log(f"Splash error display failed: {e}", level="critical")

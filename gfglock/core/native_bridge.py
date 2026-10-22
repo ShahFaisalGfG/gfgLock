@@ -1,10 +1,20 @@
-# native_bridge.py - Python gateway to the gfglock_native C++ extension.
-# Provides typed wrappers with transparent CPU fallback when the .pyd is absent.
+# native_bridge.py - Python gateway to the gfglock_native C++ extension (the native engine).
+# Typed wrappers that turn native failures into the same (ok, error, ...) results as py_cipher;
+# file_ops uses this engine while NATIVE_AVAILABLE is true and the Python one otherwise.
+
+from __future__ import annotations
 
 import hashlib
 import os
 import sys
-from typing import Callable, Optional
+from collections.abc import Callable
+from types import ModuleType
+from typing import TYPE_CHECKING
+
+from gfglock.utils.console import safe_print
+
+if TYPE_CHECKING:
+    from gfglock.core.py_cipher import StopToken
 
 # ── Locate and load the .pyd ──────────────────────────────────────────────────
 
@@ -19,130 +29,122 @@ def _frozen_core_dir() -> str:
     return os.path.join(meipass, "gfglock", "core") if meipass else _core_dir()
 
 
-def _log(msg: str) -> None:
-    """Write msg to stdout; avoids importing helpers to prevent circular imports."""
-    try:
-        sys.stdout.buffer.write((msg + "\n").encode("utf-8", errors="replace"))
-        sys.stdout.buffer.flush()
-    except Exception:
-        try:
-            print(msg, flush=True)
-        except Exception:
-            pass
-
-
 _pyd_dir = _frozen_core_dir()
 if _pyd_dir not in sys.path:
     sys.path.insert(0, _pyd_dir)
 
+# Version 2 moved naming and deletion out of C++ (an older module's unsafe logic must not run);
+# version 4 added the read size; version 5 writes the v2 format (seal_file, open_file, CancelToken)
+# and keeps v1 for decryption only. An older module left on disk is ignored.
+REQUIRED_API_VERSION = 5
+V1_ITERATIONS = 200_000
+_NATIVE_ERRORS = (RuntimeError, ValueError, OSError, MemoryError)
+
 try:
     import gfglock_native as _native  # type: ignore[import]
-    NATIVE_AVAILABLE: bool = True
-except ImportError:
+    NATIVE_AVAILABLE: bool = getattr(_native, "API_VERSION", 1) >= REQUIRED_API_VERSION
+    if not NATIVE_AVAILABLE:
+        safe_print("gfglock_native is outdated (rebuild with scripts/build_native.ps1); using the Python fallback")
+        _native = None
+except ModuleNotFoundError:
+    _native = None
+    NATIVE_AVAILABLE = False
+except ImportError as load_error:  # the module is there but failed to load, e.g. a missing OpenSSL DLL
+    safe_print(f"gfglock_native could not be loaded ({load_error}); using the Python fallback")
     _native = None
     NATIVE_AVAILABLE = False
 
-# ── KDF ───────────────────────────────────────────────────────────────────────
 
-def derive_key(password: str, salt: bytes, iterations: int = 200000) -> bytes:
-    """Derive a 32-byte key via PBKDF2-HMAC-SHA256 (native when available)."""
-    try:
-        if NATIVE_AVAILABLE and _native is not None:
+def _module() -> ModuleType:
+    """The loaded native module; raises RuntimeError while the Python engine is in use."""
+    if not NATIVE_AVAILABLE or _native is None:
+        raise RuntimeError("the native engine is not loaded")
+    return _native
+
+# ── Keys and versions ─────────────────────────────────────────────────────────
+
+def derive_key(password: str, salt: bytes, iterations: int = V1_ITERATIONS) -> bytes:
+    """Derive a v1 file's 32-byte key with PBKDF2-HMAC-SHA256 (native when available)."""
+    if NATIVE_AVAILABLE and _native is not None:
+        try:
             return bytes(_native.pbkdf2_sha256(password, salt, iterations, 32))
-    except Exception:
-        pass
+        except _NATIVE_ERRORS as error:
+            safe_print(f"Native key derivation failed ({error}); using the Python fallback")
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations, dklen=32)
 
-# ── AES-256-GCM ───────────────────────────────────────────────────────────────
 
-def encrypt_gcm(
-    path: str,
-    password: str,
-    encrypt_name: bool = False,
-    chunk_size: int = 0,
-    callback: Optional[Callable[[float], None]] = None,
+def new_cancel_token() -> StopToken:
+    """A native CancelToken, the only kind the native transforms accept."""
+    return _module().CancelToken()
+
+
+def openssl_version() -> str:
+    """The OpenSSL version the native module runs with ("" without the module)."""
+    return str(_native.openssl_version()) if NATIVE_AVAILABLE and _native is not None else ""
+
+
+def openssl_build_version() -> str:
+    """The OpenSSL version the native module was compiled against ("" without the module)."""
+    return str(_native.openssl_build_version()) if NATIVE_AVAILABLE and _native is not None else ""
+
+# ── File transforms (same parameters and results as py_cipher) ────────────────
+
+def seal_file(
+    algorithm: str,
+    input_path: str,
+    output_path: str,
+    header: bytes,
+    key: bytes,
+    nonce_prefix: bytes,
+    chunk_size: int,
+    metadata: bytes,
+    block_size: int = 0,
+    cancel: StopToken | None = None,
+    callback: Callable[[float], None] | None = None,
 ) -> tuple[bool, str]:
-    """Encrypt a file with AES-256-GCM via the native module."""
+    """Write header, then metadata + the input file sealed in chunks, to output_path. Returns (ok, error)."""
     try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.encrypt_gcm(path, password, encrypt_name, chunk_size, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while encrypting {path}: {e}"
+        ok, error = _module().seal_file(algorithm, input_path, output_path, header, key, nonce_prefix,
+                                        chunk_size, metadata, block_size, cancel, callback)
+        return bool(ok), str(error)
+    except _NATIVE_ERRORS as error:
+        return False, str(error) or repr(error)
 
 
-def decrypt_gcm(
-    path: str,
+def open_file(
+    algorithm: str,
+    input_path: str,
+    output_path: str,
+    header: bytes,
+    key: bytes,
+    nonce_prefix: bytes,
+    chunk_size: int,
+    block_size: int = 0,
+    cancel: StopToken | None = None,
+    callback: Callable[[float], None] | None = None,
+) -> tuple[bool, str, bytes]:
+    """Open the chunk stream after `header`: write the file data to output_path, return (ok, error, metadata)."""
+    try:
+        ok, error, metadata = _module().open_file(algorithm, input_path, output_path, header, key, nonce_prefix,
+                                                  chunk_size, block_size, cancel, callback)
+        return bool(ok), str(error), bytes(metadata)
+    except _NATIVE_ERRORS as error:
+        return False, str(error) or repr(error), b""
+
+
+def decrypt_file_v1(
+    algorithm: str,
+    input_path: str,
+    output_path: str,
     password: str,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Decrypt a .gfglock file with AES-256-GCM via the native module."""
+    block_size: int = 0,
+    cancel: StopToken | None = None,
+    callback: Callable[[float], None] | None = None,
+) -> tuple[bool, str, bytes]:
+    """Decrypt a v1 file into output_path. Returns (ok, error, stored_name_bytes); the name is untrusted."""
     try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.decrypt_gcm(path, password, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while decrypting {path}: {e}"
-
-# ── AES-256-CFB ───────────────────────────────────────────────────────────────
-
-def encrypt_cfb(
-    path: str,
-    password: str,
-    encrypt_name: bool = False,
-    chunk_size: int = 0,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Encrypt a file with AES-256-CFB via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.encrypt_cfb(path, password, encrypt_name, chunk_size, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while encrypting {path}: {e}"
-
-
-def decrypt_cfb(
-    path: str,
-    password: str,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Decrypt a .gfglck file with AES-256-CFB via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.decrypt_cfb(path, password, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while decrypting {path}: {e}"
-
-# ── ChaCha20-Poly1305 ─────────────────────────────────────────────────────────
-
-def encrypt_chacha(
-    path: str,
-    password: str,
-    encrypt_name: bool = False,
-    chunk_size: int = 0,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Encrypt a file with ChaCha20-Poly1305 via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.encrypt_chacha(path, password, encrypt_name, chunk_size, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while encrypting {path}: {e}"
-
-
-def decrypt_chacha(
-    path: str,
-    password: str,
-    callback: Optional[Callable[[float], None]] = None,
-) -> tuple[bool, str]:
-    """Decrypt a .gfgcha file with ChaCha20-Poly1305 via the native module."""
-    try:
-        assert NATIVE_AVAILABLE and _native is not None
-        result = _native.decrypt_chacha(path, password, callback)
-        return bool(result[0]), str(result[1])
-    except Exception as e:
-        return False, f"Critical error while decrypting {path}: {e}"
-
+        ok, error, name = _module().decrypt_file_v1(algorithm, input_path, output_path, password,
+                                                    block_size, cancel, callback)
+        return bool(ok), str(error), bytes(name)
+    except _NATIVE_ERRORS as error:
+        return False, str(error) or repr(error), b""

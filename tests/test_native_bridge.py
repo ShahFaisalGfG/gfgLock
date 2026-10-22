@@ -1,5 +1,6 @@
 import hashlib
 import importlib
+import importlib.abc
 import os
 import sys
 
@@ -11,136 +12,138 @@ _MISSING = object()
 
 requires_native = pytest.mark.skipif(
     not native_bridge.NATIVE_AVAILABLE,
-    reason="Native C++ extension not loaded",
+    reason="the native module (API 5) is not built",
 )
 
-_WRAPPER_NAMES = (
-    "encrypt_gcm", "decrypt_gcm",
-    "encrypt_cfb", "decrypt_cfb",
-    "encrypt_chacha", "decrypt_chacha",
-)
+_NATIVE_NAMES = ("pbkdf2_sha256", "seal_file", "open_file", "decrypt_file_v1", "CancelToken",
+                 "openssl_version", "openssl_build_version")
 
 
-def _reload_blocked():
-    """Block `import gfglock_native`, reload native_bridge, assert it degrades safely,
-    then always restore the module to its original state before returning."""
-    original_entry = sys.modules.get("gfglock_native", _MISSING)
-    try:
-        sys.modules["gfglock_native"] = None  # type: ignore[assignment]
-        reloaded = importlib.reload(native_bridge)
-        assert reloaded.NATIVE_AVAILABLE is False, "must be False when import is blocked"
-        assert reloaded._native is None, "_native must be None when import is blocked"
-    except AssertionError:
-        raise
-    except Exception as exc:
-        pytest.fail(str(exc))
-    finally:
-        if original_entry is _MISSING:
-            sys.modules.pop("gfglock_native", None)
-        else:
-            sys.modules["gfglock_native"] = original_entry  # type: ignore[assignment]
-        try:
-            importlib.reload(native_bridge)
-        except Exception as exc:
-            pytest.fail(f"Failed to restore native_bridge state: {exc}")
+class _FailingLoader(importlib.abc.MetaPathFinder):
+    """Makes `import gfglock_native` fail the way a .pyd with a missing DLL does."""
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "gfglock_native":
+            raise ImportError("DLL load failed while importing gfglock_native")
+        return None
+
+
+@pytest.fixture
+def reload_bridge(monkeypatch):
+    """Reload native_bridge under the test's import conditions, and restore it afterwards."""
+    yield lambda: importlib.reload(native_bridge)
+    monkeypatch.undo()
+    importlib.reload(native_bridge)
 
 
 class TestNativeAvailableFlag:
-    """Coverage for what NATIVE_AVAILABLE reflects in this environment."""
-
     def test_is_bool(self):
-        """NATIVE_AVAILABLE must always be a plain bool, never None or another type."""
         assert isinstance(native_bridge.NATIVE_AVAILABLE, bool)
 
     @requires_native
     def test_native_exports(self):
-        """When native is available, every wrapped C++ function must be present and callable."""
         native = native_bridge._native
         assert native is not None
-        names = ("pbkdf2_sha256",) + _WRAPPER_NAMES
-        for name in names:
-            func = getattr(native, name, None)
-            assert callable(func), f"{name} missing or not callable on native module"
+        assert native.API_VERSION >= native_bridge.REQUIRED_API_VERSION == 5
+        for name in _NATIVE_NAMES:
+            assert callable(getattr(native, name, None)), f"{name} missing or not callable on the native module"
 
 
-class TestImportDetectionLogic:
-    """Directly exercises the try/except ImportError block that sets NATIVE_AVAILABLE."""
+class TestImportDetection:
+    def test_missing_module_falls_back(self, monkeypatch, reload_bridge):
+        monkeypatch.setitem(sys.modules, "gfglock_native", None)
+        reloaded = reload_bridge()
+        assert reloaded.NATIVE_AVAILABLE is False and reloaded._native is None
 
-    def test_blocked_import(self):
-        """Simulating the native extension's absence must flip NATIVE_AVAILABLE to False
-        via the module's own detection logic, then restore the baseline afterward."""
-        baseline = native_bridge.NATIVE_AVAILABLE
-        _reload_blocked()
-        assert native_bridge.NATIVE_AVAILABLE == baseline
+    @pytest.mark.parametrize("api_version", [None, 4], ids=["no-version", "api-4"])
+    def test_outdated_module_is_ignored(self, monkeypatch, reload_bridge, capfd, api_version):
+        """A module from before the v2 format must not be used: its transforms write v1 files."""
+        fake = type(sys)("gfglock_native")
+        if api_version is not None:
+            setattr(fake, "API_VERSION", api_version)
+        monkeypatch.setitem(sys.modules, "gfglock_native", fake)
+        reloaded = reload_bridge()
+        assert reloaded.NATIVE_AVAILABLE is False and reloaded._native is None
+        assert "outdated" in capfd.readouterr().out
+
+    def test_module_that_fails_to_load_is_reported(self, monkeypatch, reload_bridge, capfd):
+        monkeypatch.delitem(sys.modules, "gfglock_native", raising=False)
+        monkeypatch.setattr(sys, "meta_path", [_FailingLoader(), *sys.meta_path])
+        reloaded = reload_bridge()
+        assert reloaded.NATIVE_AVAILABLE is False and reloaded._native is None
+        assert "DLL load failed" in capfd.readouterr().out
 
 
 class TestDeriveKey:
-    """Coverage for the PBKDF2 key-derivation wrapper and its Python fallback."""
-
     def test_fallback_key(self, monkeypatch):
-        """With native disabled, derive_key must match hashlib's PBKDF2-HMAC-SHA256 exactly."""
         monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
         salt = b"static-salt-16by"
         key = native_bridge.derive_key("secret", salt, iterations=1000)
-        expected = hashlib.pbkdf2_hmac("sha256", b"secret", salt, 1000, dklen=32)
-        assert key == expected
-        assert len(key) == 32
+        assert key == hashlib.pbkdf2_hmac("sha256", b"secret", salt, 1000, dklen=32)
 
     @requires_native
-    def test_native_matches_py(self, monkeypatch):
-        """Native and Python-fallback key derivation must produce identical keys."""
+    def test_native_matches_python(self, monkeypatch):
         salt = b"another-salt-val"
         native_key = native_bridge.derive_key("secret", salt, iterations=1000)
         monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
-        python_key = native_bridge.derive_key("secret", salt, iterations=1000)
-        assert native_key == python_key
+        assert native_bridge.derive_key("secret", salt, iterations=1000) == native_key
 
 
-class TestFallbackWrappers:
-    """When NATIVE_AVAILABLE is False, every wrapper must degrade without raising."""
+class TestWrappersWithoutNative:
+    """With the native engine off, every wrapper reports an error instead of raising."""
 
-    @pytest.mark.parametrize("func_name", _WRAPPER_NAMES)
-    def test_wrapper_fallback(self, func_name, monkeypatch):
-        """Each encrypt/decrypt wrapper must return (False, message) instead of raising."""
+    def test_transforms_report_an_error(self, monkeypatch, tmp_path):
         monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
-        func = getattr(native_bridge, func_name)
-        try:
-            ok, msg = func("nonexistent.bin", "pw")
-        except Exception as exc:
-            pytest.fail(f"{func_name} raised instead of degrading: {exc}")
-        assert ok is False
-        assert isinstance(msg, str) and msg
+        out = str(tmp_path / "out")
+        results = [
+            native_bridge.seal_file("gcm", "in", out, b"h", b"k" * 32, b"p" * 7, 1 << 20, b"m"),
+            native_bridge.open_file("gcm", "in", out, b"h", b"k" * 32, b"p" * 7, 1 << 20),
+            native_bridge.decrypt_file_v1("gcm", "in.gfglock", out, "pw"),
+        ]
+        for result in results:
+            assert result[0] is False and result[1] == "the native engine is not loaded"
+        assert results[1][2] == results[2][2] == b""
+        assert not os.path.exists(out)
+
+    def test_token_needs_the_module(self, monkeypatch):
+        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
+        with pytest.raises(RuntimeError, match="not loaded"):
+            native_bridge.new_cancel_token()
+
+    def test_openssl_versions_are_empty(self, monkeypatch):
+        monkeypatch.setattr(native_bridge, "NATIVE_AVAILABLE", False)
+        assert native_bridge.openssl_version() == native_bridge.openssl_build_version() == ""
+
+
+@requires_native
+class TestNativeModule:
+    def test_runs_on_the_openssl_it_was_built_with(self):
+        assert native_bridge.openssl_version() == native_bridge.openssl_build_version() != ""
+
+    def test_unknown_algorithm_reports_error(self, tmp_path):
+        source = tmp_path / "in"
+        source.write_bytes(b"x")
+        ok, message = native_bridge.seal_file("rot13", str(source), str(tmp_path / "o"), b"h" * 60,
+                                              b"k" * 32, b"p" * 7, 1 << 20, b"\x00\x01a" + bytes(8))
+        assert ok is False and "unknown algorithm" in message
+
+    def test_cancel_token(self):
+        token = native_bridge.new_cancel_token()
+        assert token.cancelled is False
+        token.cancel()
+        assert token.cancelled is True
 
 
 class TestPathHelpers:
-    """Coverage for the directory-resolution helpers used to locate the .pyd."""
-
     def test_core_dir(self):
-        """_core_dir must return the absolute, existing gfglock/core directory."""
         path = native_bridge._core_dir()
         assert os.path.isdir(path)
         assert os.path.abspath(path) == path
 
     def test_frozen_dir_default(self, monkeypatch):
-        """Without sys._MEIPASS, _frozen_core_dir must fall back to _core_dir."""
         monkeypatch.delattr(sys, "_MEIPASS", raising=False)
         assert native_bridge._frozen_core_dir() == native_bridge._core_dir()
 
     def test_frozen_dir_meipass(self, monkeypatch, tmp_path):
-        """With sys._MEIPASS set, _frozen_core_dir must point under it instead."""
         monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-        expected = os.path.join(str(tmp_path), "gfglock", "core")
-        assert native_bridge._frozen_core_dir() == expected
-
-
-class TestLogHelper:
-    """Coverage for the stdout-based _log fallback used to avoid circular imports."""
-
-    def test_log_writes(self, capfd):
-        """_log must write the given message to stdout without raising."""
-        try:
-            native_bridge._log("hello-native-bridge-log")
-        except Exception as exc:
-            pytest.fail(f"_log raised: {exc}")
-        captured = capfd.readouterr()
-        assert "hello-native-bridge-log" in captured.out
+        assert native_bridge._frozen_core_dir() == os.path.join(str(tmp_path), "gfglock", "core")

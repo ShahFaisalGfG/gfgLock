@@ -1,13 +1,14 @@
 # test_file_model.py - unit tests for gfglock.models.file_model
 
 import os
+import time
 from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtCore import QCoreApplication, QModelIndex, Qt
 from PySide6.QtWidgets import QApplication
 
-from gfglock.models.file_model import FileListModel
+from gfglock.models.file_model import COUNTS_INTERVAL_MS, FileListModel
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -18,93 +19,91 @@ def qt_app():
     return QApplication.instance() or QApplication([])
 
 
-def _raise(*_args, **_kwargs):
-    """Stand-in for a monkeypatched call that must fail."""
-    raise OSError("simulated failure")
-
-
 @pytest.fixture
 def model():
     """A fresh, empty FileListModel."""
     return FileListModel()
 
 
+def _path(tmp_path, name: str) -> str:
+    return os.path.normpath(str(tmp_path / name))
+
+
 def _populate(model: FileListModel, tmp_path, names: list) -> None:
-    """Create real files under tmp_path (sized by name length) and add them."""
-    for name in names:
-        path = tmp_path / name
-        path.write_bytes(b"x" * len(name))
-        model.addFile(str(path))
+    """Add one row per name (sized by name length), as a folder scan would."""
+    model.add_scanned([(_path(tmp_path, name), len(name)) for name in names])
 
 
-class TestAddFile:
-    """addFile() must add existing files once, skip duplicates/missing paths, and emit signals."""
+def _paths(model: FileListModel) -> list:
+    return [model.data(model.index(row), FileListModel.PathRole) for row in range(model.rowCount())]
 
-    def test_adds_new_existing_file(self, model, tmp_path):
-        """A brand-new existing path must be appended with correct metadata."""
-        f = tmp_path / "report.TXT"
-        f.write_bytes(b"hello")
+
+def _counts(model: FileListModel) -> tuple:
+    """(runnable, finished, failed) as QML reads them."""
+    return model.runnableCount, model.finishedCount, model.failedCount
+
+
+def _brute_counts(model: FileListModel) -> tuple[int, int, int]:
+    """The same counts recomputed from the rows."""
+    statuses = [model.data(model.index(row), FileListModel.StatusRole) for row in range(model.rowCount())]
+    return (sum(s in ("waiting", "failed") for s in statuses), sum(s in ("done", "skipped") for s in statuses),
+            statuses.count("failed"))
+
+
+def _settle(model: FileListModel) -> None:
+    """Run the event loop until the coalesced statusCountsChanged has gone out."""
+    deadline = time.monotonic() + COUNTS_INTERVAL_MS * 20 / 1000
+    while model._counts_timer.isActive() and time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        time.sleep(0.005)
+    QCoreApplication.processEvents()
+    assert not model._counts_timer.isActive(), "statusCountsChanged never went out"
+
+
+class TestAddScanned:
+    """add_scanned() adds rows once, with the sizes the scan measured, and emits one update."""
+
+    def test_adds_rows_with_metadata(self, model, tmp_path):
         count_spy = MagicMock()
         size_spy = MagicMock()
         model.countChanged.connect(count_spy)
         model.totalSizeChanged.connect(size_spy)
 
-        model.addFile(str(f))
+        assert model.add_scanned([(str(tmp_path / "report.TXT"), 5)]) == 1
 
         assert model.rowCount() == 1
         idx = model.index(0)
         assert model.data(idx, FileListModel.NameRole) == "report.TXT"
-        assert model.data(idx, FileListModel.PathRole) == os.path.normpath(str(f))
+        assert model.data(idx, FileListModel.PathRole) == _path(tmp_path, "report.TXT")
         assert model.data(idx, FileListModel.ExtRole) == "TXT"
         assert model.data(idx, FileListModel.SelectedRole) is False
         count_spy.assert_called_once_with(1)
         size_spy.assert_called_once()
 
-    def test_duplicate_path_ignored(self, model, tmp_path):
-        """Adding the same path twice must not create a second row or re-emit."""
-        f = tmp_path / "a.txt"
-        f.write_bytes(b"x")
-        model.addFile(str(f))
+    def test_dedupes_in_one_insert(self, model, tmp_path):
+        inserts = []
+        model.rowsInserted.connect(lambda *args: inserts.append(args))
+        path = str(tmp_path / "a.txt")
+        assert model.add_scanned([(path, 10), (path.upper(), 10), (str(tmp_path / "b.txt"), 20)]) == 2
+        assert model.count == 2 and len(inserts) == 1
+        assert model.totalSize == "30 B"
+
+    def test_already_listed_paths_are_skipped_without_signals(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
         count_spy = MagicMock()
         model.countChanged.connect(count_spy)
-        model.addFile(str(f))
+        assert model.add_scanned([(str(tmp_path / "a.txt"), 5)]) == 0
         assert model.rowCount() == 1
         count_spy.assert_not_called()
 
-    def test_missing_path_ignored(self, model, tmp_path):
-        """A path that doesn't exist on disk must not be added."""
-        model.addFile(str(tmp_path / "ghost.txt"))
-        assert model.rowCount() == 0
+    def test_malformed_entries_are_ignored(self, model, tmp_path):
+        assert model.add_scanned([("only-a-path",), (str(tmp_path / "ok.txt"), "not a size"),
+                                  (str(tmp_path / "b.txt"), 3)]) == 1
 
     def test_extensionless_file_gets_file_ext(self, model, tmp_path):
         """A file without an extension must be tagged with ext 'FILE'."""
-        f = tmp_path / "README"
-        f.write_bytes(b"x")
-        model.addFile(str(f))
+        _populate(model, tmp_path, ["README"])
         assert model.data(model.index(0), FileListModel.ExtRole) == "FILE"
-
-    def test_getsize_failure_falls_back_to_unknown_size(self, model, tmp_path, monkeypatch):
-        """A getsize() failure must still add the item with a placeholder size."""
-        f = tmp_path / "locked.bin"
-        f.write_bytes(b"x")
-        monkeypatch.setattr(os.path, "getsize", _raise)
-        model.addFile(str(f))
-        assert model.rowCount() == 1
-        assert model.data(model.index(0), FileListModel.SizeRole) == "?"
-
-
-class TestAddFiles:
-    """addFiles() must add every valid path while skipping invalid ones."""
-
-    def test_adds_multiple_skips_missing(self, model, tmp_path):
-        """A mix of existing and missing paths must only add the existing ones."""
-        a = tmp_path / "a.txt"
-        b = tmp_path / "b.txt"
-        a.write_bytes(b"1")
-        b.write_bytes(b"22")
-        model.addFiles([str(a), str(tmp_path / "missing.txt"), str(b)])
-        assert model.rowCount() == 2
-        assert model.getPaths() == [os.path.normpath(str(a)), os.path.normpath(str(b))]
 
 
 class TestRemoveAt:
@@ -121,10 +120,8 @@ class TestRemoveAt:
         model.removeAt(1)
 
         assert model.rowCount() == 2
-        assert model.getPaths() == [
-            os.path.normpath(str(tmp_path / "a.txt")),
-            os.path.normpath(str(tmp_path / "ccc.txt")),
-        ]
+        assert _paths(model) == [_path(tmp_path, "a.txt"), _path(tmp_path, "ccc.txt")]
+        assert model.totalSize == "12 B"
         count_spy.assert_called_once_with(2)
         size_spy.assert_called_once()
 
@@ -154,9 +151,16 @@ class TestRemoveSelected:
 
         model.removeSelected()
 
-        assert model.rowCount() == 1
-        assert model.getPaths() == [os.path.normpath(str(tmp_path / "b.txt"))]
+        assert _paths(model) == [_path(tmp_path, "b.txt")]
         assert model.selectedCount == 0
+
+    def test_remove_thousands_selected_is_fast(self, model, tmp_path):
+        model.add_scanned([(str(tmp_path / f"{i}.txt"), 1) for i in range(5000)])
+        model.selectAll()
+        start = time.perf_counter()
+        model.removeSelected()
+        assert model.count == 0
+        assert time.perf_counter() - start < 1.0
 
 
 class TestClearAll:
@@ -164,9 +168,7 @@ class TestClearAll:
 
     def test_clears_everything(self, model, tmp_path):
         """After clearAll(), count/totalSize/selection must all reset."""
-        f = tmp_path / "a.txt"
-        f.write_bytes(b"x")
-        model.addFile(str(f))
+        _populate(model, tmp_path, ["a.txt"])
         model.toggleSelection(0)
         count_spy = MagicMock()
         model.countChanged.connect(count_spy)
@@ -175,12 +177,13 @@ class TestClearAll:
 
         assert model.rowCount() == 0
         assert model.selectedCount == 0
-        assert model.totalSize == "0.0 B"
+        assert model.totalSize == "0 B"
+        assert _counts(model) == (0, 0, 0)
         count_spy.assert_called_once_with(0)
 
 
 class TestSelectionSlots:
-    """toggleSelection()/selectAll()/clearSelection()/setSingle()/selectRange() track selection."""
+    """toggleSelection()/selectAll()/setSingle()/selectRange() track selection."""
 
     def test_toggle_selection_flips_state_and_emits(self, model, tmp_path):
         """Toggling a row must flip its selected flag and emit selectionChanged."""
@@ -205,21 +208,6 @@ class TestSelectionSlots:
         spy = MagicMock()
         model.selectionChanged.connect(spy)
         model.selectAll()
-        spy.assert_called_once()
-
-    def test_clear_selection_deselects_all(self, model, tmp_path):
-        """clearSelection() must deselect every previously selected row."""
-        _populate(model, tmp_path, ["a.txt", "b.txt"])
-        model.selectAll()
-        model.clearSelection()
-        assert model.selectedCount == 0
-
-    def test_clear_selection_noop_still_emits(self, model, tmp_path):
-        """clearSelection() with nothing selected must still emit selectionChanged."""
-        _populate(model, tmp_path, ["a.txt"])
-        spy = MagicMock()
-        model.selectionChanged.connect(spy)
-        model.clearSelection()
         spy.assert_called_once()
 
     def test_set_single_selects_only_one_row(self, model, tmp_path):
@@ -273,7 +261,7 @@ class TestSelectedTextExport:
         """getSelectedPathsText() must return full paths for selected rows only."""
         _populate(model, tmp_path, ["a.txt", "b.txt"])
         model.toggleSelection(1)
-        assert model.getSelectedPathsText() == os.path.normpath(str(tmp_path / "b.txt"))
+        assert model.getSelectedPathsText() == _path(tmp_path, "b.txt")
 
     def test_empty_selection_returns_empty_string(self, model, tmp_path):
         """No selection must produce an empty string, not an error."""
@@ -283,24 +271,22 @@ class TestSelectedTextExport:
 
 
 class TestQueryProperties:
-    """count/totalSize/selectedCount/getPaths()/fileCount() must reflect model state."""
+    """count/totalSize/selectedCount must reflect model state."""
 
-    def test_count_and_file_count_match_rows(self, model, tmp_path):
-        """count property and fileCount() slot must agree with rowCount()."""
+    def test_count_matches_rows(self, model, tmp_path):
         _populate(model, tmp_path, ["a.txt"])
-        assert model.count == 1
-        assert model.fileCount() == 1
+        assert model.count == model.rowCount() == 1
 
-    def test_total_size_formats_bytes(self, model, tmp_path):
-        """totalSize must be the human-readable sum of all added files."""
-        f = tmp_path / "a.bin"
-        f.write_bytes(b"x" * 2048)
-        model.addFile(str(f))
-        assert model.totalSize == "2.0 KB"
+    @pytest.mark.parametrize("size,text", [(400, "400 B"), (2048, "2 KB"), (1536, "1.5 KB"), (0, "0 B")])
+    def test_sizes_have_no_trailing_zero(self, model, tmp_path, size, text):
+        """Sizes read '400 B' and '2 KB', not '400.0 B' (U24)."""
+        model.add_scanned([(str(tmp_path / "a.bin"), size)])
+        assert model.data(model.index(0), FileListModel.SizeRole) == text
+        assert model.totalSize == text
 
     def test_total_size_empty_model(self, model):
         """An empty model must report a zero-byte total."""
-        assert model.totalSize == "0.0 B"
+        assert model.totalSize == "0 B"
 
     def test_selected_count_matches_selection(self, model, tmp_path):
         """selectedCount must track the number of currently selected rows."""
@@ -309,11 +295,10 @@ class TestQueryProperties:
         model.toggleSelection(0)
         assert model.selectedCount == 1
 
-    def test_get_paths_returns_insertion_order(self, model, tmp_path):
-        """getPaths() must return paths in the order files were added."""
+    def test_rows_keep_insertion_order(self, model, tmp_path):
         names = ["b.txt", "a.txt", "c.txt"]
         _populate(model, tmp_path, names)
-        assert model.getPaths() == [os.path.normpath(str(tmp_path / n)) for n in names]
+        assert _paths(model) == [_path(tmp_path, n) for n in names]
 
 
 class TestModelInterface:
@@ -334,13 +319,18 @@ class TestModelInterface:
         assert model.data(model.index(0), Qt.ItemDataRole.DisplayRole) == "a.txt"
 
     def test_role_names_mapping(self, model):
-        """roleNames() must expose exactly the five documented byte-string roles."""
+        """roleNames() must expose every documented byte-string role."""
         assert model.roleNames() == {
             FileListModel.NameRole: b"name",
             FileListModel.PathRole: b"path",
             FileListModel.SizeRole: b"size",
             FileListModel.ExtRole: b"ext",
             FileListModel.SelectedRole: b"selected",
+            FileListModel.FolderRole: b"folder",
+            FileListModel.StatusRole: b"status",
+            FileListModel.ProgressRole: b"progress",
+            FileListModel.MessageRole: b"message",
+            FileListModel.OutputRole: b"output",
         }
 
 
@@ -349,11 +339,151 @@ class TestMakeItem:
 
     def test_builds_expected_fields(self, tmp_path):
         """A normal file must produce name/path/size/ext/bytes fields."""
-        f = tmp_path / "doc.PDF"
-        f.write_bytes(b"x" * 10)
-        item = FileListModel._make_item(str(f))
+        path = str(tmp_path / "doc.PDF")
+        item = FileListModel._make_item(path, 10)
         assert item["name"] == "doc.PDF"
-        assert item["path"] == str(f)
+        assert item["path"] == path
+        assert item["folder"] == str(tmp_path)
         assert item["ext"] == "PDF"
         assert item["bytes"] == 10
-        assert item["size"] == "10.0 B"
+        assert item["size"] == "10 B"
+        assert (item["status"], item["progress"], item["message"], item["output"]) == ("waiting", 0.0, "", "")
+
+
+class TestResults:
+    """Each row carries its result, and a run only picks up the rows that aren't finished."""
+
+    def _status(self, model, row):
+        return model.data(model.index(row), FileListModel.StatusRole)
+
+    def test_new_rows_wait_and_are_runnable(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt", "b.txt"])
+        assert [self._status(model, r) for r in range(2)] == ["waiting", "waiting"]
+        assert model.runnableCount == 2 and model.finishedCount == 0
+
+    def test_set_status_updates_roles_and_counts(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt", "b.txt", "c.txt"])
+        changes = []
+        model.statusCountsChanged.connect(lambda: changes.append(True))
+        model.set_status(str(tmp_path / "a.txt"), "done", progress=1.0, message="Saved as a.txt.gfglock",
+                         output=str(tmp_path / "a.txt.gfglock"))
+        model.set_status(str(tmp_path / "b.txt"), "failed", message="Wrong password")
+        model.set_status(str(tmp_path / "c.txt"), "skipped", message="Already encrypted")
+        assert model.data(model.index(0), FileListModel.MessageRole) == "Saved as a.txt.gfglock"
+        assert _counts(model) == (1, 2, 1)
+        assert model.runnable_paths() == [_path(tmp_path, "b.txt")]
+        _settle(model)
+        assert changes == [True]
+
+    def test_unknown_path_is_ignored(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        model.set_status(str(tmp_path / "other.txt"), "done")
+        assert self._status(model, 0) == "waiting"
+        assert _counts(model) == (1, 0, 0)
+
+    def test_reset_for_run_clears_an_earlier_failure(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        path = str(tmp_path / "a.txt")
+        model.set_status(path, "failed", message="Wrong password")
+        model.reset_for_run([path])
+        assert self._status(model, 0) == "waiting"
+        assert model.data(model.index(0), FileListModel.MessageRole) == ""
+        assert _counts(model) == (1, 0, 0)
+
+    def test_progress_updates_only_the_progress_role(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        roles = []
+        model.dataChanged.connect(lambda _a, _b, r: roles.append(list(r)))
+        model.set_progress(str(tmp_path / "a.txt"), 0.5)
+        assert model.data(model.index(0), FileListModel.ProgressRole) == 0.5
+        assert roles == [[FileListModel.ProgressRole]]
+
+    def test_remove_finished_keeps_waiting_and_failed(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt", "b.txt", "c.txt"])
+        model.set_status(str(tmp_path / "a.txt"), "done")
+        model.set_status(str(tmp_path / "b.txt"), "failed")
+        model.removeFinished()
+        assert [os.path.basename(p) for p in _paths(model)] == ["b.txt", "c.txt"]
+        # Status updates still find the right rows after removal.
+        model.set_status(str(tmp_path / "c.txt"), "done")
+        assert self._status(model, 1) == "done"
+
+    def test_location_is_the_written_file_once_done(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        assert model.locationAt(0) == _path(tmp_path, "a.txt")
+        model.set_status(str(tmp_path / "a.txt"), "done", output=str(tmp_path / "a.txt.gfglock"))
+        assert model.locationAt(0) == str(tmp_path / "a.txt.gfglock")
+        assert model.locationAt(5) == ""
+
+
+class TestIncrementalCounts:
+    """The status counts are kept as rows change, never recounted on read (A5)."""
+
+    def test_counts_follow_every_kind_of_change(self, model, tmp_path):
+        names = [f"f{i}.txt" for i in range(10)]
+        _populate(model, tmp_path, names)
+        for i, status in enumerate(["working", "done", "failed", "skipped", "done", "failed"]):
+            model.set_status(str(tmp_path / names[i]), status)
+        assert _counts(model) == _brute_counts(model) == (6, 3, 2)
+        model.removeAt(1)                       # a done row
+        assert _counts(model) == _brute_counts(model) == (6, 2, 2)
+        model.toggleSelection(1)                # f2.txt, failed
+        model.removeSelected()
+        assert _counts(model) == _brute_counts(model) == (5, 2, 1)
+        model.removeFinished()
+        assert _counts(model) == _brute_counts(model) == (5, 0, 1)
+        model.reset_for_run(model.runnable_paths())
+        assert _counts(model) == _brute_counts(model) == (5, 0, 0)
+        _populate(model, tmp_path, ["new.txt"])
+        assert _counts(model) == _brute_counts(model) == (6, 0, 0)
+        model.clearAll()
+        assert _counts(model) == (0, 0, 0)
+
+    def test_reading_counts_does_not_walk_the_rows(self, model, tmp_path):
+        model.add_scanned([(str(tmp_path / f"{i}.txt"), 1) for i in range(20_000)])
+        start = time.perf_counter()
+        for _ in range(10_000):
+            _counts(model)
+        assert time.perf_counter() - start < 0.5
+
+    def test_status_changes_of_20000_rows_send_few_signals(self, model, tmp_path):
+        model.add_scanned([(str(tmp_path / f"{i}.txt"), 1) for i in range(20_000)])
+        emitted = []
+        model.statusCountsChanged.connect(lambda: emitted.append(time.monotonic()))
+        start = time.monotonic()
+        for i in range(20_000):
+            path = str(tmp_path / f"{i}.txt")
+            model.set_status(path, "working")
+            model.set_status(path, "done")
+        _settle(model)
+        assert len(emitted) <= (time.monotonic() - start) * 1000 / COUNTS_INTERVAL_MS + 2
+        gaps = [later - earlier for earlier, later in zip(emitted, emitted[1:])]
+        assert all(gap >= COUNTS_INTERVAL_MS / 1000 * 0.9 for gap in gaps[:-1])
+        assert _counts(model) == (0, 20_000, 0)
+
+    def test_flush_counts_sends_the_pending_signal_at_once(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt"])
+        emitted = []
+        model.statusCountsChanged.connect(lambda: emitted.append(True))
+        model.flush_counts()
+        assert emitted == []
+        model.set_status(str(tmp_path / "a.txt"), "done")
+        model.flush_counts()
+        assert emitted == [True]
+        _settle(model)
+        assert emitted == [True]
+
+    def test_reset_for_run_is_one_update(self, model, tmp_path):
+        paths = [str(tmp_path / f"{i}.txt") for i in range(10_000)]
+        model.add_scanned([(path, 1) for path in paths])
+        for path in paths:
+            model.set_status(path, "failed", message="Wrong password")
+        _settle(model)
+        changed, counted = [], []
+        model.dataChanged.connect(lambda first, last, _roles: changed.append((first.row(), last.row())))
+        model.statusCountsChanged.connect(lambda: counted.append(True))
+        start = time.perf_counter()
+        model.reset_for_run(model.runnable_paths())
+        assert time.perf_counter() - start < 1.0
+        assert changed == [(0, 9_999)] and counted == [True]
+        assert _counts(model) == (10_000, 0, 0)

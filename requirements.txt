@@ -1,6 +1,29 @@
-PySide6>=6.7
-cryptography>=46.0
-pycryptodome>=3.20
-pyinstaller>=6.17
-py-cpuinfo>=9.0
-pytest>=8.0
+# Exact versions every build and CI run uses, so a release can be rebuilt as it shipped.
+# pyproject.toml lists the looser ranges the code supports.
+#
+# The app and its fallback ciphers
+PySide6==6.11.2
+cryptography==50.0.1
+pycryptodome==3.23.0
+#
+# Build and test tools
+pyinstaller==6.22.3
+pybind11==3.1.0
+pytest==9.1.1
+#
+# What the packages above install with them, pinned too (pip freeze, Python 3.12, Windows x64)
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
+shiboken6==6.11.2
+cffi==2.1.1
+pycparser==3.0
+altgraph==0.17.5
+packaging==26.3
+pefile==2024.8.26
+pyinstaller-hooks-contrib==2026.7
+pywin32-ctypes==0.2.3
+setuptools==84.0.0
+colorama==0.4.6
+iniconfig==2.3.0
+pluggy==1.6.0
+Pygments==2.21.0

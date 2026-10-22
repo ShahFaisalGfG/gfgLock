@@ -8,8 +8,15 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <objbase.h>
+#include <wrl/client.h>
+#include <cwctype>
+#include <memory>
+#include <new>
 #include <string>
+#include <utility>
 #include <vector>
+
+using Microsoft::WRL::ComPtr;
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -37,19 +44,103 @@ static const GUID CLSID_GfgLockDecrypt = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// COM methods must never let a C++ exception reach Explorer: an allocation failure becomes
+// E_OUTOFMEMORY and anything else E_FAIL.
+template<typename Fn>
+static HRESULT guarded(Fn&& fn) noexcept
+{
+    try {
+        return fn();
+    } catch (const std::bad_alloc&) {
+        return E_OUTOFMEMORY;
+    } catch (...) {
+        return E_FAIL;
+    }
+}
+
+struct CoTaskMemDeleter {
+    void operator()(wchar_t* p) const noexcept { CoTaskMemFree(p); }
+};
+using CoTaskString = std::unique_ptr<wchar_t, CoTaskMemDeleter>;
+
+// Copy text into a CoTaskMemAlloc buffer, which the caller (Explorer) frees.
+static HRESULT coTaskCopy(const wchar_t* text, LPWSTR* out)
+{
+    size_t len = wcslen(text) + 1;
+    *out = static_cast<LPWSTR>(CoTaskMemAlloc(len * sizeof(wchar_t)));
+    if (!*out) return E_OUTOFMEMORY;
+    wcscpy_s(*out, len, text);
+    return S_OK;
+}
+
+// The item's filesystem path, or an empty string for items that have none (Control Panel
+// entries, files inside a zip folder, and other virtual items).
+static std::wstring filesystemPath(IShellItem* item)
+{
+    LPWSTR raw = nullptr;
+    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &raw)) || !raw) return {};
+    CoTaskString path(raw);
+    return path.get();
+}
+
+// Call fn(item) for each item of the selection until it returns false.
+template<typename Fn>
+static void forEachItem(IShellItemArray* items, Fn&& fn)
+{
+    DWORD count = 0;
+    if (!items || FAILED(items->GetCount(&count))) return;
+    for (DWORD i = 0; i < count; i++) {
+        ComPtr<IShellItem> item;
+        if (SUCCEEDED(items->GetItemAt(i, &item)) && !fn(item.Get())) break;
+    }
+}
+
+// The selection's filesystem paths; virtual items are left out.
+static std::vector<std::wstring> filesystemPaths(IShellItemArray* items)
+{
+    std::vector<std::wstring> paths;
+    forEachItem(items, [&](IShellItem* item) {
+        std::wstring path = filesystemPath(item);
+        if (!path.empty()) paths.push_back(std::move(path));
+        return true;
+    });
+    return paths;
+}
+
 static std::wstring dllDirectory()
 {
-    wchar_t buf[MAX_PATH] = {};
-    GetModuleFileNameW(g_hModule, buf, MAX_PATH);
-    std::wstring s(buf);
+    // Grow the buffer for install paths longer than MAX_PATH instead of truncating them.
+    std::wstring s(MAX_PATH, L'\0');
+    for (;;) {
+        DWORD n = GetModuleFileNameW(g_hModule, s.data(), static_cast<DWORD>(s.size()));
+        if (n == 0) return {};
+        if (n < s.size()) { s.resize(n); break; }
+        s.resize(s.size() * 2);
+    }
     auto pos = s.rfind(L'\\');
     if (pos != std::wstring::npos) s.resize(pos);
     return s;
 }
 
+// True when the path ends in one of gfgLock's encrypted extensions (any letter case). A dot in
+// a folder name leaves a backslash in the "extension", so it never matches.
+static bool hasEncryptedExtension(const std::wstring& path)
+{
+    auto dot = path.rfind(L'.');
+    if (dot == std::wstring::npos) return false;
+    std::wstring ext = path.substr(dot);
+    for (auto& ch : ext) ch = static_cast<wchar_t>(towlower(ch));
+    return ext == L".gfglock" || ext == L".gfglck" || ext == L".gfgcha";
+}
+
+// Quote one command-line argument. CommandLineToArgvW reads backslashes right before a quote as
+// escapes, so trailing ones are doubled: D:\ is passed as "D:\\" and reaches the app as D:\
+// instead of D:". Windows paths can't contain quotes, so nothing else needs escaping.
 static std::wstring quoted(const std::wstring& s)
 {
-    return L"\"" + s + L"\"";
+    size_t trailing = 0;
+    while (trailing < s.size() && s[s.size() - 1 - trailing] == L'\\') trailing++;
+    return L"\"" + s + std::wstring(trailing, L'\\') + L"\"";
 }
 
 // Convert a wide string to UTF-8.
@@ -63,23 +154,37 @@ static std::string toUtf8(const std::wstring& w)
     return s;
 }
 
-// Write paths (UTF-8, one per line) to a temp file; return the temp file path.
+// Write paths (UTF-8, one per line) to a temp file; return the temp file path, or an empty
+// string when it can't be written. The text is built first, so a failed allocation can't leave
+// a handle open.
 static std::wstring writeTempFile(const std::vector<std::wstring>& paths)
 {
+    std::string text;
+    for (const auto& p : paths) {
+        text += toUtf8(p);
+        text += '\n';
+    }
+    if (text.size() > MAXDWORD) return {};
+
     wchar_t tmp[MAX_PATH] = {};
     wchar_t dir[MAX_PATH] = {};
-    GetTempPathW(MAX_PATH, dir);
-    GetTempFileNameW(dir, L"gfg", 0, tmp);
+    DWORD dirLen = GetTempPathW(MAX_PATH, dir);
+    if (dirLen == 0 || dirLen > MAX_PATH || !GetTempFileNameW(dir, L"gfg", 0, tmp)) return {};
 
     HANDLE h = CreateFileW(tmp, GENERIC_WRITE, 0, nullptr,
                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return {};
-    for (const auto& p : paths) {
-        std::string line = toUtf8(p) + "\n";
-        DWORD written = 0;
-        WriteFile(h, line.c_str(), static_cast<DWORD>(line.size()), &written, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        DeleteFileW(tmp);
+        return {};
     }
+    DWORD written = 0;
+    bool ok = WriteFile(h, text.data(), static_cast<DWORD>(text.size()), &written, nullptr)
+              && written == text.size();
     CloseHandle(h);
+    if (!ok) {
+        DeleteFileW(tmp);
+        return {};
+    }
     return tmp;
 }
 
@@ -135,24 +240,17 @@ public:
     STDMETHODIMP GetTitle(IShellItemArray*, LPWSTR* ppszName) override
     {
         if (!ppszName) return E_POINTER;
-        const wchar_t* title = _isEncrypt ? L"Encrypt with gfgLock"
-                                           : L"Decrypt with gfgLock";
-        size_t len = wcslen(title) + 1;
-        *ppszName = static_cast<LPWSTR>(CoTaskMemAlloc(len * sizeof(wchar_t)));
-        if (!*ppszName) return E_OUTOFMEMORY;
-        wcscpy_s(*ppszName, len, title);
-        return S_OK;
+        return coTaskCopy(_isEncrypt ? L"Encrypt with gfgLock" : L"Decrypt with gfgLock", ppszName);
     }
 
     STDMETHODIMP GetIcon(IShellItemArray*, LPWSTR* ppszIcon) override
     {
         if (!ppszIcon) return E_POINTER;
-        std::wstring icon = dllDirectory() + L"\\icons\\gfgLock.ico";
-        size_t len = icon.size() + 1;
-        *ppszIcon = static_cast<LPWSTR>(CoTaskMemAlloc(len * sizeof(wchar_t)));
-        if (!*ppszIcon) return E_OUTOFMEMORY;
-        wcscpy_s(*ppszIcon, len, icon.c_str());
-        return S_OK;
+        *ppszIcon = nullptr;
+        return guarded([&] {
+            std::wstring icon = dllDirectory() + L"\\icons\\gfgLock.ico";
+            return coTaskCopy(icon.c_str(), ppszIcon);
+        });
     }
 
     STDMETHODIMP GetToolTip(IShellItemArray*, LPWSTR* ppszInfotip) override
@@ -169,11 +267,33 @@ public:
         return S_OK;
     }
 
-    STDMETHODIMP GetState(IShellItemArray*, BOOL, EXPCMDSTATE* pState) override
+    STDMETHODIMP GetState(IShellItemArray* psia, BOOL fOkToBeSlow, EXPCMDSTATE* pState) override
     {
         if (!pState) return E_POINTER;
         *pState = ECS_ENABLED;
-        return S_OK;
+        if (!psia) return S_OK;
+        // Inspecting the selection can touch slow (network) items; ask Explorer to call
+        // again on its background thread rather than delaying the menu.
+        if (!fOkToBeSlow) return E_PENDING;
+
+        return guarded([&] {
+            // Items without a filesystem path count as neither kind, so a selection of only
+            // virtual items hides both commands.
+            bool anyEncrypted = false, anyPlain = false;
+            forEachItem(psia, [&](IShellItem* item) {
+                std::wstring path = filesystemPath(item);
+                if (path.empty()) return true;
+                SFGAOF attrs = 0;
+                item->GetAttributes(SFGAO_FOLDER | SFGAO_STREAM, &attrs);
+                if ((attrs & SFGAO_FOLDER) && !(attrs & SFGAO_STREAM))
+                    anyEncrypted = anyPlain = true;  // a folder can hold either kind
+                else
+                    (hasEncryptedExtension(path) ? anyEncrypted : anyPlain) = true;
+                return !(anyEncrypted && anyPlain);
+            });
+            if (_isEncrypt ? !anyPlain : !anyEncrypted) *pState = ECS_HIDDEN;
+            return S_OK;
+        });
     }
 
     STDMETHODIMP GetFlags(EXPCMDFLAGS* pFlags) override
@@ -192,49 +312,42 @@ public:
 
     STDMETHODIMP Invoke(IShellItemArray* psia, IBindCtx*) override
     {
-        std::wstring exePath = dllDirectory() + L"\\gfgLock.exe";
-        std::wstring mode    = _isEncrypt ? L"encrypt" : L"decrypt";
+        return guarded([&]() -> HRESULT {
+            std::vector<std::wstring> paths = filesystemPaths(psia);
+            if (paths.empty()) return S_OK;  // nothing gfgLock could open
 
-        std::vector<std::wstring> paths;
-        if (psia) {
-            DWORD count = 0;
-            psia->GetCount(&count);
-            paths.reserve(count);
-            for (DWORD i = 0; i < count; i++) {
-                IShellItem* psi = nullptr;
-                if (SUCCEEDED(psia->GetItemAt(i, &psi))) {
-                    LPWSTR disp = nullptr;
-                    if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &disp))) {
-                        paths.emplace_back(disp);
-                        CoTaskMemFree(disp);
-                    }
-                    psi->Release();
-                }
+            std::wstring exePath = dllDirectory() + L"\\gfgLock.exe";
+            std::wstring mode    = _isEncrypt ? L"encrypt" : L"decrypt";
+            std::wstring responseFile;
+            std::wstring cmdLine = buildCmdLine(exePath, mode, paths, responseFile);
+
+            STARTUPINFOW si      = {};
+            si.cb                = sizeof(si);
+            PROCESS_INFORMATION pi = {};
+            if (!CreateProcessW(nullptr,
+                                cmdLine.data(),
+                                nullptr, nullptr,
+                                FALSE,
+                                CREATE_NO_WINDOW,
+                                nullptr, nullptr,
+                                &si, &pi)) {
+                HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
+                // The app normally deletes the response file after reading it; it never started.
+                if (!responseFile.empty()) DeleteFileW(responseFile.c_str());
+                return hr;
             }
-        }
-
-        std::wstring cmdLine = buildCmdLine(exePath, mode, paths);
-
-        STARTUPINFOW si      = {};
-        si.cb                = sizeof(si);
-        PROCESS_INFORMATION pi = {};
-        CreateProcessW(nullptr,
-                       cmdLine.data(),
-                       nullptr, nullptr,
-                       FALSE,
-                       CREATE_NO_WINDOW,
-                       nullptr, nullptr,
-                       &si, &pi);
-        if (pi.hProcess) CloseHandle(pi.hProcess);
-        if (pi.hThread)  CloseHandle(pi.hThread);
-        return S_OK;
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            return S_OK;
+        });
     }
 
 private:
     // Build the command line; fall back to @responsefile if it would be too long.
     std::wstring buildCmdLine(const std::wstring& exe,
                               const std::wstring& mode,
-                              const std::vector<std::wstring>& paths) const
+                              const std::vector<std::wstring>& paths,
+                              std::wstring& responseFile) const
     {
         std::wstring direct = quoted(exe) + L" " + mode;
         for (const auto& p : paths) {
@@ -246,6 +359,7 @@ private:
 
         std::wstring tmp = writeTempFile(paths);
         if (tmp.empty()) return direct;
+        responseFile = tmp;
         return quoted(exe) + L" " + mode + L" @" + quoted(tmp);
     }
 };

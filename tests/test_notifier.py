@@ -1,109 +1,125 @@
-import subprocess
+import inspect
+import time
+from unittest.mock import MagicMock
 
 import pytest
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtWidgets import QApplication
 
-from gfglock.services import notifier
-
-
-class _FakePopen:
-    """Records the arguments a Popen call was made with, without spawning anything."""
-
-    def __init__(self, args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
+from gfglock.controllers import encrypt_ctrl
+from gfglock.models import file_model
+from gfglock.services import folder_scanner, notifier, worker
+from gfglock.utils import logging as log_mod
 
 
-class TestSendNotificationWindows:
-    """send_notification must build and fire a PowerShell toast on win32 only."""
-
-    def test_invokes_popen_on_win32(self, monkeypatch):
-        """On win32, send_notification must launch exactly one hidden PowerShell process."""
-        calls = []
-        monkeypatch.setattr(notifier.sys, "platform", "win32")
-        monkeypatch.setattr(
-            notifier.subprocess, "Popen",
-            lambda *a, **kw: calls.append((a, kw)) or _FakePopen(*a, **kw),
-        )
-        notifier.send_notification("Title", "Body")
-        assert len(calls) == 1
-
-    def test_popen_uses_hidden_window_and_no_console(self, monkeypatch):
-        """The PowerShell process must run hidden with stdout/stderr suppressed."""
-        captured = {}
-        monkeypatch.setattr(notifier.sys, "platform", "win32")
-
-        def fake_popen(args, **kwargs):
-            captured["args"] = args
-            captured["kwargs"] = kwargs
-            return _FakePopen(args, **kwargs)
-
-        monkeypatch.setattr(notifier.subprocess, "Popen", fake_popen)
-        notifier.send_notification("Title", "Body")
-        assert captured["kwargs"]["stdout"] == subprocess.DEVNULL
-        assert captured["kwargs"]["stderr"] == subprocess.DEVNULL
-        assert captured["kwargs"]["creationflags"] == 0x08000000
-        assert "-WindowStyle" in captured["args"]
-        assert "Hidden" in captured["args"]
-
-    def test_script_embeds_title_and_body(self, monkeypatch):
-        """The generated PowerShell script must contain the given title and body text."""
-        captured = {}
-        monkeypatch.setattr(notifier.sys, "platform", "win32")
-        monkeypatch.setattr(
-            notifier.subprocess, "Popen",
-            lambda args, **kw: captured.setdefault("args", args) or _FakePopen(args, **kw),
-        )
-        notifier.send_notification("My Title", "My Body")
-        script = captured["args"][-1]
-        assert "My Title" in script
-        assert "My Body" in script
-
-    def test_double_quotes_in_text_are_sanitized(self, monkeypatch):
-        """Double quotes in title/body must be replaced so the embedded script stays valid."""
-        captured = {}
-        monkeypatch.setattr(notifier.sys, "platform", "win32")
-        monkeypatch.setattr(
-            notifier.subprocess, "Popen",
-            lambda args, **kw: captured.setdefault("args", args) or _FakePopen(args, **kw),
-        )
-        notifier.send_notification('Say "hi"', 'Body "quoted"')
-        script = captured["args"][-1]
-        assert "Say 'hi'" in script
-        assert "Body 'quoted'" in script
+@pytest.fixture(scope="session", autouse=True)
+def qt_app():
+    """Share one QApplication with the rest of the suite."""
+    return QApplication.instance() or QApplication([])
 
 
-class TestSendNotificationNonWindows:
-    """On non-win32 platforms send_notification must be a strict no-op."""
+@pytest.fixture
+def tray(monkeypatch, qt_app):
+    """A stand-in for QSystemTrayIcon (offscreen Qt has no notification area) and an app icon."""
+    fake = MagicMock()
+    fake.isSystemTrayAvailable.return_value = True
+    fake.supportsMessages.return_value = True
+    monkeypatch.setattr(notifier, "QSystemTrayIcon", fake)
+    monkeypatch.setattr(notifier, "_toaster", None)
+    pixmap = QPixmap(16, 16)
+    pixmap.fill()
+    previous = QApplication.windowIcon()
+    QApplication.setWindowIcon(QIcon(pixmap))
+    yield fake
+    QApplication.setWindowIcon(previous)
 
-    def test_no_popen_on_linux(self, monkeypatch):
-        """No subprocess must be spawned when platform is not win32."""
-        calls = []
-        monkeypatch.setattr(notifier.sys, "platform", "linux")
-        monkeypatch.setattr(notifier.subprocess, "Popen", lambda *a, **kw: calls.append(1))
-        result = notifier.send_notification("Title", "Body")
-        assert calls == []
-        assert result is None
+
+@pytest.fixture
+def logged(monkeypatch):
+    """The notifier's write_log, recorded."""
+    log = MagicMock()
+    monkeypatch.setattr(notifier, "write_log", log)
+    return log
 
 
-class TestSendNotificationErrorHandling:
-    """Any failure while building or launching the toast must be swallowed."""
+def _wait_for(condition, timeout=2.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        if condition():
+            return True
+        time.sleep(0.005)
+    return condition()
 
-    def test_popen_exception_is_swallowed(self, monkeypatch):
-        """A Popen failure must not propagate out of send_notification."""
-        monkeypatch.setattr(notifier.sys, "platform", "win32")
 
-        def raiser(*a, **kw):
-            raise OSError("boom")
+class TestNotify:
+    """notify shows an in-process tray message under gfgLock's own icon and name (A3, A15)."""
 
-        monkeypatch.setattr(notifier.subprocess, "Popen", raiser)
-        try:
-            result = notifier.send_notification("Title", "Body")
-        except Exception as exc:
-            pytest.fail(f"send_notification must not raise, got: {exc}")
-        assert result is None
+    def test_shows_one_message_with_the_app_icon(self, tray):
+        notifier.notify("Encryption complete", "All 3 files encrypted in 2.0 s.")
+        icon = tray.return_value
+        icon.show.assert_called_once()
+        title, body, shown_icon, msecs = icon.showMessage.call_args[0]
+        assert (title, body, msecs) == ("Encryption complete", "All 3 files encrypted in 2.0 s.", notifier.SHOW_MS)
+        assert not shown_icon.isNull()
+        icon.setToolTip.assert_called_once_with("gfgLock")
 
-    def test_returns_none_on_success(self, monkeypatch):
-        """send_notification has no return value on the happy path either."""
-        monkeypatch.setattr(notifier.sys, "platform", "win32")
-        monkeypatch.setattr(notifier.subprocess, "Popen", lambda *a, **kw: _FakePopen(*a, **kw))
-        assert notifier.send_notification("Title", "Body") is None
+    def test_the_tray_icon_is_made_once_and_reused(self, tray):
+        notifier.notify("A", "first")
+        notifier.notify("B", "second")
+        assert tray.call_count == 1
+        assert tray.return_value.showMessage.call_count == 2
+
+    def test_in_front_the_tray_icon_hides_after_the_message(self, tray, monkeypatch):
+        monkeypatch.setattr(notifier, "HIDE_AFTER_MS", 20)
+        monkeypatch.setattr(notifier, "_in_front", lambda: True)
+        notifier.notify("Decryption complete", "Done.")
+        icon = tray.return_value
+        assert _wait_for(lambda: icon.hide.called)
+
+    def test_away_the_tray_icon_stays_until_the_user_is_back(self, tray, monkeypatch):
+        """Windows removes an icon's messages from the notification center along with the icon."""
+        monkeypatch.setattr(notifier, "HIDE_AFTER_MS", 20)
+        monkeypatch.setattr(notifier, "_in_front", lambda: False)
+        notifier.notify("Encryption complete", "Done.")
+        icon = tray.return_value
+        assert not _wait_for(lambda: icon.hide.called, timeout=0.2)
+        assert notifier._toaster is not None
+        notifier._toaster._on_state(Qt.ApplicationState.ApplicationActive)
+        assert _wait_for(lambda: icon.hide.called)
+
+    def test_clicking_the_message_hides_the_icon(self, tray, monkeypatch):
+        monkeypatch.setattr(notifier, "_in_front", lambda: False)
+        notifier.notify("Encryption complete", "Done.")
+        assert notifier._toaster is not None
+        notifier._toaster._open_window()
+        tray.return_value.hide.assert_called_once()
+
+    def test_no_notification_area_logs_instead_of_raising(self, tray, logged):
+        tray.isSystemTrayAvailable.return_value = False
+        assert notifier.notify("Title", "Body") is None
+        tray.assert_not_called()
+        assert "not available" in logged.call_args[0][0]
+
+    def test_missing_app_icon_logs_instead_of_raising(self, tray, logged):
+        QApplication.setWindowIcon(QIcon())
+        notifier.notify("Title", "Body")
+        tray.assert_not_called()
+        assert "icon" in logged.call_args[0][0]
+
+    def test_a_deleted_tray_icon_is_logged_and_replaced_next_time(self, tray, logged):
+        tray.return_value.show.side_effect = RuntimeError("Internal C++ object already deleted")
+        notifier.notify("Title", "Body")
+        assert notifier._toaster is None
+        assert "already deleted" in logged.call_args[0][0]
+
+
+class TestNoBareProgramNames:
+    """Nothing in the run pipeline starts a program by a bare name, which Windows would look up in
+    the app's own folder and the current folder first (A3)."""
+
+    @pytest.mark.parametrize("module", [notifier, encrypt_ctrl, worker, folder_scanner, file_model, log_mod])
+    def test_no_subprocess(self, module):
+        source = inspect.getsource(module)
+        assert "subprocess" not in source and "Popen" not in source and "os.system" not in source
