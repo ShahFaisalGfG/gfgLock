@@ -43,6 +43,6 @@ gfglock = [
 [tool.gfglock]
 display_name = "gfgLock"
 publisher    = "gfgRoyal"
-url          = "https://shahfaisalgfg.github.io/shahfaisal/"
+url          = "https://shahfaisalgfg.github.io/"
 exe_name     = "gfgLock.exe"
 winget_id    = "gfgRoyal.gfgLock"
