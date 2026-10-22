@@ -1,9 +1,12 @@
 # encrypt_ctrl.py - one tab's file queue and the encrypt or decrypt runs over it
 
+import ctypes
 import os
-import subprocess
+import time
+from ctypes import wintypes
 
-from PySide6.QtCore import Property, QObject, Qt, QThreadPool, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QThreadPool, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from gfglock.config.defaults import (
@@ -13,11 +16,20 @@ from gfglock.config.defaults import (
     NotificationDefaults,
     PerformanceDefaults,
     ReadSizeDefaults,
+    thread_limit,
 )
-from gfglock.core.file_ops import ENCRYPTED_EXTS
-from gfglock.models.file_model import STATUS_DONE, STATUS_FAILED, STATUS_SKIPPED, STATUS_WORKING, FileListModel
-from gfglock.services.folder_scanner import FolderScanWorker
-from gfglock.services.notifier import send_notification
+from gfglock.core import file_ops
+from gfglock.core.format_v2 import KeyRing
+from gfglock.models.file_model import (
+    STATUS_DONE,
+    STATUS_FAILED,
+    STATUS_SKIPPED,
+    STATUS_WAITING,
+    STATUS_WORKING,
+    FileListModel,
+)
+from gfglock.services.folder_scanner import FolderScanWorker, ScanReport
+from gfglock.services.notifier import notify
 from gfglock.services.worker import OUTCOME_DONE, OUTCOME_SKIPPED, EncryptDecryptWorker
 from gfglock.utils.logging import write_log, write_session_separator
 from gfglock.utils.settings import load_settings
@@ -27,13 +39,66 @@ MODE_DECRYPT = "decrypt"
 # Settings section and defaults that hold each mode's thread count and read size.
 _PERFORMANCE = {MODE_ENCRYPT: ("encryption", EncryptionDefaults), MODE_DECRYPT: ("decryption", DecryptionDefaults)}
 
-_ALGO_NAMES = {code: label for label, code, _ in AlgorithmDefaults.OPTIONS}
+_ALGO_NAMES = {option[1]: option[0] for option in AlgorithmDefaults.OPTIONS}
 _OUTCOME_STATUS = {OUTCOME_DONE: STATUS_DONE, OUTCOME_SKIPPED: STATUS_SKIPPED}
+# runChanged reaches QML at most this often during a run; the final state is sent at once.
+_REFRESH_MS = 100
+# Progress shown until the run has ended: the last files are still being flushed to disk.
+_RUNNING_PROGRESS_CAP = 0.99
+# A run longer than this sends its notification even while the window is in front.
+_NOTIFY_AFTER_S = 10.0
+# How long shutdown waits for cancelled folder scans (they stop at their next directory entry).
+_SCAN_STOP_WAIT_MS = 2000
+
+_shell32 = ctypes.WinDLL("shell32")
+_shell32.ILCreateFromPathW.argtypes = [wintypes.LPCWSTR]
+_shell32.ILCreateFromPathW.restype = ctypes.c_void_p
+_shell32.SHOpenFolderAndSelectItems.argtypes = [ctypes.c_void_p, wintypes.UINT, ctypes.c_void_p, wintypes.DWORD]
+_shell32.SHOpenFolderAndSelectItems.restype = ctypes.HRESULT  # raises OSError for a failure code
+_shell32.ILFree.argtypes = [ctypes.c_void_p]
+_shell32.ILFree.restype = None
 
 
 def _plural(count: int, noun: str) -> str:
     """'1 file', '3 files'."""
     return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+def _were(count: int) -> str:
+    """'was' for one, 'were' for any other count."""
+    return "was" if count == 1 else "were"
+
+
+def _duration(seconds: float) -> str:
+    """'under 0.1 s', '2.1 s', '3 min 5 s', or '1 h 2 min'."""
+    if seconds < 0.1:
+        return "under 0.1 s"
+    if round(seconds, 1) < 60:
+        return f"{seconds:.1f} s"
+    minutes, secs = divmod(round(seconds), 60)
+    if minutes < 60:
+        return f"{minutes} min" + (f" {secs} s" if secs else "")
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h" + (f" {minutes} min" if minutes else "")
+
+
+def _lower_first(text: str) -> str:
+    """A sentence made to continue another one: 'Wrong password' -> 'wrong password' (not 'NTFS')."""
+    return text[:1].lower() + text[1:] if text[1:2].islower() else text
+
+
+def _select_in_explorer(path: str) -> None:
+    """Open File Explorer at the file's folder with the file selected; raises OSError on failure.
+
+    The shell call needs COM, which Qt has already initialised on the GUI thread.
+    """
+    item = _shell32.ILCreateFromPathW(path)
+    if not item:
+        raise OSError(f"File Explorer can't find {path}")
+    try:
+        _shell32.SHOpenFolderAndSelectItems(item, 0, None, 0)
+    finally:
+        _shell32.ILFree(item)
 
 
 class EncryptController(QObject):
@@ -51,17 +116,29 @@ class EncryptController(QObject):
         self._mode = MODE_DECRYPT if mode == MODE_DECRYPT else MODE_ENCRYPT
         self._file_model = FileListModel(self)
         self._threadpool = QThreadPool.globalInstance()
+        # Scans get their own pool so a run (or a speed test) never holds them up.
+        self._scan_pool = QThreadPool(self)
         self._worker: EncryptDecryptWorker | None = None
-        self._scan: FolderScanWorker | None = None
+        self._scans: dict[int, FolderScanWorker] = {}  # every scan until its finished signal arrives
+        self._scan: FolderScanWorker | None = None     # the scan new files and folders join
+        self._scan_report = ScanReport()
         self._scan_found = 0
+        self._scan_added = 0
         self._busy = False
         self._cancel_requested = False
         self._progress = 0.0
         self._files_done = 0
         self._files_total = 0
         self._current_file = ""
+        self._failure_reasons: set[str] = set()
+        self._files_stopped = 0  # files of the current run that Stop ended unchanged
         self._summary = ""
         self._last_folder = ""
+        self._run_timer = QTimer(self)
+        self._run_timer.setSingleShot(True)
+        self._run_timer.setInterval(_REFRESH_MS)
+        self._run_timer.timeout.connect(self._emit_run)
+        self._run_sent = 0.0
         # The last run's summary describes the list as it was; adding or removing files ends that.
         self._file_model.countChanged.connect(self._clear_summary)
 
@@ -84,17 +161,17 @@ class EncryptController(QObject):
 
     @Property(bool, notify=scanChanged)
     def scanning(self) -> bool:
-        """True while a folder scan is adding files in the background."""
-        return self._scan is not None
+        """True while added files and folders are being checked in the background."""
+        return any(not scan.cancelled for scan in self._scans.values())
 
     @Property(int, notify=scanChanged)
     def scanFound(self) -> int:
-        """Files found so far by the running folder scan."""
+        """Files found so far by the running scan, across every folder that joined it."""
         return self._scan_found
 
     @Property(float, notify=runChanged)
     def progress(self) -> float:
-        """Progress of the current run from 0 to 1, by bytes processed."""
+        """Progress of the current run from 0 to 1, by bytes read; 1 only once the run has ended."""
         return self._progress
 
     @Property(int, notify=runChanged)
@@ -114,7 +191,7 @@ class EncryptController(QObject):
 
     @Property(bool, notify=runChanged)
     def cancelling(self) -> bool:
-        """True after Cancel until the files already in progress finish."""
+        """True after Cancel until the files in progress have stopped."""
         return self._busy and self._cancel_requested
 
     @Property(str, notify=summaryChanged)
@@ -131,29 +208,26 @@ class EncryptController(QObject):
 
     @Slot(list)
     def addFiles(self, urls: list) -> None:
-        """Accept file:/// URLs or plain paths; folders among them are scanned in the background."""
-        paths = [self._url_to_path(u) for u in urls if u]
-        folders = [p for p in paths if p and os.path.isdir(p)]
-        files = [p for p in paths if p and p not in folders]
-        allowed = [p for p in files if self._isAllowed(p)]
-        added = self._file_model.addFiles(allowed)
-        self._report_left_out(len(files) - len(allowed))
-        self._report_added_while_busy(added)
-        if folders:
-            self._start_scan(folders)
+        """Accept file:/// URLs or plain paths; files and folders are checked in the background."""
+        paths = (self._url_to_path(url) for url in urls if url)
+        self._scan_paths(list(dict.fromkeys(path for path in paths if path)))
 
     @Slot(str)
     def addFolder(self, url: str) -> None:
         """Scan a folder and its subfolders in the background, adding results in batches."""
         folder = self._url_to_path(url)
-        if folder and os.path.isdir(folder):
-            self._start_scan([folder])
+        if folder:
+            self._scan_paths([folder])
 
     @Slot()
     def cancelScan(self) -> None:
-        """Stop the running folder scan; files already found stay in the list."""
-        if self._scan is not None:
-            self._scan.cancel()
+        """Stop the running scan; files already in the list stay there."""
+        if not self.scanning:
+            return
+        for scan in self._scans.values():
+            scan.cancel()
+        self._scan = None
+        self.scanChanged.emit()
 
     @Slot()
     def clearFiles(self) -> None:
@@ -164,15 +238,11 @@ class EncryptController(QObject):
             self._last_folder = ""
             self.summaryChanged.emit()
 
-    @Slot()
-    def removeSelected(self) -> None:
-        """Take the selected files off the list (nothing is deleted from disk)."""
-        self._file_model.removeSelected()
-
     def shutdown(self) -> None:
-        """Stop background work before exit so the thread pool drains quickly."""
+        """Stop background work before exit: scans stop at once, files in progress stop unchanged."""
         self.cancelScan()
         self.cancel()
+        self._scan_pool.waitForDone(_SCAN_STOP_WAIT_MS)
 
     # ── Running ─────────────────────────────────────────────────────────────
 
@@ -184,22 +254,28 @@ class EncryptController(QObject):
         paths = self._file_model.runnable_paths()
         if not paths:
             return
+        try:
+            keys = KeyRing(password)
+        except ValueError as error:  # a password that can't be turned into a key
+            reason = str(error)
+            self.notice.emit(f"{reason[:1].upper()}{reason[1:]}.")
+            return
         settings = load_settings()
         section_name, defaults = _PERFORMANCE[self._mode]
         section = settings.get(section_name, {})
         threads = self._clamp_threads(int(section.get("cpu_threads", defaults.DEFAULT_THREADS)), settings)
         read_size = int(section.get("read_size", ReadSizeDefaults.DEFAULT) or 0)
-        algorithm = algorithm or settings.get("advanced", {}).get("encryption_mode", AlgorithmDefaults.DEFAULT_ALGORITHM)
+        choice, cipher = self._cipher(algorithm or settings.get("advanced", {}).get("encryption_mode", ""))
 
-        algo_label = _ALGO_NAMES.get(algorithm, algorithm) if self._mode == MODE_ENCRYPT else "auto-detect"
+        algo_label = _ALGO_NAMES.get(choice, choice) if self._mode == MODE_ENCRYPT else "auto-detect"
         start_msg = (f"[{self._mode.upper()}] {_plural(len(paths), 'file')} | {algo_label} | "
                      f"{_plural(threads, 'thread')}")
         write_log(start_msg, "general")
 
         self._file_model.reset_for_run(paths)
         self._worker = EncryptDecryptWorker(
-            paths=paths, password=password, mode=self._mode, encrypt_name=encrypt_names,
-            threads=threads, read_size=read_size, enc_algo=algorithm,
+            paths=paths, keys=keys, mode=self._mode, encrypt_name=encrypt_names,
+            threads=threads, read_size=read_size, algorithm=cipher,
         )
         self._connect_worker(self._worker)
         self._cancel_requested = False
@@ -207,19 +283,21 @@ class EncryptController(QObject):
         self._files_done = 0
         self._files_total = len(paths)
         self._current_file = ""
+        self._failure_reasons = set()
+        self._files_stopped = 0
         self._summary = ""
         self.summaryChanged.emit()
-        self.runChanged.emit()
+        self._emit_run()
         self._set_busy(True)
         self._threadpool.start(self._worker)
 
     @Slot()
     def cancel(self) -> None:
-        """Stop after the files in progress; files not started yet stay unchanged."""
+        """Stop the run: the files in progress stop and stay unchanged, and no new files start."""
         if self._worker is not None and not self._cancel_requested:
             self._cancel_requested = True
             self._worker.cancel()
-            self.runChanged.emit()
+            self._emit_run()
 
     # ── Results and clipboard ───────────────────────────────────────────────
 
@@ -231,7 +309,7 @@ class EncryptController(QObject):
             return
         try:
             if os.path.exists(path):
-                subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+                _select_in_explorer(os.path.normpath(path))
             elif os.path.isdir(os.path.dirname(path)):
                 os.startfile(os.path.dirname(path))  # type: ignore[attr-defined]
         except OSError as error:
@@ -263,154 +341,234 @@ class EncryptController(QObject):
         if text:
             QApplication.clipboard().setText(text)
 
-    # ── Internal helpers ────────────────────────────────────────────────────
+    # ── Scanning ────────────────────────────────────────────────────────────
 
-    def _isAllowed(self, path: str) -> bool:
-        """True when the file belongs on this tab: plain files to encrypt, gfgLock files to decrypt."""
-        is_encrypted = os.path.splitext(path)[1].lower() in ENCRYPTED_EXTS
-        return is_encrypted if self._mode == MODE_DECRYPT else not is_encrypted
-
-    def _report_added_while_busy(self, count: int) -> None:
-        """Files added during a run wait for the next one; say so, since the run won't pick them up."""
-        if count > 0 and self._busy:
-            verb = "Encrypt" if self._mode == MODE_ENCRYPT else "Decrypt"
-            self.notice.emit(f"{_plural(count, 'file')} added. {'It' if count == 1 else 'They'} will run "
-                             f"when you press {verb} again after this run.")
-
-    def _report_left_out(self, count: int) -> None:
-        """Tell the user why some of the files they added aren't in the list."""
-        if count <= 0:
+    def _scan_paths(self, paths: list[str]) -> None:
+        """Check files and walk folders in the background; they join the scan already running."""
+        if not paths or (self._scan is not None and self._scan.add_roots(paths)):
             return
-        if self._mode == MODE_ENCRYPT:
-            self.notice.emit(f"{_plural(count, 'file')} already encrypted {'was' if count == 1 else 'were'} "
-                             "left out. Use the Decrypt tab to open them.")
-        else:
-            self.notice.emit(f"{_plural(count, 'file')} not encrypted by gfgLock "
-                             f"{'was' if count == 1 else 'were'} left out.")
+        if not self.scanning:  # a new scanning session: its counts and notices start over
+            self._scan_report = ScanReport()
+            self._scan_found = 0
+            self._scan_added = 0
+        scan = FolderScanWorker(paths, file_ops.ENCRYPTED_EXTS, include_encrypted=self._mode == MODE_DECRYPT)
+        queued = Qt.ConnectionType.QueuedConnection
+        scan.signals.batch_found.connect(self._on_scan_batch, queued)
+        scan.signals.finished.connect(self._on_scan_finished, queued)
+        self._scans[scan.scan_id] = scan
+        self._scan = scan
+        self.scanChanged.emit()
+        self._scan_pool.start(scan)
+
+    def _on_scan_batch(self, scan_id: int, batch: list) -> None:
+        """Add a scan's rows, unless the scan was cancelled (Stop or Clear) since it sent them."""
+        scan = self._scans.get(scan_id)
+        if scan is None or scan.cancelled:
+            return
+        self._scan_found += len(batch)
+        self._scan_added += self._file_model.add_scanned(batch)
+        self.scanChanged.emit()
+
+    def _on_scan_finished(self, scan_id: int, report: ScanReport) -> None:
+        """Release a finished scan; when the session's last one ends, say what was left out."""
+        scan = self._scans.pop(scan_id, None)
+        if scan is None:
+            return
+        if self._scan is scan:
+            self._scan = None
+        if scan.cancelled:
+            return  # cancelScan already ended the session
+        self._scan_report.add(report)
+        if self.scanning:
+            return
+        self.scanChanged.emit()
+        message = self._scan_notice(self._scan_report)
+        if message:
+            self.notice.emit(message)
+
+    def _scan_notice(self, report: ScanReport) -> str:
+        """One notice for what a scanning session left out or couldn't read ("" when nothing was)."""
+        parts = []
+        if report.folders and self._scan_found == 0:
+            where = "that folder" if report.folders == 1 else "those folders"
+            parts.append(f"No files to encrypt in {where}." if self._mode == MODE_ENCRYPT
+                         else f"No gfgLock-encrypted files in {where}.")
+        if report.failed_roots:
+            parts.append("Couldn't open that folder." if report.failed_roots == 1 and not report.folders
+                         else f"Couldn't open {_plural(report.failed_roots, 'folder')}.")
+        if report.unreadable:
+            parts.append(f"{_plural(report.unreadable, 'folder')} inside couldn't be opened and "
+                         f"{_were(report.unreadable)} skipped.")
+        if report.protected_folders or report.protected_files:
+            parts.append(self._protected_text(report.protected_folders, report.protected_files))
+        if report.other_type:
+            parts.append(self._left_out_text(report.other_type))
+        if report.error:
+            parts.append(f"The scan stopped early: {report.error}")
+        if self._busy and self._scan_added:
+            parts.append(self._added_while_busy_text(self._scan_added))
+        return " ".join(parts)
 
     @staticmethod
-    def _clamp_threads(threads: int, settings: dict) -> int:
-        """Limit threads to the CPU, keeping one free when the preference asks for it."""
-        clamp = settings.get("advanced", {}).get("clamp_cpu_threads", PerformanceDefaults.CLAMP_CPU_THREADS)
-        cpu_total = os.cpu_count() or 1
-        return max(1, min(threads, max(1, cpu_total - 1) if clamp else cpu_total))
+    def _protected_text(folders: int, files: int) -> str:
+        """Say that system and app locations were left out, which only Encrypt does."""
+        parts = []
+        if folders:
+            parts.append(_plural(folders, "system or app folder"))
+        if files:
+            parts.append(_plural(files, "system or app file"))
+        return f"{' and '.join(parts)} {_were(folders + files)} left out."
 
-    def _start_scan(self, folders: list[str]) -> None:
-        """Scan folders on the thread pool, replacing any scan already running."""
-        self.cancelScan()
-        worker = FolderScanWorker(
-            roots=folders,
-            encrypted_extensions=ENCRYPTED_EXTS,
-            include_encrypted=self._mode == MODE_DECRYPT,
-        )
-        queued = Qt.ConnectionType.QueuedConnection
-        worker.signals.batch_found.connect(self._file_model.addScanned, queued)
-        worker.signals.progress.connect(self._on_scan_progress, queued)
-        worker.signals.error.connect(self.notice, queued)
-        worker.signals.finished.connect(
-            lambda found, cancelled, w=worker: self._on_scan_finished(w, found, cancelled), queued
-        )
-        self._scan = worker
-        self._scan_found = 0
-        self.scanChanged.emit()
-        self._threadpool.start(worker)
+    def _left_out_text(self, count: int) -> str:
+        """Why files added directly aren't in the list: they belong on the other tab."""
+        if self._mode == MODE_ENCRYPT:
+            return (f"{_plural(count, 'file')} already encrypted {_were(count)} left out. "
+                    f"Use the Decrypt tab to open {'it' if count == 1 else 'them'}.")
+        return f"{_plural(count, 'file')} not encrypted by gfgLock {_were(count)} left out."
 
-    def _on_scan_progress(self, found: int) -> None:
-        """Track the running file count for the scanning indicator."""
-        self._scan_found = found
-        self.scanChanged.emit()
+    def _added_while_busy_text(self, count: int) -> str:
+        """Files added during a run wait for the next one; say so, since the run won't pick them up."""
+        verb = "Encrypt" if self._mode == MODE_ENCRYPT else "Decrypt"
+        return (f"{_plural(count, 'file')} added. {'It' if count == 1 else 'They'} will run "
+                f"when you press {verb} again after this run.")
 
-    def _on_scan_finished(self, worker: FolderScanWorker, found: int, cancelled: bool) -> None:
-        """Clear the scan state and say what the scan found."""
-        if self._scan is not worker:
-            return
-        self._scan = None
-        self.scanChanged.emit()
-        if not cancelled and found == 0:
-            self.notice.emit("No files to encrypt in that folder." if self._mode == MODE_ENCRYPT
-                             else "No gfgLock-encrypted files in that folder.")
-        else:
-            self._report_added_while_busy(found)
+    # ── Run updates ─────────────────────────────────────────────────────────
 
     def _connect_worker(self, worker: EncryptDecryptWorker) -> None:
         """Wire worker signals to the controller (queued across threads)."""
         queued = Qt.ConnectionType.QueuedConnection
         signals = worker.signals
         signals.progress.connect(self._on_progress, queued)
-        signals.files_progress.connect(self._on_files_progress, queued)
         signals.file_started.connect(self._on_file_started, queued)
         signals.file_progress.connect(self._file_model.set_progress, queued)
         signals.file_result.connect(self._on_file_result, queued)
+        signals.temps_removed.connect(self._on_temps_removed, queued)
         signals.error.connect(self.notice, queued)
         signals.finished.connect(self._on_finished, queued)
 
     def _on_progress(self, done: float, total: float) -> None:
-        self._progress = min(1.0, done / total) if total > 0 else 0.0
-        self.runChanged.emit()
-
-    def _on_files_progress(self, done: int, total: int) -> None:
-        self._files_done = done
-        self._files_total = total
-        self.runChanged.emit()
+        self._progress = min(_RUNNING_PROGRESS_CAP, done / total) if total > 0 else 0.0
+        self._schedule_run()
 
     def _on_file_started(self, path: str) -> None:
         self._current_file = os.path.basename(path)
         self._file_model.set_status(path, STATUS_WORKING, progress=0.0)
-        self.runChanged.emit()
+        self._schedule_run()
 
-    def _on_file_result(self, path: str, outcome: str, reason: str, output: str, message: str) -> None:
-        """Show one file's result on its row and write it to the log."""
+    def _on_file_result(self, path: str, outcome: str, reason: str, output: str) -> None:
+        """Show one file's result on its row (the worker has logged it) and count it as done.
+
+        A file that Stop ended is unchanged, so it waits for the next run instead of counting as finished.
+        """
         status = _OUTCOME_STATUS.get(outcome, STATUS_FAILED)
-        shown = f"Saved as {os.path.basename(output)}" if output else reason
-        self._file_model.set_status(path, status, progress=1.0, message=shown, output=output)
+        if outcome == OUTCOME_SKIPPED and reason == file_ops.STOPPED_REASON:
+            status = STATUS_WAITING
+            self._files_stopped += 1
         if output:
+            shown = f"Saved as {os.path.basename(output)}" + (f". {reason}" if reason else "")
             self._last_folder = os.path.dirname(output)
-        write_log(message, "general")
+        else:
+            shown = reason
+        self._file_model.set_status(path, status, progress=1.0, message=shown, output=output)
         if status == STATUS_FAILED:
-            write_log(message, "critical")
+            self._failure_reasons.add(reason)
+        self._files_done += 1
+        self._schedule_run()
+
+    def _on_temps_removed(self, count: int) -> None:
+        self.notice.emit(f"Removed {_plural(count, 'temporary file')} left by an earlier run that didn't finish.")
 
     def _on_finished(self, elapsed: float, total: int, succeeded: int, failed: int, skipped: int) -> None:
         """Summarize the run, log it, and notify if enabled."""
         self._worker = None
-        cancelled = self._cancel_requested
+        skipped -= self._files_stopped  # those wait for the next run
+        # A Stop pressed after the last file ended changed nothing: the run counts as complete.
+        stopped = self._cancel_requested and succeeded + failed + skipped < total
         self._cancel_requested = False
-        self._summary = self._build_summary(elapsed, total, succeeded, failed, skipped, cancelled)
-        summary = f"[{self._mode.upper()}] {self._summary}"
-        write_log(summary, "critical" if failed else "general")
+        if not stopped:
+            self._progress = 1.0
+        self._summary = self._build_summary(elapsed, total, succeeded, failed, skipped, stopped)
+        write_log(f"[{self._mode.upper()}] {self._summary}", "critical" if failed else "general")
         write_session_separator()
+        self._file_model.flush_counts()
         self._set_busy(False)
         self.summaryChanged.emit()
-        self.runChanged.emit()
-        self._notify_complete(succeeded, failed)
+        self._emit_run()
+        self._notify_complete(elapsed, failed, stopped)
         self.operationFinished.emit(elapsed, total, succeeded, failed, skipped)
 
     def _build_summary(self, elapsed: float, total: int, succeeded: int, failed: int,
                        skipped: int, cancelled: bool) -> str:
-        """One line saying how the run went, e.g. '3 of 4 files encrypted in 2.1 s, 1 failed.'"""
-        verb = "encrypted" if self._mode == MODE_ENCRYPT else "decrypted"
-        done = succeeded + failed + skipped
-        if cancelled and done < total:
-            return (f"Stopped after {_plural(done, 'file')}: {succeeded} {verb}. "
-                    "The rest were not changed.")
-        head = (f"All {_plural(succeeded, 'file')} {verb}" if succeeded == total
-                else f"{succeeded} of {_plural(total, 'file')} {verb}")
-        extras = []
-        if failed:
-            extras.append(f"{failed} failed")
-        if skipped:
-            extras.append(f"{skipped} skipped")
-        return f"{head} in {elapsed:.1f} s" + (f", {', '.join(extras)}." if extras else ".")
+        """One line saying how the run went, e.g. '3 of 4 files encrypted in 2.1 s, 1 failed.'
 
-    def _notify_complete(self, succeeded: int, failed: int) -> None:
-        """Send a desktop notification if the preference is on."""
+        When every failure has the same reason (a wrong password, say), it follows the failure count.
+        """
+        verb = "encrypted" if self._mode == MODE_ENCRYPT else "decrypted"
+        if cancelled:
+            head = f"Stopped: {succeeded} of {_plural(total, 'file')} {verb}"
+        elif succeeded == total:
+            files = f"All {_plural(total, 'file')}" if total > 1 else _plural(total, "file")
+            head = f"{files} {verb} in {_duration(elapsed)}"
+        else:
+            head = f"{succeeded} of {_plural(total, 'file')} {verb} in {_duration(elapsed)}"
+        extras = [f"{skipped} skipped"] if skipped else []
+        if failed:
+            reason = next(iter(self._failure_reasons)) if len(self._failure_reasons) == 1 else ""
+            extras.append(f"{failed} failed" + (f": {_lower_first(reason)}" if reason else ""))
+        tail = " The rest were not changed." if cancelled and succeeded + failed + skipped < total else ""
+        return head + "".join(f", {extra}" for extra in extras) + "." + tail
+
+    def _notify_complete(self, elapsed: float, failed: int, stopped: bool) -> None:
+        """Send a desktop notification when the preference is on and the user may have looked away:
+        the window isn't in front, or the run took long enough to switch to something else."""
         settings = load_settings()
         if not settings.get("advanced", {}).get(
             "operation_notifications", NotificationDefaults.OPERATION_NOTIFICATIONS
         ):
             return
+        in_front = QGuiApplication.applicationState() == Qt.ApplicationState.ApplicationActive
+        if in_front and elapsed <= _NOTIFY_AFTER_S:
+            return
         verb = "Encryption" if self._mode == MODE_ENCRYPT else "Decryption"
-        title = f"gfgLock - {verb} complete" if failed == 0 else f"gfgLock - {verb} finished with errors"
-        send_notification(title, self._summary)
+        if stopped:
+            title = f"{verb} stopped"
+        elif failed:
+            title = f"{verb} finished with errors"
+        else:
+            title = f"{verb} complete"
+        notify(title, self._summary)
+
+    def _schedule_run(self) -> None:
+        """Send runChanged at most every _REFRESH_MS: now when the last one is that old, else at the
+        interval (checked here too, since a flood of queued results can hold timers back)."""
+        if time.monotonic() - self._run_sent >= _REFRESH_MS / 1000:
+            self._emit_run()
+        elif not self._run_timer.isActive():
+            self._run_timer.start()
+
+    def _emit_run(self) -> None:
+        """Send runChanged now, dropping a scheduled one."""
+        self._run_timer.stop()
+        self._run_sent = time.monotonic()
+        self.runChanged.emit()
+
+    # ── Internal helpers ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _cipher(choice: str) -> tuple[str, str]:
+        """The settings code and engine cipher to encrypt with. Anything else, including the
+        decrypt-only CFB, means the default algorithm."""
+        cipher = AlgorithmDefaults.CIPHERS.get(choice, "")
+        if cipher not in file_ops.ENCRYPT_ALGORITHMS:
+            choice = AlgorithmDefaults.DEFAULT_ALGORITHM
+            cipher = AlgorithmDefaults.CIPHERS[choice]
+        return choice, cipher
+
+    @staticmethod
+    def _clamp_threads(threads: int, settings: dict) -> int:
+        """Limit threads to the CPU, keeping one free when the preference asks for it."""
+        clamp = settings.get("advanced", {}).get("clamp_cpu_threads", PerformanceDefaults.CLAMP_CPU_THREADS)
+        return max(1, min(threads, thread_limit(clamp)))
 
     def _clear_summary(self) -> None:
         if self._summary and not self._busy:

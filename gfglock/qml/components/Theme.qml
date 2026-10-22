@@ -18,6 +18,9 @@ QtObject {
     readonly property color titleBar:     dark ? "#111317" : "#e9ebef"
     readonly property color border:       dark ? "#343a46" : "#d6dae1"
     readonly property color borderStrong: dark ? "#4a5263" : "#b7bec9"
+    // Outlines of text boxes, combo boxes, and switch tracks: at least 3:1 against surface
+    // (WCAG 1.4.11), where border is kept light for card edges and dividers.
+    readonly property color inputBorder:  dark ? "#646d7c" : "#7d8694"
 
     // ── Text ─────────────────────────────────────────────────────────────────
     readonly property color text:      dark ? "#e8eaee" : "#1a1d23"
@@ -27,9 +30,9 @@ QtObject {
     // ── Accent and status ────────────────────────────────────────────────────
     readonly property color accent:      dark ? "#5aa9ff" : "#0b62c4"
     readonly property color accentFill:  dark ? "#2a6fd6" : "#0b62c4"
-    readonly property color accentHover: dark ? "#3a7fe6" : "#0a56ad"
+    readonly property color accentHover: dark ? "#2563c9" : "#0a56ad"
     readonly property color accentSoft:  dark ? "#1b2c45" : "#e5effb"
-    readonly property color success:     dark ? "#4ac26b" : "#1a7f37"
+    readonly property color success:     dark ? "#4ac26b" : "#17733a"
     readonly property color successSoft: dark ? "#16301f" : "#e3f4e8"
     readonly property color danger:      dark ? "#ff6b63" : "#c62828"
     readonly property color dangerSoft:  dark ? "#3a1d1d" : "#fdecec"
@@ -64,6 +67,17 @@ QtObject {
     readonly property int radiusLarge: 10
     readonly property int controlHeight: 34
 
+    // ── Icon sizes (pixel sizes) ─────────────────────────────────────────────
+    readonly property int iconXs: 10
+    readonly property int iconSm: 12
+    readonly property int iconMd: 14
+    readonly property int iconLg: 16
+    readonly property int iconXl: 28
+
+    // A tooltip shown because a control took keyboard focus closes after this many ms, so it
+    // can't cover the window while focus stays put. Hover tooltips stay until the pointer leaves.
+    readonly property int focusTipTimeout: 5000
+
     // ── Icons (Segoe Fluent Icons on Windows 11, MDL2 Assets on Windows 10) ──
     readonly property string iconFont: Qt.fontFamilies().indexOf("Segoe Fluent Icons") >= 0
         ? "Segoe Fluent Icons" : "Segoe MDL2 Assets"
@@ -86,7 +100,6 @@ QtObject {
         completed: "",
         error: "",
         warning: "",
-        page: "",
         more: "",
         clear: "",
         openExternal: "",

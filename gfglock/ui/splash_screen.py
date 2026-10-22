@@ -114,11 +114,3 @@ class SplashScreen(QWidget):
             anim.start()
         except Exception as e:
             write_log(f"Splash progress update failed: {e}", level="critical")
-
-    def set_error(self, message: str) -> None:
-        """Switch the status text into an error state."""
-        try:
-            self._status.setText(message)
-            self._status.setStyleSheet("color: #f85149; font-size: 12px;")
-        except Exception as e:
-            write_log(f"Splash error display failed: {e}", level="critical")

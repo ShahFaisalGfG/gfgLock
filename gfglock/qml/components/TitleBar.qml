@@ -1,4 +1,5 @@
-// qmllint disable unqualified
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -10,6 +11,9 @@ Rectangle {
     id: titleBar
 
     required property Window window
+    // A function returning the rect Maximize fills: the free area (no taskbar) of the screen
+    // the window is on. AppWindow provides it.
+    required property var maximizedArea
     property string title: ""
     property bool showMinimize: true
     property bool showMaximize: false
@@ -32,11 +36,12 @@ Rectangle {
             win.height = titleBar._savedGeometry.height
             titleBar._maximized = false
         } else {
+            var area = titleBar.maximizedArea()
             titleBar._savedGeometry = Qt.rect(win.x, win.y, win.width, win.height)
-            win.x = win.screen.virtualX
-            win.y = win.screen.virtualY
-            win.width = win.screen.desktopAvailableWidth
-            win.height = win.screen.desktopAvailableHeight
+            win.x = area.x
+            win.y = area.y
+            win.width = area.width
+            win.height = area.height
             titleBar._maximized = true
         }
     }
@@ -135,7 +140,7 @@ Rectangle {
 
         contentItem: Icon {
             name: button.iconName
-            size: 10
+            size: Theme.iconXs
             color: button.closeStyle && button.hovered ? Theme.closeHoverText : Theme.text
         }
         background: Rectangle {

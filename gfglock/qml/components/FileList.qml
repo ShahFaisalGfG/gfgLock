@@ -32,6 +32,9 @@ FocusScope {
     signal showInFolderRequested(int row)
     signal copyNamesRequested()
     signal copyPathsRequested()
+    // The empty list got its first files. `focused` is true when keyboard focus is on the list or
+    // the scan banner's Stop button, which stay in view; the empty state's buttons hide.
+    signal filled(bool focused)
 
     property int _anchor: -1
 
@@ -64,10 +67,12 @@ FocusScope {
     // After rows are removed the anchor may point at another file, so a Shift+click range starts
     // afresh. Rows added at the end (a folder scan) keep it.
     property int _lastCount: 0
+    Component.onCompleted: root._lastCount = root.fileModel.count
     Connections {
         target: root.fileModel
         function onCountChanged(count) {
             if (count < root._lastCount) root._anchor = -1
+            else if (root._lastCount === 0 && count > 0) root.filled(listView.activeFocus || stopScanButton.activeFocus)
             root._lastCount = count
         }
     }
@@ -88,7 +93,7 @@ FocusScope {
             Layout.preferredHeight: 64
             radius: 32
             color: Theme.accentSoft
-            Icon { anchors.centerIn: parent; name: root.emptyIcon; size: 28; color: Theme.accent }
+            Icon { anchors.centerIn: parent; name: root.emptyIcon; size: Theme.iconXl; color: Theme.accent }
         }
         Text {
             Layout.fillWidth: true
@@ -188,6 +193,7 @@ FocusScope {
                     Accessible.name: text
                 }
                 AppButton {
+                    id: stopScanButton
                     kind: "ghost"
                     compact: true
                     text: "Stop"

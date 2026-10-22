@@ -1,4 +1,5 @@
-// qmllint disable unqualified
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Window
 

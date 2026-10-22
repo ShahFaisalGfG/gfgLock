@@ -1,7 +1,8 @@
 import os
 import re
-
-import pytest
+import subprocess
+import sys
+from pathlib import Path
 
 from gfglock.utils import helpers
 
@@ -54,71 +55,6 @@ class TestFormatBytes:
         assert helpers.format_bytes(0) == "0.0 B"
 
 
-class TestPredictEncryptedSize:
-    """predict_encrypted_size must add the exact per-mode metadata overhead."""
-
-    def test_gcm_overhead(self, tmp_path):
-        """GCM mode overhead is salt+nonce+tag+chunk_field+null = 49 bytes."""
-        f = tmp_path / "file.txt"
-        f.write_bytes(b"x" * 100)
-        expected = 100 + len(b"file.txt") + 49
-        assert helpers.predict_encrypted_size(str(f), "GCM") == expected
-
-    def test_cfb_overhead(self, tmp_path):
-        """CFB mode overhead is salt+iv+chunk_field+null = 37 bytes."""
-        f = tmp_path / "file.txt"
-        f.write_bytes(b"x" * 100)
-        expected = 100 + len(b"file.txt") + 37
-        assert helpers.predict_encrypted_size(str(f), "CFB") == expected
-
-    def test_chacha_overhead_matches_gcm(self, tmp_path):
-        """CHACHA mode shares the same 49-byte overhead as GCM."""
-        f = tmp_path / "file.txt"
-        f.write_bytes(b"x" * 100)
-        expected = 100 + len(b"file.txt") + 49
-        assert helpers.predict_encrypted_size(str(f), "CHACHA") == expected
-
-    def test_mode_is_case_insensitive(self, tmp_path):
-        """Lowercase mode strings must be normalized the same as uppercase."""
-        f = tmp_path / "file.txt"
-        f.write_bytes(b"x" * 10)
-        assert helpers.predict_encrypted_size(str(f), "gcm") == helpers.predict_encrypted_size(str(f), "GCM")
-
-    def test_unknown_mode_raises(self, tmp_path):
-        """An unsupported mode string must raise ValueError."""
-        f = tmp_path / "file.txt"
-        f.write_bytes(b"x")
-        with pytest.raises(ValueError):
-            helpers.predict_encrypted_size(str(f), "ROT13")
-
-
-class TestDeriveKey:
-    """derive_key must deterministically derive a 256-bit key from password and salt."""
-
-    def test_key_length_is_256_bits(self):
-        """The derived key must be exactly 32 bytes long."""
-        key = helpers.derive_key("password", b"0" * 16, iterations=1000)
-        assert len(key) == 32
-
-    def test_deterministic_for_same_inputs(self):
-        """Identical password, salt, and iterations must derive the same key."""
-        key1 = helpers.derive_key("password", b"salt1234salt1234", iterations=1000)
-        key2 = helpers.derive_key("password", b"salt1234salt1234", iterations=1000)
-        assert key1 == key2
-
-    def test_different_salt_changes_key(self):
-        """Changing the salt must change the derived key."""
-        key1 = helpers.derive_key("password", b"a" * 16, iterations=1000)
-        key2 = helpers.derive_key("password", b"b" * 16, iterations=1000)
-        assert key1 != key2
-
-    def test_different_password_changes_key(self):
-        """Changing the password must change the derived key."""
-        key1 = helpers.derive_key("password1", b"0" * 16, iterations=1000)
-        key2 = helpers.derive_key("password2", b"0" * 16, iterations=1000)
-        assert key1 != key2
-
-
 class TestGenerateEncryptedName:
     """generate_encrypted_name must produce the on-disk name for an encrypted file."""
 
@@ -138,3 +74,14 @@ class TestGenerateEncryptedName:
         first = helpers.generate_encrypted_name("/some/dir/report.txt", True, ".gfglock")
         second = helpers.generate_encrypted_name("/some/dir/report.txt", True, ".gfglock")
         assert first != second
+
+
+class TestStartupImports:
+    """gfglock.app imports helpers before the splash shows, so helpers must not load the engines."""
+
+    def test_helpers_leave_the_native_module_unloaded(self):
+        code = ("import sys, gfglock.utils.helpers; "
+                "print(sorted(m for m in ('gfglock_native', 'gfglock.core.native_bridge') if m in sys.modules))")
+        done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent,
+                              capture_output=True, text=True, check=True)
+        assert done.stdout.strip() == "[]"

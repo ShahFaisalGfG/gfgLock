@@ -20,7 +20,7 @@ Check = tuple[str, Callable[[], None]]
 
 _QML_DIR = "gfglock/qml"
 _PASSWORD = "self-test password"
-_SAMPLE = os.urandom(300_000) + "é ü 日本".encode("utf-8")
+_SAMPLE = os.urandom(5 << 19) + "é ü 日本".encode("utf-8")  # 2.5 MiB: three v2 chunks
 
 # The QApplication must outlive every QML engine, so it is kept for the rest of the process.
 _qt_app: Optional[object] = None
@@ -36,20 +36,33 @@ def _check_native_extension() -> None:
         )
 
 
+def _check_openssl() -> None:
+    """The native module runs on the OpenSSL it was built with, not another libcrypto found on PATH."""
+    from gfglock.core import native_bridge
+
+    if not native_bridge.NATIVE_AVAILABLE:
+        raise RuntimeError("needs the native extension")
+    runtime, built = native_bridge.openssl_version(), native_bridge.openssl_build_version()
+    if runtime != built:
+        raise RuntimeError(f"OpenSSL {runtime} is loaded, but gfglock_native was built with OpenSSL {built}")
+
+
 def _check_file_round_trip() -> None:
     """Encrypt and decrypt a file with every algorithm through the same path the app uses."""
-    from gfglock.core.file_ops import EXTENSIONS, decrypt_file, encrypt_file
+    from gfglock.core.file_ops import ENCRYPT_ALGORITHMS, decrypt_file, encrypt_file
+    from gfglock.core.format_v2 import KeyRing
 
-    for algorithm in EXTENSIONS:
+    keys = KeyRing(_PASSWORD)  # the default Argon2id cost, as in a run
+    for algorithm in ENCRYPT_ALGORITHMS:
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "sample.txt")
             with open(source, "wb") as fh:
                 fh.write(_SAMPLE)
-            ok, message = encrypt_file(source, _PASSWORD, algorithm, encrypt_name=True)
+            ok, message = encrypt_file(source, keys, algorithm, encrypt_name=True)
             if not ok:
                 raise RuntimeError(f"{algorithm} encrypt: {message}")
             (encrypted,) = os.listdir(tmp)
-            ok, message = decrypt_file(os.path.join(tmp, encrypted), _PASSWORD)
+            ok, message = decrypt_file(os.path.join(tmp, encrypted), keys)
             if not ok:
                 raise RuntimeError(f"{algorithm} decrypt: {message}")
             with open(source, "rb") as fh:
@@ -57,30 +70,41 @@ def _check_file_round_trip() -> None:
                     raise RuntimeError(f"{algorithm} round trip changed the file contents")
 
 
-def _check_python_fallback() -> None:
-    """Decrypt native output with the Python ciphers and the reverse, for every algorithm."""
-    from gfglock.core import native_bridge, py_cipher
-    from gfglock.core.file_ops import EXTENSIONS
+def _check_engines() -> None:
+    """Every available engine opens every engine's v2 output, and all engines write the same bytes."""
+    from gfglock.core import format_v2, native_bridge, py_cipher
+    from gfglock.core.file_ops import ENCRYPT_ALGORITHMS
 
-    for algorithm in EXTENSIONS:
+    engines = {"Python": (py_cipher.seal_stream, py_cipher.open_stream)}
+    if native_bridge.NATIVE_AVAILABLE:
+        engines["native"] = (native_bridge.seal_file, native_bridge.open_file)
+    # The engines take the key as given, so the cheapest Argon2id cost is enough here.
+    keys = format_v2.KeyRing(_PASSWORD, format_v2.KdfParams(memory_kib=64, iterations=1, lanes=1))
+    metadata = format_v2.pack_metadata("sample.txt", 0)
+    for algorithm in ENCRYPT_ALGORITHMS:
+        header, key = keys.new_header(algorithm)
+        written: dict[bytes, str] = {}
         with tempfile.TemporaryDirectory() as tmp:
             source, encrypted, restored = (os.path.join(tmp, name) for name in ("in", "enc", "out"))
             with open(source, "wb") as fh:
                 fh.write(_SAMPLE)
-            pairs = (
-                (native_bridge.encrypt_file, py_cipher.decrypt_stream, "native -> Python"),
-                (py_cipher.encrypt_stream, native_bridge.decrypt_file, "Python -> native"),
-            )
-            for encrypt, decrypt, direction in pairs:
-                ok, error = encrypt(algorithm, source, encrypted, "sample.txt", _PASSWORD)
+            for writer, (seal, _) in engines.items():
+                ok, error = seal(algorithm, source, encrypted, header.pack(), key, header.nonce_prefix,
+                                 header.chunk_size, metadata)
                 if not ok:
-                    raise RuntimeError(f"{algorithm} {direction} encrypt: {error}")
-                ok, error, name = decrypt(algorithm, encrypted, restored, _PASSWORD)
-                if not ok:
-                    raise RuntimeError(f"{algorithm} {direction} decrypt: {error}")
-                with open(restored, "rb") as fh:
-                    if fh.read() != _SAMPLE or name != b"sample.txt":
-                        raise RuntimeError(f"{algorithm} {direction} produced different output")
+                    raise RuntimeError(f"{algorithm} {writer} seal: {error}")
+                with open(encrypted, "rb") as fh:
+                    written[fh.read()] = writer
+                for reader, (_, open_stream) in engines.items():
+                    ok, error, stored = open_stream(algorithm, encrypted, restored, header.pack(), key,
+                                                    header.nonce_prefix, header.chunk_size)
+                    if not ok:
+                        raise RuntimeError(f"{algorithm} {writer} -> {reader} open: {error}")
+                    with open(restored, "rb") as fh:
+                        if fh.read() != _SAMPLE or stored != metadata:
+                            raise RuntimeError(f"{algorithm} {writer} -> {reader} changed the file contents")
+        if len(written) > 1:
+            raise RuntimeError(f"{algorithm}: the engines wrote different files")
 
 
 def _qml_files() -> list[str]:
@@ -131,8 +155,9 @@ def _check_images() -> None:
 
 CHECKS: list[Check] = [
     ("Native extension", _check_native_extension),
+    ("OpenSSL version", _check_openssl),
     ("Encrypt and decrypt files", _check_file_round_trip),
-    ("Python fallback matches native", _check_python_fallback),
+    ("Encryption engines agree", _check_engines),
     ("QML", _check_qml),
     ("Images", _check_images),
 ]

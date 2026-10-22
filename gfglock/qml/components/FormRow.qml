@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 
 // A label beside its control. On narrow widths the label moves above the control instead of
-// squeezing it. Give the control `Layout.fillWidth: true` and an Accessible.name.
+// squeezing it; a switch needs no width, so it stays on its label's line. Give the control
+// `Layout.fillWidth: true` and an Accessible.name.
 GridLayout {
     id: row
 
@@ -18,7 +19,10 @@ GridLayout {
     }
     default property alias content: slot.data
 
-    columns: row.stacked ? 1 : 2
+    readonly property bool _holdsSwitch: Array.prototype.some.call(slot.children, item => item instanceof AppSwitch)
+    readonly property bool _labelAbove: row.stacked && !row._holdsSwitch
+
+    columns: row._labelAbove ? 1 : 2
     columnSpacing: Theme.spaceMd
     rowSpacing: Theme.spaceXs
     Layout.fillWidth: true
@@ -27,7 +31,7 @@ GridLayout {
         Layout.preferredWidth: row.stacked ? -1 : row.labelWidth
         Layout.fillWidth: row.stacked
         Layout.alignment: Qt.AlignTop
-        Layout.topMargin: row.stacked ? 0 : 8
+        Layout.topMargin: row._labelAbove ? 0 : 8
         spacing: 2
 
         // Wrapped text must not size the column by its unwrapped length: a long hint would
@@ -56,7 +60,9 @@ GridLayout {
 
     RowLayout {
         id: slot
-        Layout.fillWidth: true
+        // A stacked switch row gives the label the width and keeps the switch at its own size.
+        Layout.fillWidth: !row.stacked || row._labelAbove
+        Layout.alignment: Qt.AlignTop
         spacing: Theme.spaceSm
     }
 }

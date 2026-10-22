@@ -8,10 +8,9 @@ class AppInfo:
     """Application information and metadata."""
 
     APP_NAME = "gfgLock"
-    APP_VERSION = "3.1.0"
+    APP_VERSION = "3.2.0"
     APP_AUTHOR = "Shah Faisal"
-    APP_COMPANY = "gfgRoyal"
-    APP_DESCRIPTION = "Lock files and folders with a password, using AES-256 encryption"
+    APP_DESCRIPTION = "Lock files and folders with a password, using strong encryption"
 
 
 def _get_cpu_thread_count() -> int:
@@ -20,6 +19,12 @@ def _get_cpu_thread_count() -> int:
     if cpu_count_val is None:
         return 1
     return max(1, cpu_count_val // 2)
+
+
+def thread_limit(reserve_one: bool) -> int:
+    """The most files a run works on at a time: every CPU thread, or one fewer kept free for Windows."""
+    total = os.cpu_count() or 1
+    return max(1, total - 1) if reserve_one else total
 
 
 class ThemeDefaults:
@@ -51,20 +56,16 @@ class AlgorithmDefaults:
     """Encryption algorithms: (label, code, what choosing it means)."""
 
     DEFAULT_ALGORITHM = "aes256_gcm"
+    # AES-256 CFB (.gfglck) is no longer offered for new files; gfgLock still decrypts it.
     OPTIONS = [
         ("AES-256 GCM (recommended)", "aes256_gcm",
-         "Strong encryption that also detects a damaged or altered file, and the fastest on most PCs. "
-         "Files end in .gfglock."),
+         "Strong encryption that also detects a damaged or altered file, and the fastest on most PCs."),
         ("ChaCha20-Poly1305", "chacha20_poly1305",
-         "Just as strong and also detects changes; faster than GCM on PCs without AES hardware. "
-         "Files end in .gfgcha."),
-        ("AES-256 CFB (legacy)", "aes256_cfb",
-         "Older method, kept for compatibility. Slower than GCM and can't tell when a file was damaged "
-         "or altered. Files end in .gfglck."),
+         "Just as strong and also detects changes; faster than GCM on PCs without AES hardware."),
     ]
     SUPPORTED_ALGORITHMS = [code for _, code, _ in OPTIONS]
     # The cipher name the encryption engine (gfglock.core.file_ops) uses for each code.
-    CIPHERS = {"aes256_gcm": "gcm", "chacha20_poly1305": "chacha", "aes256_cfb": "cfb"}
+    CIPHERS = {"aes256_gcm": "gcm", "chacha20_poly1305": "chacha"}
 
 
 class ReadSizeDefaults:
@@ -92,11 +93,11 @@ class LoggingDefaults:
 
     ENABLE_LOGS = False
     DEFAULT_LOG_LEVEL = "critical"
-    SUPPORTED_LOG_LEVELS = ["critical", "all"]
     OPTIONS = [
         ("Errors only", "critical"),
         ("Everything", "all"),
     ]
+    SUPPORTED_LOG_LEVELS = [code for _, code in OPTIONS]
 
 
 class PerformanceDefaults:

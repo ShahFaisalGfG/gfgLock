@@ -46,6 +46,7 @@ Button {
     ToolTip.visible: control.toolTipText.length > 0 && (control.hovered || control.visualFocus)
     ToolTip.text: control.toolTipText
     ToolTip.delay: 500
+    ToolTip.timeout: control.hovered ? -1 : Theme.focusTipTimeout
 
     Accessible.role: Accessible.Button
     Accessible.name: control.text.length > 0 ? control.text : control.toolTipText
@@ -59,7 +60,7 @@ Button {
             Layout.fillWidth: control._iconOnly
             visible: control.iconName.length > 0
             name: control.iconName
-            size: control.compact ? 12 : 14
+            size: control.compact ? Theme.iconSm : Theme.iconMd
             color: control._fg
         }
         Text {

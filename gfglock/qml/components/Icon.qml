@@ -6,7 +6,7 @@ Text {
     id: icon
 
     property string name: ""
-    property int size: 16
+    property int size: Theme.iconLg
 
     text: Theme.icons[icon.name] ?? ""
     font.family: Theme.iconFont

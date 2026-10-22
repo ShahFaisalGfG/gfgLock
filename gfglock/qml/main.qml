@@ -32,7 +32,7 @@ AppWindow {
 
     // quitOnLastWindowClosed is disabled app-wide (see app.py) since it can misfire while a
     // QML window is still open, so closing the main window quits explicitly. During a run it asks
-    // first, then lets the files in progress finish so none is left half written.
+    // first, then stops both tabs and quits once their runs have ended.
     onClosing: function(close) {
         if (mainWin._anyBusy) {
             close.accepted = false
@@ -49,7 +49,7 @@ AppWindow {
             compact: true
             text: "Preferences"
             iconName: "settings"
-            toolTipText: "Default settings, appearance, speed, and logs (Ctrl+,)"
+            toolTipText: "Appearance, speed, notifications, and logs (Ctrl+,)"
             focusPolicy: Qt.TabFocus
             onClicked: mainWin.openPreferences()
         },
@@ -85,6 +85,16 @@ AppWindow {
         return mainWin.tasks.findIndex(t => t.key === key)
     }
 
+    function isEncrypted(url) {
+        var name = url.toLowerCase()
+        return appController.encryptedExtensions.some(ext => name.endsWith(ext))
+    }
+
+    // The local files among dropped URLs; web links and other URLs are left out.
+    function fileUrls(urls) {
+        return Array.from(urls, url => url.toString()).filter(url => url.startsWith("file:"))
+    }
+
     // Sends each dropped or opened item to the tab it belongs on: encrypted files to Decrypt,
     // other files to Encrypt, folders to the tab in view (or the given one). Switches to the tab
     // that received files when only one did.
@@ -93,7 +103,7 @@ AppWindow {
         for (var i = 0; i < urls.length; i++) {
             var url = urls[i].toString()
             if (appController.isFolder(url)) folders.push(url)
-            else if (/\.(gfglock|gfglck|gfgcha)$/i.test(url)) encrypted.push(url)
+            else if (mainWin.isEncrypted(url)) encrypted.push(url)
             else plain.push(url)
         }
         var folderKey = preferredKey || mainWin.tasks[tabs.currentIndex].key
@@ -115,6 +125,16 @@ AppWindow {
             mainWin.bringToFront()
         }
         function onActivateRequested() { mainWin.bringToFront() }
+        function onNotice(message) { toast.show(message) }
+    }
+
+    // A choice the Encrypt tab saves on its own can fail to save; Preferences shows its own
+    // save results while it is open.
+    Connections {
+        target: prefsController
+        function onSaveFinished(success, message) {
+            if (!success && !mainWin._prefsWindow) toast.show(message)
+        }
     }
 
     // ── Keyboard shortcuts ─────────────────────────────────────────────────
@@ -164,7 +184,7 @@ AppWindow {
                         spacing: Theme.spaceSm
                         Icon {
                             name: tabButton.modelData.icon
-                            size: 14
+                            size: Theme.iconMd
                             color: tabButton.checked ? Theme.accent : Theme.textMuted
                         }
                         Text {
@@ -177,11 +197,19 @@ AppWindow {
                         BusyIndicator {
                             visible: tabButton.modelData.controller.busy
                             running: visible
-                            Layout.preferredWidth: 14
-                            Layout.preferredHeight: 14
+                            Layout.preferredWidth: Theme.iconMd
+                            Layout.preferredHeight: Theme.iconMd
                             padding: 0
                             Accessible.ignored: true
                         }
+                    }
+                    // The tab bar draws the selected tab's underline; this adds hover and the
+                    // keyboard focus ring.
+                    background: Rectangle {
+                        radius: Theme.radius
+                        color: tabButton.hovered ? Theme.surfaceHover : "transparent"
+                        border.width: tabButton.visualFocus ? 2 : 0
+                        border.color: Theme.focusRing
                     }
                 }
             }
@@ -206,13 +234,18 @@ AppWindow {
         }
     }
 
-    // Drops anywhere in the window; each file goes to the tab it belongs on.
+    // Drops anywhere in the window; each file goes to the tab it belongs on. Drags without a
+    // local file (a web link, text) are refused, so the overlay doesn't promise anything.
     DropArea {
         id: dropArea
         anchors.fill: parent
+        onEntered: function(drag) {
+            drag.accepted = drag.hasUrls && mainWin.fileUrls(drag.urls).length > 0
+        }
         onDropped: function(drop) {
-            if (!drop.hasUrls) return
-            mainWin.receive(drop.urls, "")
+            var files = drop.hasUrls ? mainWin.fileUrls(drop.urls) : []
+            if (files.length === 0) return
+            mainWin.receive(files, "")
             drop.acceptProposedAction()
         }
 
@@ -230,7 +263,8 @@ AppWindow {
                 width: parent.width - 2 * Theme.spaceXl
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Drop to add. Encrypted files go to Decrypt, everything else to Encrypt."
+                text: "Drop to add. Encrypted files go to Decrypt, other files to Encrypt, and folders to "
+                    + mainWin.tasks[tabs.currentIndex].label + "."
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSubtitle
                 font.weight: Font.DemiBold
@@ -243,7 +277,7 @@ AppWindow {
         id: toast
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 88
+        anchors.bottomMargin: mainWin.currentPage.runBarHeight + Theme.spaceLg
         z: 50
     }
 
@@ -254,6 +288,7 @@ AppWindow {
         title: "Stop and close?"
         width: Math.min(440, mainWin.width - 48)
         standardButtons: Dialog.Yes | Dialog.No
+        defaultButton: Dialog.No
         Component.onCompleted: {
             closeDialog.standardButton(Dialog.Yes).text = "Stop and close"
             closeDialog.standardButton(Dialog.No).text = "Keep working"
@@ -266,7 +301,7 @@ AppWindow {
 
         Text {
             width: parent.width
-            text: "Files being worked on now are finished first, then gfgLock closes. Files not started yet stay as they are."
+            text: "Files in progress stop and are left unchanged, finished files stay done, then gfgLock closes."
             wrapMode: Text.WordWrap
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
@@ -281,6 +316,7 @@ AppWindow {
         title: "About " + appController.appName
         width: Math.min(480, mainWin.width - 48)
         standardButtons: Dialog.Close
+        defaultButton: Dialog.Close
 
         ColumnLayout {
             anchors.fill: parent

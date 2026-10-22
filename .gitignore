@@ -55,3 +55,7 @@ benchmark*.md
 context*.md
 winget-publish.md
 release.sh
+
+# ── Never ignored ─────────────────────────────────────────────────────────────
+# The test fixtures are encrypted files; a fixture name may match a pattern above.
+!tests/fixtures/**

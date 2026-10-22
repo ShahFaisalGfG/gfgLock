@@ -6,6 +6,13 @@ import pytest
 from gfglock.utils import settings as settings_mod
 
 
+@pytest.fixture(autouse=True)
+def fresh_state(monkeypatch):
+    """Each test starts without a cached file or a pending damaged-file report, and leaves none behind."""
+    monkeypatch.setattr(settings_mod, "_cache", None)
+    monkeypatch.setattr(settings_mod, "_read_error", False)
+
+
 class TestGetSettingsFile:
     """settings.json lives in the app's data folder (see test_paths), or beside the module from source."""
 
@@ -69,6 +76,65 @@ class TestLoadSettings:
         monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(target))
         assert settings_mod.load_settings() == settings_mod.get_default_settings()
 
+    def test_byte_order_mark_is_accepted(self, monkeypatch, tmp_path):
+        """A file saved by an editor that writes a UTF-8 byte order mark still loads."""
+        target = tmp_path / "settings.json"
+        target.write_bytes(b"\xef\xbb\xbf" + json.dumps({"theme": "dark"}).encode("utf-8"))
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(target))
+        assert settings_mod.load_settings()["theme"] == "dark"
+        assert settings_mod.take_read_error() is False
+
+
+class TestDamagedFile:
+    """A damaged settings.json is parsed once, not on every load, and reported once."""
+
+    @pytest.fixture
+    def damaged(self, monkeypatch, tmp_path):
+        target = tmp_path / "settings.json"
+        target.write_text("{not valid json", encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(target))
+        return target
+
+    def test_failure_is_cached_until_the_file_changes(self, damaged, monkeypatch):
+        parsed: list[int] = []
+        real_load = settings_mod.json.load
+        monkeypatch.setattr(settings_mod.json, "load", lambda fh: parsed.append(1) or real_load(fh))
+        for _ in range(3):
+            assert settings_mod.load_settings() == settings_mod.get_default_settings()
+        assert len(parsed) == 1
+        damaged.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+        assert settings_mod.load_settings()["theme"] == "dark"
+
+    def test_reported_once(self, damaged):
+        settings_mod.load_settings()
+        settings_mod.load_settings()
+        assert settings_mod.take_read_error() is True
+        assert settings_mod.take_read_error() is False
+
+    def test_a_good_or_missing_file_reports_nothing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(tmp_path / "settings.json"))
+        settings_mod.load_settings()
+        assert settings_mod.take_read_error() is False
+
+    def test_a_locked_file_is_read_again_next_time(self, monkeypatch, tmp_path):
+        """An open failure (another program holding the file a moment) is not cached as damage."""
+        target = tmp_path / "settings.json"
+        target.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(target))
+        real_open = open
+        attempts: list[int] = []
+
+        def flaky_open(path, *args, **kwargs):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise PermissionError(13, "The process cannot access the file")
+            return real_open(path, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", flaky_open)
+        assert settings_mod.load_settings()["theme"] == "system"
+        assert settings_mod.load_settings()["theme"] == "dark"
+        assert settings_mod.take_read_error() is False
+
 
 class TestSaveSettings:
     """save_settings must persist a settings dict to disk as JSON."""
@@ -86,6 +152,25 @@ class TestSaveSettings:
         bad_path = str(tmp_path / "missing_dir" / "settings.json")
         monkeypatch.setattr(settings_mod, "get_settings_file", lambda: bad_path)
         assert settings_mod.save_settings({"theme": "light"}) is False
+
+    def test_temp_file_reaches_the_disk_before_it_replaces_the_settings(self, monkeypatch, tmp_path):
+        """fsync runs on the temp file before os.replace, so a power cut can't leave an empty file."""
+        target = tmp_path / "settings.json"
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(target))
+        events: list[str] = []
+        real_fsync, real_replace = os.fsync, os.replace
+        monkeypatch.setattr(settings_mod.os, "fsync", lambda fd: events.append("fsync") or real_fsync(fd))
+        monkeypatch.setattr(settings_mod.os, "replace", lambda a, b: events.append("replace") or real_replace(a, b))
+        assert settings_mod.save_settings({"theme": "light"}) is True
+        assert events == ["fsync", "replace"]
+
+    def test_unserializable_settings_leave_the_file_and_no_temp(self, monkeypatch, tmp_path):
+        target = tmp_path / "settings.json"
+        target.write_text('{"theme": "dark"}', encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(target))
+        assert settings_mod.save_settings({"theme": object()}) is False
+        assert target.read_text(encoding="utf-8") == '{"theme": "dark"}'
+        assert os.listdir(tmp_path) == ["settings.json"]
 
     def test_save_then_load_roundtrip(self, monkeypatch, tmp_path):
         """Settings saved to disk must be recovered unchanged by load_settings."""
@@ -127,7 +212,7 @@ class TestMergeSettings:
         assert overrides == {"a": {"x": 9}}
 
 
-class TestDropUnknownKeys:
+class TestDropInvalid:
     """Settings written by older versions lose the options this version no longer has."""
 
     def test_obsolete_keys_are_dropped_on_load(self, monkeypatch, tmp_path):
@@ -146,17 +231,55 @@ class TestDropUnknownKeys:
 
     def test_scalar_in_place_of_a_section_is_dropped(self):
         defaults = {"advanced": {"enable_logs": False}, "theme": "system"}
-        assert settings_mod.drop_unknown_keys({"advanced": "oops", "theme": "dark"}, defaults) == {"theme": "dark"}
+        assert settings_mod.drop_invalid({"advanced": "oops", "theme": "dark"}, defaults) == {"theme": "dark"}
 
     def test_wrong_typed_values_fall_back_to_defaults(self):
         defaults = {"encryption": {"cpu_threads": 4, "read_size": 0}, "advanced": {"enable_logs": False}, "theme": "system"}
         loaded = {"encryption": {"cpu_threads": "abc", "read_size": None}, "advanced": {"enable_logs": 1}, "theme": 7}
-        assert settings_mod.drop_unknown_keys(loaded, defaults) == {"encryption": {}, "advanced": {}}
+        assert settings_mod.drop_invalid(loaded, defaults) == {"encryption": {}, "advanced": {}}
 
     def test_bool_and_int_are_told_apart(self):
         defaults = {"encryption": {"cpu_threads": 4}, "advanced": {"enable_logs": False}}
         loaded = {"encryption": {"cpu_threads": True}, "advanced": {"enable_logs": True}}
-        assert settings_mod.drop_unknown_keys(loaded, defaults) == {"encryption": {}, "advanced": {"enable_logs": True}}
+        assert settings_mod.drop_invalid(loaded, defaults) == {"encryption": {}, "advanced": {"enable_logs": True}}
+
+    @pytest.mark.parametrize("section, key, value", [
+        (None, "theme", "purple"),
+        ("advanced", "log_level", "x"),
+        ("advanced", "encryption_mode", "aes256_cfb"),  # CFB only decrypts now
+        ("advanced", "encryption_mode", "rot13"),
+        ("encryption", "read_size", 1),
+        ("decryption", "read_size", 10 * 1024 ** 3),
+        ("encryption", "read_size", 4 * 1024 * 1024 + 1),
+        ("encryption", "cpu_threads", 0),
+        ("decryption", "cpu_threads", 10_000),
+    ])
+    def test_values_outside_their_choices_load_as_the_default(self, monkeypatch, tmp_path, section, key, value):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({key: value} if section is None else {section: {key: value}}), encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(path))
+        defaults = settings_mod.get_default_settings()
+        loaded = settings_mod.load_settings()
+        assert (loaded[key] if section is None else loaded[section][key]) == (
+            defaults[key] if section is None else defaults[section][key])
+
+    def test_values_within_their_choices_are_kept(self, monkeypatch, tmp_path):
+        values = {
+            "theme": "dark",
+            "encryption": {"cpu_threads": 1, "read_size": 32 * 1024 * 1024},
+            "decryption": {"cpu_threads": os.cpu_count() or 1, "read_size": 0},
+            "advanced": {"encryption_mode": "chacha20_poly1305", "log_level": "all"},
+        }
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps(values), encoding="utf-8")
+        monkeypatch.setattr(settings_mod, "get_settings_file", lambda: str(path))
+        loaded = settings_mod.load_settings()
+        assert loaded["theme"] == "dark"
+        assert loaded["encryption"]["cpu_threads"] == 1 and loaded["encryption"]["read_size"] == 32 * 1024 * 1024
+        assert loaded["decryption"]["cpu_threads"] == (os.cpu_count() or 1)
+        assert loaded["advanced"]["encryption_mode"] == "chacha20_poly1305"
+        assert loaded["advanced"]["log_level"] == "all"
+        assert settings_mod.take_read_error() is False  # odd values aren't a damaged file
 
     def test_damaged_file_loads_the_defaults(self, monkeypatch, tmp_path):
         path = tmp_path / "settings.json"

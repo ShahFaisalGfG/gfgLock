@@ -1,184 +1,27 @@
 ; =======================================================
-; gfgLock Windows Installer
-; Inno Setup Script
-; Version: 3.1.0
+; gfgLock Windows installer for all users (needs admin rights)
+; Inno Setup script. The parts it shares with the per-user
+; installer are in common.iss.
 ; =======================================================
 
-#ifndef MyAppName
-  #define MyAppName "gfgLock"
-#endif
-#ifndef MyAppVersion
-  #define MyAppVersion "3.1.0"
-#endif
-#ifndef MyAppPublisher
-  #define MyAppPublisher "gfgRoyal"
-#endif
-#ifndef MyAppURL
-  #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
-#endif
-#ifndef MyAppExeName
-  #define MyAppExeName "gfgLock.exe"
-#endif
-#define SourceDir "..\dist\gfgLock"
-#define IconsDir "..\gfglock\assets\icons"
-#define ScreenshotsDir "..\screenshots"
+#include "common.iss"
 
 [Setup]
-; App identification
-AppId={{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}
-AppName={#MyAppName}
-AppVersion={#MyAppVersion}
-AppVerName={#MyAppName}
-AppPublisher={#MyAppPublisher}
-AppPublisherURL={#MyAppURL}
-AppSupportURL={#MyAppURL}
-AppUpdatesURL={#MyAppURL}
-
-; Installation settings
-DefaultDirName={autopf}\{#MyAppName}
-DefaultGroupName={#MyAppName}
-AllowNoIcons=yes
-OutputDir=..\build\installer
-OutputBaseFilename={#MyAppName}_{#MyAppVersion}_system_installer
-SetupIconFile={#IconsDir}\gfgLock.ico
-UninstallDisplayIcon={app}\{#MyAppExeName}
-Compression=lzma2/ultra64
-SolidCompression=yes
-WizardStyle=modern
-WizardSizePercent=110,120
-; Explorer refreshes file icons after the file associations change
-ChangesAssociations=yes
-
-; Privileges - require admin (force system-wide install)
 PrivilegesRequired=admin
-
-; Architectures
-ArchitecturesInstallIn64BitMode=x64compatible
-ArchitecturesAllowed=x64compatible
-
-[Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
-
-[CustomMessages]
-english.AssociateGfglockFiles=Associate .gfglock, .gfglck, .gfgcha files with gfgLock
-english.FileAssociations=File associations:
-
-[Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: "{cm:FileAssociations}"
+DefaultDirName={autopf}\{#MyAppName}
+OutputBaseFilename={#MyAppName}_{#MyAppVersion}_system_installer
 
 [Files]
-; Main application files (compiled executable and dependencies)
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "gfglock_shell.dll"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Shell extension DLL - restartreplace schedules replacement on reboot if Explorer holds a lock
-Source: "{#SourceDir}\gfglock_shell.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
-; Icon for the application
-Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
-; Documentation
-Source: "..\readme.html"; DestDir: "{app}\docs"; Flags: ignoreversion
-Source: "..\LICENSE"; DestDir: "{app}\docs"; DestName: "LICENSE.txt"; Flags: ignoreversion
-Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\docs"; Flags: ignoreversion
-Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#IconsDir}\Square150x150Logo.scale-100.png"; DestDir: "{app}\docs\icons"; Flags: ignoreversion
-
-[InstallDelete]
-; Remove the previous version's bundled runtime before copying the new one. Files a newer
-; build no longer ships (old package metadata, dropped libraries) would otherwise stay behind
-; and can break imports at startup. Only bundled program files live in _internal; settings
-; and logs are stored in %APPDATA% and are kept.
-Type: filesandordirs; Name: "{app}\_internal"
-; The docs folder is replaced the same way, so old screenshots and files no longer shipped go.
-Type: filesandordirs; Name: "{app}\docs"
-
-
-
-[Icons]
-; Start Menu
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-
-; Desktop
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icons\gfgLock.ico"; Tasks: desktopicon
-
-; Quick Launch (legacy) - skipped for system installer to avoid per-user area usage
-; Historically Quick Launch shortcuts were created under the current user's
-; AppData. Creating per-user items from an elevated/system installer can be
-; unsafe and triggers Inno Setup warnings, so we do not create Quick Launch
-; entries here. The per-user installer (`gfglock_user_installer.iss`)
-; can create a Quick Launch shortcut for the installing user if desired.
+; restartreplace is the fallback for a shell DLL that could not be moved aside; uninsrestartdelete
+; removes one that Explorer still holds at uninstall when Windows next starts
+Source: "{#ShellDll}"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 
 [Registry]
-; =============================================================================
-; File association for .gfglock files (only if user chooses "Associate" task)
-; =============================================================================
-Root: HKCR; Subkey: ".gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglock"; Flags: uninsdeletevalue uninsdeletekeyifempty; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File"; Flags: uninsdeletekey; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfglock\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfglock\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
-Root: HKCR; Subkey: ".gfglck"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglck"; Flags: uninsdeletevalue uninsdeletekeyifempty; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfglck"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File (CFB)"; Flags: uninsdeletekey; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfglck\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfglck\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
-Root: HKCR; Subkey: ".gfgcha"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfgcha"; Flags: uninsdeletevalue uninsdeletekeyifempty; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfgcha"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypted File (ChaCha20)"; Flags: uninsdeletekey; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfgcha\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKCR; Subkey: "gfgLock.gfgcha\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
-
-
-; =============================================================================
-; IExplorerCommand CLSID registrations (Windows 11 first-level context menu)
-; =============================================================================
-
-; Encrypt - {{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}
-Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Encrypt Shell Extension"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "CLSID\{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
-
-; Decrypt - {{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}
-Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}"; ValueType: string; ValueName: ""; ValueData: "gfgLock Decrypt Shell Extension"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\gfglock_shell.dll"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "CLSID\{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
-
-; =============================================================================
-; Context menu: Encrypt with gfgLock
-; ExplorerCommandHandler  → Windows 11 first-level menu (all files at once)
-; \command subkey         → Windows 10 fallback (single-file)
-; =============================================================================
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: ""; ValueData: "Encrypt with gfgLock"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MUIVerb"; ValueData: "Encrypt with gfgLock"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt"; ValueType: string; ValueName: "ExplorerCommandHandler"; ValueData: "{{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockEncrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" encrypt ""%1"""; Flags: uninsdeletekey
-
-; =============================================================================
-; Context menu: Decrypt with gfgLock
-; =============================================================================
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: ""; ValueData: "Decrypt with gfgLock"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MUIVerb"; ValueData: "Decrypt with gfgLock"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\icons\gfgLock.ico"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "MultiSelectModel"; ValueData: "Player"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "Position"; ValueData: "Top"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt"; ValueType: string; ValueName: "ExplorerCommandHandler"; ValueData: "{{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "AllFileSystemObjects\shell\gfgLockDecrypt\command"; ValueType: expandsz; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" decrypt ""%1"""; Flags: uninsdeletekey
-
-
-; =============================================================================
-; Optional: Store installation info (useful for future updates/uninstallers)
-; =============================================================================
+; Where the per-user installer looks for a copy installed for all users
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}"; Flags: uninsdeletekeyifempty
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "ExePath"; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
-
-
-[Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
-Filename: "https://github.com/ShahFaisalGfG/gfgLock"; Description: "View README on GitHub"; Flags: shellexec nowait postinstall skipifsilent
-
-[UninstallRun]
-Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillGfgLock"
 
 [UninstallDelete]
 ; Installed files are removed by the uninstaller itself. The folder goes only when it is empty, so
@@ -187,75 +30,177 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: run
 Type: dirifempty; Name: "{app}"
 
 [Code]
-function UserInstallExists(): Boolean;
-var S: String;
-begin
-  Result :=
-    RegQueryStringValue(HKCU,
-      'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
-      '{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}_is1', 'InstallLocation', S) or
-    RegQueryStringValue(HKCU,
-      'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
-      '{C8D4E2A1-9F5B-4C3D-A7E8-987654321DEF}_is1', 'InstallLocation', S);
-end;
-
-function GetUserUninstallStr(out UninstStr: String): Boolean;
-begin
-  Result :=
-    RegQueryStringValue(HKCU,
-      'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
-      '{B9A3F7D2-8C4E-4A5B-93C6-123456789ABC}_is1', 'UninstallString', UninstStr);
-  if not Result then
-    Result :=
-      RegQueryStringValue(HKCU,
-        'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
-        '{C8D4E2A1-9F5B-4C3D-A7E8-987654321DEF}_is1', 'UninstallString', UninstStr);
-end;
-
-function InitializeSetup(): Boolean;
 var
-  UninstStr: String;
+  UserDataMoved: Boolean;
+
+// This user's data folder, which the copy installed for all users reads too.
+function UserDataDir(): String;
+begin
+  Result := ExpandConstant('{userappdata}\{#MyAppName}');
+end;
+
+// Where the settings and logs wait while the per-user copy is removed.
+function KeptDataDir(): String;
+begin
+  Result := UserDataDir() + ' (kept by Setup)';
+end;
+
+// Moves one file or folder from FromDir to ToDir; True when it moved.
+function MoveDataItem(const Name, FromDir, ToDir: String): Boolean;
+var
+  Source, Target: String;
+begin
+  Result := False;
+  Source := AddBackslash(FromDir) + Name;
+  Target := AddBackslash(ToDir) + Name;
+  if not FileExists(Source) and not DirExists(Source) then
+    Exit;
+  if FileExists(Target) or DirExists(Target) then
+    Log('Left ' + Source + ' where it is: ' + Target + ' already exists')
+  else if not ForceDirectories(ToDir) then
+    Log('Could not create ' + ToDir)
+  else
+  begin
+    Result := RenameFile(Source, Target);
+    if not Result then
+      Log('Could not move ' + Source + ' to ' + Target);
+  end;
+end;
+
+// Every per-user uninstaller deletes this user's settings and logs, so they move to a sibling
+// folder until the per-user copy is gone.
+procedure KeepUserData();
+begin
+  if MoveDataItem('settings.json', UserDataDir(), KeptDataDir()) then
+    UserDataMoved := True;
+  if MoveDataItem('logs', UserDataDir(), KeptDataDir()) then
+    UserDataMoved := True;
+end;
+
+// Puts back what KeepUserData moved; a later call does nothing.
+procedure RestoreUserData();
+begin
+  if not UserDataMoved then
+    Exit;
+  MoveDataItem('settings.json', KeptDataDir(), UserDataDir());
+  MoveDataItem('logs', KeptDataDir(), UserDataDir());
+  RemoveDir(KeptDataDir());
+  UserDataMoved := False;
+end;
+
+// Runs the uninstaller of the per-user entry Key silently; an entry whose uninstaller is gone is
+// deleted instead. True when nothing failed.
+function RunUserUninstaller(const Key: String): Boolean;
+var
+  UninstExe: String;
   ResultCode: Integer;
 begin
   Result := True;
-  if UserInstallExists() then
-  begin
-    if MsgBox(
-      'A per-user installation of gfgLock was found.' + #13#10#13#10 +
-      'Click Yes to remove it and continue with the system-wide installation.' + #13#10 +
-      'Click No to cancel - then use the per-user installer to update instead.',
-      mbConfirmation, MB_YESNO) = IDNO then
+  if not RegQueryStringValue(HKCU, Key, 'UninstallString', UninstExe) then
+    Exit;
+  UninstExe := RemoveQuotes(UninstExe);
+  if not FileExists(UninstExe) then
+    RegDeleteKeyIncludingSubkeys(HKCU, Key)
+  else if not Exec(UninstExe, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Result := False
+  else
+    Result := ResultCode = 0;
+end;
+
+// Removes the per-user copy and its stale 2.6.9-3.0.0 entry; this user's settings and logs stay.
+function RemoveUserInstall(): Boolean;
+begin
+  KeepUserData();
+  Result := RunUserUninstaller(CurrentUninstallKey());
+  if Result and StaleInstallExists(HKCU) then
+    Result := RunUserUninstaller(StaleUninstallKey());
+  if Result then
+    Result := not InstallExists(HKCU);
+end;
+
+// The per-user copy is removed before Setup's own AppMutex check runs, so gfgLock must be closed
+// first: its uninstaller would fail on a running copy, and older ones end it by force.
+function AppClosed(): Boolean;
+begin
+  Result := True;
+  while CheckForMutexes('{#AppMutexes}') do
+    if SuppressibleMsgBox('gfgLock is running. Close it, then click OK to continue.',
+      mbError, MB_OKCANCEL, IDCANCEL) <> IDOK then
     begin
       Result := False;
       Exit;
     end;
-    if GetUserUninstallStr(UninstStr) then
-      Exec(RemoveQuotes(UninstStr), '/VERYSILENT /NORESTART', '',
-           SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  if not InstallExists(HKCU) then
+    Exit;
+  if SuppressibleMsgBox(
+    'gfgLock is installed for your account only.' + #13#10#13#10 +
+    'Click Yes to remove that copy and install gfgLock for all users. Your settings and logs are kept.' + #13#10 +
+    'Click No to cancel, then update that copy with the per-user installer instead.',
+    mbConfirmation, MB_YESNO, IDYES) = IDNO then
+  begin
+    Result := False;
+    Exit;
+  end;
+  if not AppClosed() then
+  begin
+    Result := False;
+    Exit;
+  end;
+  if not RemoveUserInstall() then
+  begin
+    RestoreUserData();
+    SuppressibleMsgBox(
+      'The copy of gfgLock installed for your account could not be removed.' + #13#10#13#10 +
+      'Uninstall it in Settings > Apps, then run this installer again.',
+      mbError, MB_OK, IDOK);
+    Result := False;
   end;
 end;
 
-procedure InitializeWizard();
+// Removes this user's association of Ext with gfgLock's ProgId, which would override the one
+// written for all users; an extension another program owns is left alone.
+procedure RemoveUserAssociation(const Ext, ProgId: String);
+var
+  Value: String;
 begin
-  WizardForm.WelcomeLabel2.Caption :=
-    'This wizard will guide you through the installation of {#MyAppName}.'#13#13 +
-    'gfgLock is a secure file encryption tool with AES-256 cryptography and a modern GUI interface.'#13#13 +
-    'It is recommended that you close all other applications before continuing.';
+  if RegQueryStringValue(HKCU, 'Software\Classes\' + Ext, '', Value) and (CompareText(Value, ProgId) = 0) then
+  begin
+    RegDeleteValue(HKCU, 'Software\Classes\' + Ext, '');
+    RegDeleteKeyIfEmpty(HKCU, 'Software\Classes\' + Ext);
+  end;
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\' + ProgId);
 end;
 
+// Clean up per-user CLSID, context-menu, and file-association entries left by older per-user
+// installs; they would override the ones written for all users.
 procedure RemoveStaleUserRegistryEntries();
 begin
-  // Clean up per-user CLSID and context-menu entries left by older per-user installs.
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\CLSID\{E1D4C8A3-2B57-4F6E-9D3A-F5C7821094BE}');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\CLSID\{F2E5D9B4-3C68-4A7F-BE4B-06D8932105CF}');
+  RegDeleteKeyIncludingSubkeys(HKCU, ExpandConstant('Software\Classes\CLSID\{#EncryptClsid}'));
+  RegDeleteKeyIncludingSubkeys(HKCU, ExpandConstant('Software\Classes\CLSID\{#DecryptClsid}'));
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\AllFileSystemObjects\shell\gfgLockEncrypt');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\AllFileSystemObjects\shell\gfgLockDecrypt');
+  RemoveUserAssociation('.gfglock', 'gfgLock.gfglock');
+  RemoveUserAssociation('.gfglck', 'gfgLock.gfglck');
+  RemoveUserAssociation('.gfgcha', 'gfgLock.gfgcha');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
+    RemoveStaleUserRegistryEntries()
+  else if CurStep = ssPostInstall then
   begin
-    RemoveStaleUserRegistryEntries();
+    RestoreUserData();
+    RemoveStaleEntry(HKCU);
   end;
+end;
+
+procedure DeinitializeSetup();
+begin
+  RestoreUserData();
 end;

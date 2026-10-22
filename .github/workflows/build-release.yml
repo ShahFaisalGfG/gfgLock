@@ -1,27 +1,29 @@
 name: Build and Release
 
-# Triggered by pushing a version tag, e.g.: git tag v3.1.0 && git push origin v3.1.0
+# Triggered by pushing a version tag, e.g.: git tag v3.2.0 && git push origin v3.2.0
 on:
   push:
     tags:
       - 'v[0-9]*'
 
-# Needed so gh release create can upload assets
+# The release is created with RELEASE_PAT (see the last step), so the workflow token only reads.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2025
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          python-version: '3.11'
+          persist-credentials: false  # later steps hold RELEASE_PAT; no token stays in the git config
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
           cache: pip
 
       # Single source of truth: all metadata comes from pyproject.toml
@@ -29,22 +31,21 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $json = python scripts/read_meta.py
-          $m    = $json | ConvertFrom-Json
-          "VER=$($m.Version)"         | Out-File $env:GITHUB_OUTPUT -Append
-          "APP_NAME=$($m.AppName)"    | Out-File $env:GITHUB_OUTPUT -Append
-          "PUBLISHER=$($m.Publisher)" | Out-File $env:GITHUB_OUTPUT -Append
-          "URL=$($m.Url)"             | Out-File $env:GITHUB_OUTPUT -Append
-          "EXE_NAME=$($m.ExeName)"    | Out-File $env:GITHUB_OUTPUT -Append
+          . .\scripts\common.ps1
+          $m = Get-AppMeta
+          "VER=$($m.Version)"      | Out-File $env:GITHUB_OUTPUT -Append
+          "APP_NAME=$($m.AppName)" | Out-File $env:GITHUB_OUTPUT -Append
 
       # Release files are named after pyproject's version and the release after the tag, so the
       # two must agree (and winget downloads by the tag's version).
       - name: Check the tag matches the version
         shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          VER: ${{ steps.meta.outputs.VER }}
         run: |
-          $expected = "v${{ steps.meta.outputs.VER }}"
-          if ("${{ github.ref_name }}" -ne $expected) {
-            Write-Error "Tag ${{ github.ref_name }} does not match pyproject.toml version ($expected)."
+          if ($env:TAG -ne "v$env:VER") {
+            Write-Error "Tag $env:TAG does not match pyproject.toml version (v$env:VER)."
             exit 1
           }
 
@@ -52,143 +53,103 @@ jobs:
         shell: pwsh
         run: pip install -r requirements.txt
 
-      # Cache the vcpkg binary + installed OpenSSL/pybind11 packages.
-      # Key tied to native/vcpkg.json and the pinned vcpkg commit, so either change busts the cache.
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
+      # vcpkg's binary cache holds the built OpenSSL package, and .vcpkg the pinned vcpkg tool.
+      # The key follows the vcpkg manifest and commit and the CMake files; the same key in
+      # tests.yml lets a release reuse what the default branch built.
+      - name: Cache vcpkg
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             .vcpkg
-            native/vcpkg_installed
-            native/build/vcpkg_installed
-          key: vcpkg-${{ hashFiles('native/vcpkg.json', 'native/vcpkg-commit.txt') }}
+            !.vcpkg/buildtrees
+            !.vcpkg/packages
+            !.vcpkg/downloads
+            ${{ runner.temp }}\vcpkg-archives
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('native/vcpkg.json', 'native/vcpkg-commit.txt', 'native/CMakeLists.txt', 'native/CMakePresets.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-
 
       # Compiles gfglock_native.pyd and gfglock_shell.dll using MSVC + CMake.
       - name: Build native extension
         shell: pwsh
-        run: .\scripts\build_native.ps1
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-archives
+        run: |
+          New-Item -ItemType Directory -Path $env:VCPKG_DEFAULT_BINARY_CACHE -Force | Out-Null
+          .\scripts\build_native.ps1
 
       # Runs after the native build so the native cipher, the Python fallback, and
       # cross-path decryption are all covered.
       - name: Run tests
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
-      - name: Create build output directory
-        shell: pwsh
-        run: New-Item -ItemType Directory -Path build\installer -Force | Out-Null
 
-      # Bundles the Python app into dist\gfgLock\ (onedir - used by both installers).
-      # scripts/bundle.ps1 holds the PyInstaller arguments shared with the local build scripts.
-      - name: Build PyInstaller bundle
+      # Bundles the app into dist\gfgLock\ (onedir, used by both installers and the portable
+      # .7z) and runs the frozen exe with --self-test: the native extension and its pinned
+      # OpenSSL, every algorithm (native and Python fallback, both directions), and every QML
+      # file. Anything missing from the bundle fails the release here.
+      - name: Build and verify the app bundle
         shell: pwsh
+        env:
+          APP_NAME: ${{ steps.meta.outputs.APP_NAME }}
         run: |
           . .\scripts\bundle.ps1
-          $pyArgs = Get-PyInstallerArgs -Name "${{ steps.meta.outputs.APP_NAME }}" -Mode onedir -DistPath "dist"
-          pyinstaller @pyArgs
-          if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
+          $null = New-AppBundle -Name $env:APP_NAME -Mode onedir -DistPath "dist"
 
-      # Runs the frozen exe with --self-test: loads the native extension and its OpenSSL DLLs,
-      # encrypts and decrypts with every algorithm (native and Python fallback, both directions),
-      # and compiles all QML. Anything missing from the bundle fails the release here.
-      - name: Verify PyInstaller bundle
-        shell: pwsh
-        run: |
-          . .\scripts\bundle.ps1
-          $appName = "${{ steps.meta.outputs.APP_NAME }}"
-          if (-not (Test-Bundle "dist\$appName\$appName.exe")) { throw "Bundle self-test failed" }
-      - name: Copy shell DLL into bundle
-        shell: pwsh
-        run: Copy-Item build\shell\gfglock_shell.dll dist\${{ steps.meta.outputs.APP_NAME }}\ -Force
-
+      # Pinned, so every release compiles with the same Inno Setup. "upgrade" with
+      # --allow-downgrade installs exactly this version whether or not the image has another.
       - name: Install Inno Setup 6
         shell: pwsh
-        run: choco install innosetup --yes --no-progress
+        run: |
+          choco upgrade innosetup --version=6.7.1 --allow-downgrade --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup install failed (exit $LASTEXITCODE)" }
 
-      # /D flags override the #ifndef defaults in the ISS files
-      - name: Build system installer
+      - name: Build installers
         shell: pwsh
         run: |
-          $ver       = "${{ steps.meta.outputs.VER }}"
-          $appName   = "${{ steps.meta.outputs.APP_NAME }}"
-          $publisher = "${{ steps.meta.outputs.PUBLISHER }}"
-          $url       = "${{ steps.meta.outputs.URL }}"
-          $iscc      = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc `
-            "/DMyAppName=$appName" `
-            "/DMyAppVersion=$ver" `
-            "/DMyAppPublisher=$publisher" `
-            "/DMyAppURL=$url" `
-            installer\gfglock_system_installer.iss
-          if ($LASTEXITCODE -ne 0) { throw "System installer build failed (exit $LASTEXITCODE)" }
-
-      - name: Build user installer
-        shell: pwsh
-        run: |
-          $ver       = "${{ steps.meta.outputs.VER }}"
-          $appName   = "${{ steps.meta.outputs.APP_NAME }}"
-          $publisher = "${{ steps.meta.outputs.PUBLISHER }}"
-          $url       = "${{ steps.meta.outputs.URL }}"
-          $iscc      = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc `
-            "/DMyAppName=$appName" `
-            "/DMyAppVersion=$ver" `
-            "/DMyAppPublisher=$publisher" `
-            "/DMyAppURL=$url" `
-            installer\gfglock_user_installer.iss
-          if ($LASTEXITCODE -ne 0) { throw "User installer build failed (exit $LASTEXITCODE)" }
+          . .\scripts\common.ps1
+          $meta = Get-AppMeta
+          foreach ($kind in "System", "User") { $null = Invoke-Iscc -Kind $kind -Meta $meta }
 
       # Single-file portable exe, verified the same way as the onedir bundle
-      - name: Build portable exe
+      - name: Build and verify the portable exe
         shell: pwsh
+        env:
+          APP_NAME: ${{ steps.meta.outputs.APP_NAME }}
+          VER: ${{ steps.meta.outputs.VER }}
         run: |
           . .\scripts\bundle.ps1
-          $portable = "${{ steps.meta.outputs.APP_NAME }}_${{ steps.meta.outputs.VER }}_portable"
-          $pyArgs = Get-PyInstallerArgs -Name $portable -Mode onefile -DistPath "build"
-          pyinstaller @pyArgs
-          if ($LASTEXITCODE -ne 0) { throw "PyInstaller (portable) failed (exit $LASTEXITCODE)" }
-          if (-not (Test-Bundle "build\$portable.exe")) { throw "Portable self-test failed" }
-      # Pack all three EXEs into .7z archives for users who prefer compressed downloads.
-      # The portable .7z also bundles the onedir app for direct-run without temp extraction.
-      - name: Create 7z archives
+          $null = New-AppBundle -Name "${env:APP_NAME}_${env:VER}_portable" -Mode onefile -DistPath "build"
+
+      # The portable .7z is the onedir bundle (no extraction to a temp folder at each start) with
+      # the marker that keeps its settings and logs beside it, and the licence texts.
+      - name: Create the portable archive
         shell: pwsh
+        env:
+          APP_NAME: ${{ steps.meta.outputs.APP_NAME }}
+          VER: ${{ steps.meta.outputs.VER }}
         run: |
-          $ver     = "${{ steps.meta.outputs.VER }}"
-          $appName = "${{ steps.meta.outputs.APP_NAME }}"
-          $7z      = "C:\Program Files\7-Zip\7z.exe"
+          . .\scripts\bundle.ps1
+          New-PortableArchive -BundleDir "dist\$env:APP_NAME" -ArchivePath "build\${env:APP_NAME}_${env:VER}_portable.7z"
 
-          & $7z a -t7z -mx=9 `
-            "build\installer\${appName}_${ver}_system_installer.7z" `
-            "build\installer\${appName}_${ver}_system_installer.exe"
-          if ($LASTEXITCODE -ne 0) { throw "7z: system installer archive failed" }
-
-          & $7z a -t7z -mx=9 `
-            "build\installer\${appName}_${ver}_user_installer.7z" `
-            "build\installer\${appName}_${ver}_user_installer.exe"
-          if ($LASTEXITCODE -ne 0) { throw "7z: user installer archive failed" }
-
-          # Portable .7z is the full onedir bundle - faster launch, no temp extraction
-          & $7z a -t7z -mx=9 `
-            "build\${appName}_${ver}_portable.7z" `
-            "dist\${appName}\*"
-          if ($LASTEXITCODE -ne 0) { throw "7z: portable bundle archive failed" }
-
-      # Creates + publishes the GitHub Release, uploads all six assets.
+      # Creates and publishes the GitHub Release with its four assets.
       # Must use RELEASE_PAT (not GITHUB_TOKEN) - events fired by GITHUB_TOKEN
       # do not cascade into other workflows, so winget-release.yml would never trigger.
       - name: Create GitHub Release
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          TAG: ${{ github.ref_name }}
+          APP_NAME: ${{ steps.meta.outputs.APP_NAME }}
+          VER: ${{ steps.meta.outputs.VER }}
         run: |
-          $ver     = "${{ steps.meta.outputs.VER }}"
-          $appName = "${{ steps.meta.outputs.APP_NAME }}"
-          $tag     = "${{ github.ref_name }}"
-          gh release create $tag `
-            --title "$appName v$ver" `
-            --notes-file "release_notes/release_notes_v${ver}.md" `
-            "build\installer\${appName}_${ver}_system_installer.exe" `
-            "build\installer\${appName}_${ver}_system_installer.7z" `
-            "build\installer\${appName}_${ver}_user_installer.exe" `
-            "build\installer\${appName}_${ver}_user_installer.7z" `
-            "build\${appName}_${ver}_portable.exe" `
-            "build\${appName}_${ver}_portable.7z"
+          $base = "${env:APP_NAME}_${env:VER}"
+          gh release create $env:TAG `
+            --title "$env:APP_NAME v$env:VER" `
+            --notes-file "release_notes/release_notes_v$env:VER.md" `
+            "build\installer\${base}_system_installer.exe" `
+            "build\installer\${base}_user_installer.exe" `
+            "build\${base}_portable.exe" `
+            "build\${base}_portable.7z"
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit $LASTEXITCODE)" }

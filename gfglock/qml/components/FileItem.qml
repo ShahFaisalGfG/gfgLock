@@ -1,9 +1,12 @@
+// qmllint disable unqualified
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 // One row of a queue: type badge, name, size or result, and a status badge. Status is always
-// spelled out in text and with an icon, never by color alone.
+// spelled out in text and with an icon, never by color alone. Once a file has a result, its
+// message (where it was saved, why it failed, or a note on a finished file) replaces the size
+// and folder line.
 Rectangle {
     id: fileItem
 
@@ -27,10 +30,13 @@ Rectangle {
     property bool listBusy: false
 
     readonly property bool _busy: fileItem.status === "working"
-    readonly property bool _encrypted: /^(GFGLOCK|GFGLCK|GFGCHA)$/.test(fileItem.ext)
+    readonly property bool _encrypted: appController.encryptedExtensions.indexOf("." + fileItem.ext.toLowerCase()) >= 0
     readonly property string _statusText: {
         switch (fileItem.status) {
-        case "working": return fileItem.progress > 0 ? Math.round(fileItem.progress * 100) + "%" : "Working"
+        case "working":
+            // Once every byte is read, the output is still being flushed to disk.
+            if (fileItem.progress >= 0.999) return "Finishing..."
+            return fileItem.progress > 0 ? Math.floor(fileItem.progress * 100) + "%" : "Working"
         case "done":    return "Done"
         case "skipped": return "Skipped"
         case "failed":  return "Failed"
@@ -80,32 +86,31 @@ Rectangle {
         anchors.rightMargin: Theme.spaceSm
         spacing: Theme.spaceMd
 
+        // The file type at caption size; encrypted files show the lock instead, since their
+        // long extension wouldn't fit.
         Rectangle {
-            Layout.preferredWidth: 36
-            Layout.preferredHeight: 36
+            Layout.preferredWidth: 40
+            Layout.preferredHeight: 40
             radius: Theme.radius
             color: Theme.surfaceAlt
             border.width: 1
             border.color: Theme.border
 
-            // Encrypted files show just the lock; their long extension wouldn't fit the badge.
             Icon {
                 anchors.centerIn: parent
-                anchors.verticalCenterOffset: fileItem._encrypted ? 0 : -4
-                name: fileItem._encrypted ? "lock" : "page"
-                size: fileItem._encrypted ? 16 : 14
+                visible: fileItem._encrypted
+                name: "lock"
+                size: Theme.iconLg
                 color: Theme.accent
             }
             Text {
+                anchors.centerIn: parent
                 visible: !fileItem._encrypted
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 2
                 width: parent.width - 4
                 horizontalAlignment: Text.AlignHCenter
                 text: fileItem.ext
                 font.family: Theme.fontFamily
-                font.pixelSize: 9
+                font.pixelSize: Theme.fontCaption
                 font.weight: Font.DemiBold
                 color: Theme.textMuted
                 elide: Text.ElideRight
@@ -131,7 +136,9 @@ Rectangle {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontCaption
                 color: fileItem.status === "failed" ? Theme.danger : Theme.textMuted
-                elide: Text.ElideMiddle
+                // A message is read from its start (the tooltip has all of it); a folder path
+                // keeps both ends.
+                elide: fileItem.message ? Text.ElideRight : Text.ElideMiddle
             }
         }
 
@@ -145,7 +152,7 @@ Rectangle {
                     : fileItem.status === "skipped" ? "skip"
                     : fileItem._busy ? "sync" : ""
                 visible: name.length > 0
-                size: 13
+                size: Theme.iconSm
                 color: fileItem._statusColor
             }
             Text {

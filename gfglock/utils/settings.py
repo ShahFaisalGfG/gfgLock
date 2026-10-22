@@ -4,9 +4,10 @@ import copy
 import json
 import os
 import threading
+from collections.abc import Callable
 from typing import Any, Dict
 
-from gfglock.config.defaults import ReadSizeDefaults
+from gfglock.config.defaults import AlgorithmDefaults, LoggingDefaults, ReadSizeDefaults, ThemeDefaults
 from gfglock.config.defaults import get_default_settings as _get_defaults
 from gfglock.utils.console import safe_print
 from gfglock.utils.paths import data_dir
@@ -27,17 +28,19 @@ def get_default_settings() -> Dict[str, Any]:
 
 
 # Parsed settings keyed by the file's (path, mtime, size). write_log() asks for settings on every
-# log line, which during a batch of thousands of files meant thousands of JSON reads.
+# log line, which during a batch of thousands of files meant thousands of JSON reads. A file that
+# can't be parsed is cached as the defaults too, so it is read (and reported) once until it changes.
 _cache_lock = threading.Lock()
 _cache: tuple[tuple[str, int, int], Dict[str, Any]] | None = None
+_read_error = False
 
 
 def load_settings() -> Dict[str, Any]:
-    """Load settings from settings.json, merging with defaults for any missing keys.
+    """Load settings from settings.json, merging with defaults for any missing or invalid keys.
 
     Returns a fresh copy each time; the parsed file is reused until it changes on disk.
     """
-    global _cache
+    global _cache, _read_error
     path = get_settings_file()
     try:
         stat = os.stat(path)
@@ -47,25 +50,38 @@ def load_settings() -> Dict[str, Any]:
     with _cache_lock:
         if _cache is not None and _cache[0] == key:
             return copy.deepcopy(_cache[1])
+    damaged = False
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            defaults = get_default_settings()
-            settings = merge_settings(defaults, drop_unknown_keys(migrate_settings(json.load(f)), defaults))
-    except FileNotFoundError:
+        # utf-8-sig also accepts a file an editor saved with a byte order mark.
+        with open(path, "r", encoding="utf-8-sig") as f:
+            raw = json.load(f)
+        defaults = get_default_settings()
+        settings = merge_settings(defaults, drop_invalid(migrate_settings(raw), defaults))
+    except OSError as error:  # missing or locked for a moment: read it again next time
+        safe_print(f"settings.json could not be opened ({error}); using the defaults")
         return get_default_settings()
-    except (OSError, ValueError, TypeError) as error:  # unreadable or not valid JSON
+    except (ValueError, TypeError) as error:  # not valid JSON, or not a JSON object
         safe_print(f"settings.json could not be read ({error}); using the defaults")
-        return get_default_settings()
+        settings, damaged = get_default_settings(), True
     with _cache_lock:
         _cache = (key, settings)
+        _read_error = _read_error or damaged
     return copy.deepcopy(settings)
+
+
+def take_read_error() -> bool:
+    """True once after settings.json was found damaged (so the defaults are in use), then False."""
+    global _read_error
+    with _cache_lock:
+        damaged, _read_error = _read_error, False
+    return damaged
 
 
 def save_settings(settings: Dict[str, Any]) -> bool:
     """Persist settings to settings.json atomically. Returns True on success.
 
-    Writes a temp file next to it and swaps it in, so a crash mid-write can't leave a
-    truncated settings.json behind.
+    Writes a temp file next to it, forces it to disk, and swaps it in, so neither a crash nor a
+    power cut mid-write can leave a truncated settings.json behind.
     """
     global _cache
     path = get_settings_file()
@@ -73,17 +89,27 @@ def save_settings(settings: Dict[str, Any]) -> bool:
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp_path, path)
-        # File times can be coarser than two quick saves, so don't rely on mtime alone here.
-        with _cache_lock:
-            _cache = None
-        return True
-    except Exception:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+    except (OSError, TypeError, ValueError) as error:  # TypeError/ValueError: not JSON-serializable
+        safe_print(f"settings.json could not be saved ({error})")
+        _discard(tmp_path)
         return False
+    # File times can be coarser than two quick saves, so don't rely on mtime alone here.
+    with _cache_lock:
+        _cache = None
+    return True
+
+
+def _discard(path: str) -> None:
+    """Delete a temp file that will not be used, ignoring one that was never created."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        safe_print(f"{path} could not be removed ({error})")
 
 
 # Versions before 3.1.0 stored the read size as "chunk_size", defaulting to these values.
@@ -115,13 +141,25 @@ def migrate_settings(settings: Any) -> Any:
     return settings
 
 
-def drop_unknown_keys(settings: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
-    """Return `settings` without the keys the defaults no longer define, or with the wrong type.
+_READ_SIZES = frozenset(size for _, size in ReadSizeDefaults.OPTIONS)
+# The values each setting may hold, by key name; a key not listed here accepts any value of its type.
+_ALLOWED: Dict[str, Callable[[Any], bool]] = {
+    "theme": lambda value: value in ThemeDefaults.SUPPORTED_THEMES,
+    "log_level": lambda value: value in LoggingDefaults.SUPPORTED_LOG_LEVELS,
+    "encryption_mode": lambda value: value in AlgorithmDefaults.SUPPORTED_ALGORITHMS,
+    "read_size": lambda value: value in _READ_SIZES,
+    "cpu_threads": lambda value: 1 <= value <= (os.cpu_count() or 1),
+}
+
+
+def drop_invalid(settings: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+    """Return `settings` without the keys the defaults no longer define or whose values can't be used.
 
     Files written by older versions keep options that were since removed (such as the old
-    activity log's text wrap); dropping them keeps stale values out of the UI. A value whose type
-    differs from its default (a hand-edited "cpu_threads": "abc", say) is dropped as well, so the
-    default applies instead of the value breaking the app later.
+    activity log's text wrap); dropping them keeps stale values out of the UI. A value of the wrong
+    type (a hand-edited "cpu_threads": "abc", say) or outside its choices (a theme of "purple",
+    "aes256_cfb", which new files no longer use, or more threads than this PC has) is dropped as
+    well, so the default applies instead of the value breaking the app later.
     """
     if not isinstance(settings, dict):
         raise TypeError("settings must be a JSON object")
@@ -131,10 +169,15 @@ def drop_unknown_keys(settings: Dict[str, Any], defaults: Dict[str, Any]) -> Dic
             continue
         if isinstance(defaults[key], dict):
             if isinstance(value, dict):
-                result[key] = drop_unknown_keys(value, defaults[key])
-        elif _same_type(value, defaults[key]):
+                result[key] = drop_invalid(value, defaults[key])
+        elif _same_type(value, defaults[key]) and _ALLOWED.get(key, _any_value)(value):
             result[key] = value
     return result
+
+
+def _any_value(_value: Any) -> bool:
+    """The check for settings that accept any value of their type."""
+    return True
 
 
 def _same_type(value: Any, default: Any) -> bool:

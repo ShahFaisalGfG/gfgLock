@@ -1,25 +1,34 @@
 name: Tests
 
-# Runs the test suite and the QML linter on every push and pull request. The native engine is
-# built only by the release workflow (its OpenSSL build takes a while), so here the native-path
-# tests skip and the Python fallback carries the cipher tests.
+# Runs on every push and pull request. The "test" job covers the Python fallback engine (the
+# native-path tests skip without the module), pyright, and the QML linter; the "native" job builds
+# gfglock_native and runs the suite again with it, which covers the native engine and files
+# encrypted by one engine and decrypted by the other.
 on:
   push:
     branches: ['**']
   pull_request:
 
+permissions:
+  contents: read
+
+env:
+  PYRIGHT_VERSION: '1.1.414'
+
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: windows-2025
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          python-version: '3.11'
+          persist-credentials: false
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
           cache: pip
 
       - name: Install Python dependencies
@@ -32,9 +41,64 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
 
+      - name: Type-check with pyright
+        shell: pwsh
+        run: |
+          npm install --global "pyright@$env:PYRIGHT_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw "pyright install failed (exit $LASTEXITCODE)" }
+          pyright --pythonpath (Get-Command python).Source gfglock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Lint QML
         shell: pwsh
         run: |
           $files = (Get-ChildItem gfglock/qml -Recurse -Filter *.qml).FullName
           pyside6-qmllint -I gfglock/qml -I gfglock/qml/components @files
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  native:
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: pip install -r requirements.txt
+
+      # The same cache as the release workflow: vcpkg's binary cache holds the built OpenSSL
+      # package and .vcpkg the pinned vcpkg tool, so OpenSSL is compiled once per key.
+      - name: Cache vcpkg
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            .vcpkg
+            !.vcpkg/buildtrees
+            !.vcpkg/packages
+            !.vcpkg/downloads
+            ${{ runner.temp }}\vcpkg-archives
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('native/vcpkg.json', 'native/vcpkg-commit.txt', 'native/CMakeLists.txt', 'native/CMakePresets.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-
+
+      - name: Build native extension
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-archives
+        run: |
+          New-Item -ItemType Directory -Path $env:VCPKG_DEFAULT_BINARY_CACHE -Force | Out-Null
+          .\scripts\build_native.ps1
+
+      - name: Run tests with the native engine
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q

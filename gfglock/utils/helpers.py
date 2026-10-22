@@ -1,12 +1,9 @@
-# helpers.py - file/size/format utilities and cryptographic helpers
+# helpers.py - file, size, and name utilities
 
 import os
 import sys
 from datetime import datetime
 from secrets import token_hex
-
-from gfglock.core import native_bridge as _bridge
-from gfglock.utils.console import safe_print
 
 
 def resource_path(relative_path: str) -> str:
@@ -34,25 +31,6 @@ def _format_size(value: float, unit: str, strip_zeros: bool) -> str:
     if strip_zeros:
         number = number.rstrip("0").rstrip(".")
     return f"{number} {unit}"
-
-
-def predict_encrypted_size(file_path: str, mode: str = "GCM") -> int:
-    """Return the exact expected size of the encrypted output file."""
-    original_size = os.path.getsize(file_path)
-    filename_len = len(os.path.basename(file_path).encode("utf-8"))
-    mode_upper = mode.upper()
-    if mode_upper in ("GCM", "CHACHA"):
-        total_overhead = 49  # salt(16) + nonce(12) + tag(16) + chunk_field(4) + null(1)
-    elif mode_upper == "CFB":
-        total_overhead = 37  # salt(16) + iv(16) + chunk_field(4) + null(1)
-    else:
-        raise ValueError(f"Unknown mode: {mode}. Use 'GCM', 'CFB', or 'CHACHA'.")
-    return original_size + filename_len + total_overhead
-
-
-def derive_key(password: str, salt: bytes, iterations: int = 200000) -> bytes:
-    """Derive a 256-bit key via PBKDF2-HMAC-SHA256 (native C++ when available)."""
-    return _bridge.derive_key(password, salt, iterations)
 
 
 def generate_encrypted_name(src_path: str, encrypt_name: bool, ext: str) -> str:

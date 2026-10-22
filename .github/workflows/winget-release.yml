@@ -6,33 +6,66 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to submit (e.g. v3.0.0)'
+        description: 'Release tag to submit (e.g. v3.2.0)'
         required: true
+
+# The submission uses WINGET_PAT; the workflow token only reads the tagged sources.
+permissions:
+  contents: read
+
+env:
+  # wingetcreate is pinned to one release and checked against its published SHA256
+  WINGETCREATE_VERSION: 'v1.12.13.0'
+  WINGETCREATE_SHA256: '24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea'
 
 jobs:
   publish:
-    runs-on: windows-latest
+    runs-on: windows-2025
     if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event.release.tag_name }}
     steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
       - name: Download wingetcreate
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          $url = "https://github.com/microsoft/winget-create/releases/download/$env:WINGETCREATE_VERSION/wingetcreate.exe"
+          Invoke-WebRequest -Uri $url -OutFile wingetcreate.exe
+          $hash = (Get-FileHash wingetcreate.exe -Algorithm SHA256).Hash
+          if ($hash -ne $env:WINGETCREATE_SHA256) {
+            Write-Error "wingetcreate.exe has SHA256 $hash, expected $env:WINGETCREATE_SHA256"
+            exit 1
+          }
 
+      # The package id and the installer names come from pyproject.toml, as in the release build
       - name: Submit update to winget-pkgs
         shell: pwsh
         env:
           WINGET_PAT: ${{ secrets.WINGET_PAT }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          $tag     = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ github.event.inputs.tag }}" } else { "${{ github.event.release.tag_name }}" }
-          $version = $tag -replace '^v', ''
-          $base    = "https://github.com/${{ github.repository }}/releases/download/$tag"
+          . .\scripts\common.ps1
+          $meta = Get-AppMeta
+          $version = $env:TAG -replace '^v', ''
+          if ($version -ne $meta.Version) {
+            Write-Error "Tag $env:TAG does not match pyproject.toml version ($($meta.Version)) at that tag."
+            exit 1
+          }
+          $base = "https://github.com/$env:REPOSITORY/releases/download/$env:TAG/$($meta.AppName)_$version"
 
-          $userUrl = "$base/gfgLock_${version}_user_installer.exe"
-          $sysUrl  = "$base/gfgLock_${version}_system_installer.exe"
-
-          .\wingetcreate.exe update gfgRoyal.gfgLock `
+          .\wingetcreate.exe update $meta.WingetId `
             --version $version `
-            --urls    "${userUrl}|x64|inno|user" "${sysUrl}|x64|inno|machine" `
+            --urls    "${base}_user_installer.exe|x64|user" "${base}_system_installer.exe|x64|machine" `
             --token   $env:WINGET_PAT `
             --submit
+          if ($LASTEXITCODE -ne 0) { throw "wingetcreate failed (exit $LASTEXITCODE)" }

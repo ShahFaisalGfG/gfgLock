@@ -9,10 +9,10 @@ import "components"
 AppWindow {
     id: prefsWin
 
-    width: 760
-    height: 560
-    minimumWidth: 600
-    minimumHeight: 460
+    width: 820
+    height: 600
+    minimumWidth: 640
+    minimumHeight: 480
     title: "Preferences"
     showMaximize: false
     modality: Qt.ApplicationModal
@@ -21,14 +21,15 @@ AppWindow {
     property bool _closeAfterSave: false
     property string _statusMessage: ""
     property string _speedTestMessage: ""
-    // The read sizes shown when the test started, so the lists it changes can be pointed out.
-    property var _sizesBeforeTest: ({})
+    // The values shown when the speed test started, by setting key, so the lists it changes
+    // can be pointed out.
+    property var _beforeTest: ({})
     property bool _statusIsError: false
     property var _values: ({})
+    readonly property bool _runBusy: encryptController.busy || decryptController.busy
 
     readonly property var sections: [
         { name: "Appearance", icon: "settings" },
-        { name: "Encryption", icon: "lock" },
         { name: "Speed", icon: "speed" },
         { name: "Notifications & logs", icon: "notify" }
     ]
@@ -43,25 +44,37 @@ AppWindow {
     }
 
     Component.onCompleted: prefsWin.loadValues()
+    // Closing ends the preview: the saved theme shows, which is the new one after Save and the
+    // old one after Cancel, Esc, or the title bar.
     onClosing: {
         prefsController.cancelReadSizeTest()
+        appController.endPreview()
         prefsWin.destroy()
     }
 
     Connections {
         target: prefsController
-        // The speed test saves the size it picks for each direction. Dropping any unsaved choice of
-        // read size lets both lists show the saved result; other unsaved edits stay pending.
-        function onReadSizeTestFinished(encryptSize, decryptSize, message) {
-            if (encryptSize >= 0) {
-                prefsWin.forget(["encryption.read_size", "decryption.read_size"])
-                if (encryptSize !== prefsWin._sizesBeforeTest.encrypt) encReadCombo.flash()
-                if (decryptSize !== prefsWin._sizesBeforeTest.decrypt) decReadCombo.flash()
+        // The speed test saves what it measured: a read size and a number of files at a time for
+        // each direction, -1 for any it didn't measure. Dropping unsaved choices of those lets
+        // their lists show the saved result; other unsaved edits stay pending.
+        function onReadSizeTestFinished(encryptSize, decryptSize, encryptThreads, decryptThreads, message) {
+            var results = [
+                { key: "encryption.read_size", value: encryptSize, combo: encReadCombo },
+                { key: "decryption.read_size", value: decryptSize, combo: decReadCombo },
+                { key: "encryption.cpu_threads", value: encryptThreads, combo: encThreadsCombo },
+                { key: "decryption.cpu_threads", value: decryptThreads, combo: decThreadsCombo }
+            ].filter(result => result.value >= 0)
+            prefsWin.forget(results.map(result => result.key))
+            for (var i = 0; i < results.length; i++) {
+                if (results[i].value !== prefsWin._beforeTest[results[i].key]) results[i].combo.flash()
             }
             prefsWin._speedTestMessage = message
         }
         function onSaveFinished(success, message) {
-            if (success && prefsWin._closeAfterSave) { prefsWin.close(); return }
+            if (success && prefsWin._closeAfterSave) {
+                prefsWin.close()
+                return
+            }
             prefsWin._closeAfterSave = false
             prefsWin._statusMessage = message
             prefsWin._statusIsError = !success
@@ -97,8 +110,6 @@ AppWindow {
     function loadValues() {
         prefsWin._values = {}
         themeCombo.value = prefsController.theme
-        algorithmCombo.value = prefsController.encMode
-        hideNamesSwitch.checked = prefsController.encFilenames
         reserveSwitch.checked = prefsController.clampThreads
         notifySwitch.checked = prefsController.operationNotifications
         logsSwitch.checked = prefsController.enableLogs
@@ -106,20 +117,34 @@ AppWindow {
         prefsWin.dirty = false
     }
 
+    // The theme is already showing (it previews as it is chosen), so saving only stores it.
     function save() {
         if (!prefsWin.dirty) { prefsWin.close(); return }
-        if ("theme" in prefsWin._values) appController.applyTheme(prefsWin._values["theme"])
         prefsWin._closeAfterSave = true
         prefsController.saveSettings(prefsWin._values)
+    }
+
+    function startSpeedTest() {
+        prefsWin._speedTestMessage = ""
+        prefsWin._beforeTest = {
+            "encryption.read_size": encReadCombo.currentValue,
+            "decryption.read_size": decReadCombo.currentValue,
+            "encryption.cpu_threads": encThreadsCombo.currentValue,
+            "decryption.cpu_threads": decThreadsCombo.currentValue
+        }
+        prefsController.startReadSizeTest(prefsController.encMode)
     }
 
     AppDialog {
         id: resetDialog
         title: "Reset all preferences?"
+        width: Math.min(420, prefsWin.width - 48)
         standardButtons: Dialog.Reset | Dialog.Cancel
+        defaultButton: Dialog.Cancel
+        Component.onCompleted: resetDialog.standardButton(Dialog.Reset).text = "Reset and save"
         Text {
-            width: 340
-            text: "Every preference returns to its default. Your files are not affected."
+            width: parent.width
+            text: "Every preference returns to its default and is saved at once; unsaved changes here are dropped. Your files are not affected."
             wrapMode: Text.WordWrap
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
@@ -127,7 +152,7 @@ AppWindow {
         }
         onReset: {
             prefsController.resetDefaults()
-            appController.applyTheme("system")
+            appController.endPreview()  // the saved theme is now the default one
             prefsWin.loadValues()
             resetDialog.close()
         }
@@ -144,56 +169,74 @@ AppWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // Section navigation (Up/Down to move, Tab to the content)
+            // Section navigation (Up/Down to move, Tab to the content). The Control holds the
+            // focus, so the ring shows only when it came from the keyboard.
             Rectangle {
                 Layout.fillHeight: true
                 Layout.preferredWidth: 210
                 color: Theme.surfaceAlt
 
-                ListView {
-                    id: nav
+                Control {
+                    id: navBox
                     anchors.fill: parent
-                    anchors.margins: Theme.spaceSm
-                    model: prefsWin.sections
-                    spacing: 2
+                    padding: Theme.spaceSm
                     focus: true
-                    activeFocusOnTab: true
-                    keyNavigationEnabled: true
+                    focusPolicy: Qt.TabFocus
                     Accessible.role: Accessible.List
                     Accessible.name: "Preference sections"
+                    // The arrow keys are keyboard use too, so they bring up the ring.
+                    Keys.onUpPressed: {
+                        nav.decrementCurrentIndex()
+                        navBox.focusReason = Qt.TabFocusReason
+                    }
+                    Keys.onDownPressed: {
+                        nav.incrementCurrentIndex()
+                        navBox.focusReason = Qt.TabFocusReason
+                    }
 
-                    delegate: ItemDelegate {
-                        id: navItem
-                        required property var modelData
-                        required property int index
-                        width: ListView.view.width
-                        height: 38
-                        highlighted: ListView.isCurrentItem
-                        onClicked: nav.currentIndex = navItem.index
-                        Accessible.name: navItem.modelData.name
+                    contentItem: ListView {
+                        id: nav
+                        model: prefsWin.sections
+                        spacing: 2
+                        interactive: false
 
-                        contentItem: RowLayout {
-                            spacing: Theme.spaceSm
-                            Icon {
-                                name: navItem.modelData.icon
-                                size: 14
-                                color: navItem.highlighted ? Theme.accent : Theme.textMuted
+                        delegate: ItemDelegate {
+                            id: navItem
+                            required property var modelData
+                            required property int index
+                            width: ListView.view.width
+                            height: 38
+                            focusPolicy: Qt.NoFocus
+                            highlighted: ListView.isCurrentItem
+                            onClicked: {
+                                nav.currentIndex = navItem.index
+                                navBox.forceActiveFocus(Qt.MouseFocusReason)
                             }
-                            Text {
-                                Layout.fillWidth: true
-                                text: navItem.modelData.name
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontBody
-                                font.weight: navItem.highlighted ? Font.DemiBold : Font.Normal
-                                color: Theme.text
-                                elide: Text.ElideRight
+                            Accessible.name: navItem.modelData.name
+
+                            contentItem: RowLayout {
+                                spacing: Theme.spaceSm
+                                Icon {
+                                    name: navItem.modelData.icon
+                                    size: Theme.iconMd
+                                    color: navItem.highlighted ? Theme.accent : Theme.textMuted
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: navItem.modelData.name
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontBody
+                                    font.weight: navItem.highlighted ? Font.DemiBold : Font.Normal
+                                    color: Theme.text
+                                    elide: Text.ElideRight
+                                }
                             }
-                        }
-                        background: Rectangle {
-                            radius: Theme.radius
-                            color: navItem.highlighted ? Theme.accentSoft : (navItem.hovered ? Theme.surfaceHover : "transparent")
-                            border.width: nav.activeFocus && navItem.highlighted ? 2 : 0
-                            border.color: Theme.focusRing
+                            background: Rectangle {
+                                radius: Theme.radius
+                                color: navItem.highlighted ? Theme.accentSoft : (navItem.hovered ? Theme.surfaceHover : "transparent")
+                                border.width: navBox.visualFocus && navItem.highlighted ? 2 : 0
+                                border.color: Theme.focusRing
+                            }
                         }
                     }
                 }
@@ -211,49 +254,18 @@ AppWindow {
                     Card {
                         Layout.fillWidth: true
                         title: "Theme"
-                        description: "System follows your Windows light or dark mode setting."
                         FormRow {
                             label: "App theme"
                             StyledComboBox {
                                 id: themeCombo
                                 Layout.fillWidth: true
                                 accessibleName: "App theme"
-                                toolTipText: "Light, dark, or follow the Windows setting."
+                                toolTipText: "Previews as you choose; Cancel or Esc puts the saved theme back."
                                 model: prefsController.themeOptions
-                                onActivated: prefsWin.set("theme", currentValue)
-                            }
-                        }
-                    }
-                }
-
-                // Encryption
-                PrefsPage {
-                    Card {
-                        Layout.fillWidth: true
-                        title: "Encryption defaults"
-                        description: "Used each time the app opens; you can still change them on the Encrypt tab."
-                        FormRow {
-                            label: "Encryption method"
-                            hint: algorithmCombo.currentIndex >= 0
-                                ? prefsController.algorithmOptions[algorithmCombo.currentIndex].hint : ""
-                            StyledComboBox {
-                                id: algorithmCombo
-                                Layout.fillWidth: true
-                                accessibleName: "Encryption method"
-                                toolTipText: "Decrypting picks the right method automatically."
-                                model: prefsController.algorithmOptions
-                                onActivated: prefsWin.set("advanced.encryption_mode", currentValue)
-                            }
-                        }
-                        FormRow {
-                            label: "Hide file names"
-                            hint: "Give encrypted files random names; the original name comes back when you decrypt."
-                            Item { Layout.fillWidth: true }
-                            AppSwitch {
-                                id: hideNamesSwitch
-                                accessibleName: "Hide file names by default"
-                                toolTipText: "Turn on to hide file names by default"
-                                onToggled: prefsWin.set("encryption.encrypt_filenames", checked)
+                                onActivated: {
+                                    prefsWin.set("theme", currentValue)
+                                    appController.previewTheme(currentValue)
+                                }
                             }
                         }
                     }
@@ -267,6 +279,7 @@ AppWindow {
                         description: "Each file is read, encrypted, and saved at the same time, so a big file goes about as fast as the disk allows. Working on several files at once speeds up batches of smaller files."
                         FormRow {
                             label: "When encrypting"
+                            enabled: !prefsController.readSizeTestRunning
                             StyledComboBox {
                                 id: encThreadsCombo
                                 Layout.fillWidth: true
@@ -280,6 +293,7 @@ AppWindow {
                         }
                         FormRow {
                             label: "When decrypting"
+                            enabled: !prefsController.readSizeTestRunning
                             StyledComboBox {
                                 id: decThreadsCombo
                                 Layout.fillWidth: true
@@ -305,7 +319,7 @@ AppWindow {
                     Card {
                         Layout.fillWidth: true
                         title: "Read size"
-                        description: "How much of a file is read at once. The fastest size depends on the disk and processor; the default, 4 MB, suits most PCs. Each file being worked on holds about four times the size in memory."
+                        description: "How much of a file is read at once. The fastest size depends on the disk and processor; the default, 4 MB, suits most PCs. Each file being worked on holds about eight times the size in memory."
                         FormRow {
                             label: "When encrypting"
                             enabled: !prefsController.readSizeTestRunning
@@ -330,31 +344,24 @@ AppWindow {
                                 onActivated: prefsWin.set("decryption.read_size", currentValue)
                             }
                         }
-                        FormRow {
-                            label: "Best size for this PC"
-                            hint: prefsController.readSizeTestRunning
-                                ? "Testing each size... " + Math.round(prefsController.readSizeTestProgress * 100) + "%"
-                                : prefsWin._speedTestMessage
-                                  || "Encrypts and decrypts a 256 MB test file in the temp folder with every size, then selects and saves the fastest for each. Takes about a minute; the test file is deleted afterwards."
-                            Item { Layout.fillWidth: true }
-                            AppButton {
-                                text: prefsController.readSizeTestRunning ? "Stop" : "Optimize for this PC"
-                                iconName: prefsController.readSizeTestRunning ? "stop" : "speed"
-                                toolTipText: prefsController.readSizeTestRunning
-                                    ? "Stop the test; the read sizes stay as they are"
-                                    : "Test every read size on this PC, then select and save the fastest"
-                                onClicked: {
-                                    if (prefsController.readSizeTestRunning) {
-                                        prefsController.cancelReadSizeTest()
-                                    } else {
-                                        prefsWin._speedTestMessage = ""
-                                        prefsWin._sizesBeforeTest = { encrypt: encReadCombo.currentValue,
-                                                                      decrypt: decReadCombo.currentValue }
-                                        prefsController.startReadSizeTest(
-                                            prefsWin.value("advanced.encryption_mode", prefsController.encMode))
-                                    }
-                                }
-                            }
+                    }
+                    // The test sets both cards above, so it has a card of its own.
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Best settings for this PC"
+                        description: prefsController.readSizeTestRunning
+                            ? "Testing... " + Math.round(prefsController.readSizeTestProgress * 100) + "%"
+                            : prefsWin._runBusy
+                              ? "Available once encrypting or decrypting finishes, so the timings are right."
+                              : prefsWin._speedTestMessage
+                                || "Encrypts and decrypts test files in the temp folder with each read size and number of files at a time (about a minute), then selects and saves the fastest. The test files are deleted afterwards."
+                        AppButton {
+                            text: prefsController.readSizeTestRunning ? "Stop" : "Optimize for this PC"
+                            iconName: prefsController.readSizeTestRunning ? "stop" : "speed"
+                            enabled: prefsController.readSizeTestRunning || !prefsWin._runBusy
+                            toolTipText: prefsController.readSizeTestRunning ? "Stop the test; the settings stay as they are" : ""
+                            onClicked: prefsController.readSizeTestRunning ? prefsController.cancelReadSizeTest()
+                                                                           : prefsWin.startSpeedTest()
                         }
                         ProgressBar {
                             Layout.fillWidth: true
@@ -363,7 +370,7 @@ AppWindow {
                             to: 1
                             value: prefsController.readSizeTestProgress
                             Accessible.role: Accessible.ProgressBar
-                            Accessible.name: "Read size test progress"
+                            Accessible.name: "Speed test progress"
                         }
                     }
                 }
@@ -375,12 +382,11 @@ AppWindow {
                         title: "Notifications"
                         FormRow {
                             label: "Notify when finished"
-                            hint: "Show a Windows notification when encrypting or decrypting ends."
+                            hint: "Show a Windows notification when a run ends while you're in another window, or after a run of more than 10 seconds."
                             Item { Layout.fillWidth: true }
                             AppSwitch {
                                 id: notifySwitch
                                 accessibleName: "Notify when finished"
-                                toolTipText: "Useful for long jobs while you work in another window"
                                 onToggled: prefsWin.set("advanced.operation_notifications", checked)
                             }
                         }
@@ -395,7 +401,7 @@ AppWindow {
                             AppSwitch {
                                 id: logsSwitch
                                 accessibleName: "Keep logs"
-                                toolTipText: "Write log files on this PC"
+                                toolTipText: "Logs stay on this PC; nothing is sent anywhere"
                                 onToggled: prefsWin.set("advanced.enable_logs", checked)
                             }
                         }
@@ -441,8 +447,8 @@ AppWindow {
 
             AppButton {
                 kind: "ghost"
-                text: "Reset to defaults"
-                toolTipText: "Restore every preference to its original value"
+                text: "Reset to defaults..."
+                toolTipText: "Asks first, then saves the defaults at once"
                 onClicked: resetDialog.open()
             }
             Text {

@@ -1,16 +1,24 @@
-# app_ctrl.py - app-wide controller: theme, app information, and updates
+# app_ctrl.py - app-wide controller: theme, app information, screens, start-up notices, and updates
 
+import ctypes
 import os
-import webbrowser
 import winreg
 
-from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QPoint, QRect, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 
 from gfglock.config.defaults import AppInfo
+from gfglock.core.file_ops import ENCRYPTED_EXTS
 from gfglock.utils.logging import write_log
-from gfglock.utils.settings import load_settings, save_settings
+from gfglock.utils.settings import load_settings, take_read_error
 
 _UPDATES_URL = "https://github.com/ShahFaisalGfG/gfgLock/releases"
+_SETTINGS_RESET = "Your preferences file couldn't be read, so the defaults are in use."
+_VK_CAPITAL = 0x14
+
+_GetKeyState = ctypes.WinDLL("user32").GetKeyState
+_GetKeyState.argtypes = [ctypes.c_int]
+_GetKeyState.restype = ctypes.c_short
 
 
 def _detect_system_theme() -> str:
@@ -35,11 +43,15 @@ class AppController(QObject):
     filesOpened = Signal(str, list)
     # A second launch asked this window to come to the front.
     activateRequested = Signal()
+    # A start-up message for the user (launch paths not found, an unreadable file list, the
+    # preferences file reset); the window shows it as a toast.
+    notice = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         raw = load_settings().get("theme", "system")
         self._theme = _detect_system_theme() if raw == "system" else raw
+        self._preview = ""  # the theme Preferences is showing before Save, "" when none
 
     # ── Properties ──────────────────────────────────────────────────────────
 
@@ -68,22 +80,33 @@ class AppController(QObject):
         """Application author."""
         return AppInfo.APP_AUTHOR
 
+    @Property(list, constant=True)
+    def encryptedExtensions(self) -> list:
+        """The extensions of gfgLock's encrypted files, sorted (".gfgcha", ".gfglck", ".gfglock")."""
+        return sorted(ENCRYPTED_EXTS)
+
     # ── Slots ────────────────────────────────────────────────────────────────
 
     @Slot()
     def detectTheme(self) -> None:
-        """Re-detect the theme (called when a window regains focus) and emit themeChanged if it changed."""
-        raw = load_settings().get("theme", "system")
+        """Re-detect the theme (called when a window regains focus) and emit themeChanged if it changed.
+
+        A theme being previewed in Preferences wins over the saved one until the preview ends.
+        """
+        raw = self._preview or load_settings().get("theme", "system")
         self._set_theme(_detect_system_theme() if raw == "system" else raw)
 
     @Slot(str)
-    def applyTheme(self, theme: str) -> None:
-        """Apply a theme choice ("system", "light", or "dark") and persist it."""
-        self._set_theme(_detect_system_theme() if theme == "system" else theme)
-        settings = load_settings()
-        settings["theme"] = theme
-        if not save_settings(settings):
-            write_log("Could not save the theme choice", "critical")
+    def previewTheme(self, theme: str) -> None:
+        """Show a theme choice ("system", "light", or "dark") without saving it (Preferences, before Save)."""
+        self._preview = theme
+        self.detectTheme()
+
+    @Slot()
+    def endPreview(self) -> None:
+        """Go back to the saved theme: Preferences closed, after saving its choice or not."""
+        self._preview = ""
+        self.detectTheme()
 
     @Slot(str, list)
     def openFiles(self, mode: str, paths: list) -> None:
@@ -96,11 +119,30 @@ class AppController(QObject):
         local = QUrl(url).toLocalFile()
         return os.path.isdir(local or url)
 
+    @Slot(int, int, result=QRect)
+    def availableGeometry(self, x: int, y: int) -> QRect:
+        """The area windows may use (without the taskbar) on the screen at (x, y), else the primary screen."""
+        screen = QGuiApplication.screenAt(QPoint(x, y)) or QGuiApplication.primaryScreen()
+        return screen.availableGeometry()
+
+    @Slot(result=bool)
+    def capsLockOn(self) -> bool:
+        """True while Caps Lock is on, for the hint under a password field."""
+        return bool(_GetKeyState(_VK_CAPITAL) & 1)
+
     @Slot()
     def openUpdates(self) -> None:
-        """Open the GitHub releases page in the default browser."""
-        if not webbrowser.open(_UPDATES_URL):
+        """Open the GitHub releases page in the default browser (through the shell, never a browser by name)."""
+        if not QDesktopServices.openUrl(QUrl(_UPDATES_URL)):
             write_log(f"Could not open {_UPDATES_URL}", "critical")
+
+    def show_notices(self, *notices: str) -> None:
+        """Show the start-up notices as one toast, adding one when the preferences file couldn't be read."""
+        if take_read_error():
+            notices = (*notices, _SETTINGS_RESET)
+        text = " ".join(notice for notice in notices if notice)
+        if text:
+            self.notice.emit(text)
 
     def _set_theme(self, theme: str) -> None:
         if theme != self._theme:

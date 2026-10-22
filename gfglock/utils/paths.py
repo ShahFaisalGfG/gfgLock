@@ -1,15 +1,18 @@
 # paths.py - where gfgLock keeps its settings and logs (stdlib only, no gfglock imports)
 #
-# The installed app uses %APPDATA%\gfgLock. The portable exe keeps them in a "gfgLock data" folder
-# next to itself, so it leaves nothing behind on the PC it runs on; when that folder can't be
-# written (a read-only drive, say), it falls back to %APPDATA%\gfgLock. Running from source has no
-# data folder: the callers keep their files inside the project.
+# The installed app uses %APPDATA%\gfgLock. A portable build keeps them in a "gfgLock data" folder
+# next to its exe, so it leaves nothing behind on the PC it runs on; when that folder can't be
+# written (a read-only drive, say), it falls back to %APPDATA%\gfgLock. A build is portable when it
+# is the one-file exe, or when the file gfgLock-portable.txt sits next to the exe (the portable .7z
+# ships the one-folder build with that marker). Running from source has no data folder: the callers
+# keep their files inside the project.
 
 import os
 import shutil
 import sys
 
 PORTABLE_FOLDER = "gfgLock data"
+PORTABLE_MARKER = "gfgLock-portable.txt"
 _UNSET = object()
 _data_dir: object = _UNSET
 
@@ -20,15 +23,38 @@ def appdata_dir() -> str:
 
 
 def is_portable() -> bool:
-    """True for the one-file portable exe, which unpacks itself into a temp folder at each start.
+    """True for a portable build: the one-file exe, or an exe with gfgLock-portable.txt next to it.
 
-    The installed (one-folder) build keeps its files in _internal next to the exe instead.
+    The one-file exe unpacks itself into a temp folder at each start; the installed (one-folder)
+    build keeps its files in _internal next to the exe instead.
     """
     bundle = getattr(sys, "_MEIPASS", None)
     if not getattr(sys, "frozen", False) or bundle is None:
         return False
-    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    return os.path.normcase(os.path.dirname(os.path.abspath(bundle))) != os.path.normcase(exe_dir)
+    if os.path.isfile(os.path.join(_exe_dir(), PORTABLE_MARKER)):
+        return True
+    return _is_one_file(bundle)
+
+
+def app_folder() -> str | None:
+    """The folder holding the app's own files, None when running from source.
+
+    That is the install folder of a one-folder build, and the temp folder the one-file exe unpacks
+    into: the one-file exe's own folder is the user's (Downloads, say), not the app's.
+    """
+    bundle = getattr(sys, "_MEIPASS", None)
+    if not getattr(sys, "frozen", False) or bundle is None:
+        return None
+    return os.path.abspath(bundle) if _is_one_file(bundle) else _exe_dir()
+
+
+def _exe_dir() -> str:
+    return os.path.dirname(os.path.abspath(sys.executable))
+
+
+def _is_one_file(bundle: str) -> bool:
+    """The one-file exe unpacks to a temp folder; a one-folder build keeps _internal beside the exe."""
+    return os.path.normcase(os.path.dirname(os.path.abspath(bundle))) != os.path.normcase(_exe_dir())
 
 
 def data_dir() -> str | None:

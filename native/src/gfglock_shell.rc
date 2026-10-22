@@ -1,0 +1,33 @@
+// gfglock_shell.rc - version resource of the Explorer shell extension. CMake writes
+// gfglock_version.h from the version in pyproject.toml, so the DLL always matches the app.
+
+#include <winver.h>
+#include "gfglock_version.h"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    GFGLOCK_VERSION_BINARY
+ PRODUCTVERSION GFGLOCK_VERSION_BINARY
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+ FILEFLAGS      0x0L
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_DLL
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "gfgRoyal"
+            VALUE "FileDescription",  "gfgLock Explorer context menu"
+            VALUE "FileVersion",      GFGLOCK_VERSION_TEXT
+            VALUE "InternalName",     "gfglock_shell"
+            VALUE "OriginalFilename", "gfglock_shell.dll"
+            VALUE "ProductName",      "gfgLock"
+            VALUE "ProductVersion",   GFGLOCK_VERSION_TEXT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

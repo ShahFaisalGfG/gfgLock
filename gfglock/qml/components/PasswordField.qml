@@ -1,9 +1,11 @@
+// qmllint disable unqualified
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// A labeled password box with a show/hide button, an optional error line, and an optional
-// strength meter. The meter is spelled out in words as well as with its bar.
+// A labeled password box with a show/hide button, a Caps Lock warning while it has focus, an
+// optional error line, and an optional strength meter. The meter is spelled out in words as
+// well as with its bar.
 ColumnLayout {
     id: field
 
@@ -14,12 +16,23 @@ ColumnLayout {
     property alias text: input.text
 
     signal accepted()
+    // Enter or leaving the box (see TextInput.editingFinished).
+    signal editingFinished()
 
-    // 0 empty, 1 too short, 2 weak, 3 fair, 4 good, 5 strong
+    // 0 empty, 1 very weak (under 8 characters), 2 weak, 3 fair, 4 good, 5 strong
     readonly property int strength: field._strength(input.text)
-    readonly property var _strengthNames: ["", "Too short", "Weak", "Fair", "Good", "Strong"]
+    readonly property var _strengthNames: ["", "Very weak", "Weak", "Fair", "Good", "Strong"]
+    property bool _capsLock: false
 
     function forceInputFocus() { input.forceActiveFocus() }
+
+    // Focuses the box with its text selected, so typing replaces it.
+    function selectInput() {
+        input.selectAll()
+        input.forceActiveFocus()
+    }
+
+    function _checkCapsLock() { field._capsLock = input.activeFocus && appController.capsLockOn() }
 
     function _strength(pass) {
         if (pass.length === 0) return 0
@@ -38,18 +51,18 @@ ColumnLayout {
         text: field.label
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontBody
-        color: Theme.text
+        color: field.enabled ? Theme.text : Theme.textMuted
         Accessible.ignored: true
     }
 
     TextField {
         id: input
         Layout.fillWidth: true
-        implicitHeight: Theme.controlHeight + 4
+        implicitHeight: Theme.controlHeight
         echoMode: revealButton.checked ? TextInput.Normal : TextInput.Password
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontBody
-        color: Theme.text
+        color: input.enabled ? Theme.text : Theme.textMuted
         selectByMouse: true
         leftPadding: 10
         rightPadding: revealButton.width + 6
@@ -61,13 +74,20 @@ ColumnLayout {
         Accessible.description: field.errorText || field.helpText
         Accessible.passwordEdit: !revealButton.checked
         onAccepted: field.accepted()
+        onEditingFinished: field.editingFinished()
+        onActiveFocusChanged: field._checkCapsLock()
+        // Released as well as pressed: the Caps Lock key changes the state as it goes down.
+        Keys.onPressed: field._checkCapsLock()
+        Keys.onReleased: field._checkCapsLock()
 
+        // A disabled box (during a run) takes the muted fill, so it doesn't look editable.
         background: Rectangle {
             radius: Theme.radius
-            color: Theme.surface
+            color: input.enabled ? Theme.surface : Theme.surfaceAlt
             border.width: input.activeFocus || field.errorText.length > 0 ? 2 : 1
             border.color: field.errorText.length > 0 ? Theme.danger
-                : input.activeFocus ? Theme.focusRing : Theme.border
+                : input.activeFocus ? Theme.focusRing
+                : input.enabled ? Theme.inputBorder : Theme.border
         }
 
         AppButton {
@@ -81,6 +101,27 @@ ColumnLayout {
             iconName: checked ? "hide" : "view"
             toolTipText: checked ? "Hide the password" : "Show the password"
             focusPolicy: Qt.TabFocus
+        }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        visible: field._capsLock
+        spacing: Theme.spaceXs
+
+        Icon {
+            name: "warning"
+            size: Theme.iconSm
+            color: Theme.warning
+        }
+        Text {
+            Layout.fillWidth: true
+            text: "Caps Lock is on"
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontCaption
+            color: Theme.warning
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
         }
     }
 

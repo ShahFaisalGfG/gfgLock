@@ -11,6 +11,9 @@ Rectangle {
     required property var controller
     // Why Start is unavailable, or "" when the tab is ready.
     property string blocker: ""
+    // A folder scan as the page shows it: only once it has run for a moment, so checking a few
+    // added files doesn't flash "Scanning...".
+    property bool scanning: false
     property string startText: "Start"
     property string startIcon: "play"
 
@@ -21,11 +24,17 @@ Rectangle {
     // The last run's result stays until the list changes (the controller then clears it); it
     // matters more than the reason Start is off.
     readonly property bool _showSummary: bar.controller.summary.length > 0
-    readonly property bool _showBlocker: !bar.busy && !bar.controller.scanning && !bar._showSummary
+    readonly property bool _showBlocker: !bar.busy && !bar.scanning && !bar._showSummary
         && bar.blocker.length > 0 && bar.queue.count > 0
     readonly property bool _warn: bar._showBlocker || (bar._showSummary && bar.queue.failedCount > 0)
     property real _elapsed: 0
     property real _startedAt: 0
+
+    // Elapsed time as m:ss, for example 12:34.
+    function _clock(seconds) {
+        var whole = Math.floor(seconds)
+        return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0")
+    }
 
     implicitHeight: 72
     color: Theme.surface
@@ -67,16 +76,15 @@ Rectangle {
                     Layout.fillWidth: true
                     text: {
                         if (bar.busy) {
-                            if (bar.controller.cancelling)
-                                return "Stopping after the files in progress..."
+                            if (bar.controller.cancelling) return "Stopping..."
                             // Several files run at once, so count finished files rather than "file N of M".
                             return bar.controller.filesDone + " of " + bar.controller.filesTotal + " files done"
                                 + (bar.controller.currentFile ? "  ·  " + bar.controller.currentFile : "")
                         }
-                        if (bar.controller.scanning)
-                            return "Scanning folder... " + bar.controller.scanFound.toLocaleString(Qt.locale(), "f", 0)
-                                + " files found so far."
+                        // The list's scan banner shows the count, and its empty state says what to add.
+                        if (bar.scanning) return "Scanning..."
                         if (bar._showSummary) return bar.controller.summary
+                        if (bar.queue.count === 0) return ""
                         if (bar.blocker) return bar.blocker
                         return "Ready. Press " + bar.startText + " to start."
                     }
@@ -93,7 +101,7 @@ Rectangle {
                 }
                 Text {
                     visible: bar.busy
-                    text: Math.round(bar.controller.progress * 100) + "%  ·  " + Math.floor(bar._elapsed) + " s"
+                    text: Math.round(bar.controller.progress * 100) + "%  ·  " + bar._clock(bar._elapsed)
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontCaption
                     color: Theme.textMuted
@@ -125,7 +133,7 @@ Rectangle {
             text: bar.controller.cancelling ? "Stopping..." : "Cancel"
             iconName: "stop"
             enabled: !bar.controller.cancelling
-            toolTipText: "Stop after the files in progress; files not started yet stay unchanged (Esc)"
+            toolTipText: "Stop now; files in progress are left unchanged and finished files stay done (Esc)"
             onClicked: bar.controller.cancel()
         }
 

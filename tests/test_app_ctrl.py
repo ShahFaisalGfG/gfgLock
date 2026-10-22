@@ -4,12 +4,14 @@ import contextlib
 from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QRect, QUrl
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from gfglock.config.defaults import AppInfo
 from gfglock.controllers import app_ctrl
 from gfglock.controllers.app_ctrl import AppController, _detect_system_theme
+from gfglock.core.file_ops import ENCRYPTED_EXTS
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -22,11 +24,11 @@ def qt_app():
 
 @pytest.fixture
 def stub_settings(monkeypatch):
-    """Replace load_settings/save_settings with in-memory stand-ins."""
+    """Replace load_settings with an in-memory stand-in, and record any save (there should be none)."""
     store = {"theme": "system"}
     saved: list[dict] = []
     monkeypatch.setattr(app_ctrl, "load_settings", lambda: dict(store))
-    monkeypatch.setattr(app_ctrl, "save_settings", lambda s: saved.append(dict(s)) or True)
+    monkeypatch.setattr("gfglock.utils.settings.save_settings", lambda s: saved.append(dict(s)) or True)
     return store, saved
 
 
@@ -94,32 +96,34 @@ class TestDetectTheme:
         spy.assert_not_called()
 
 
-class TestApplyTheme:
-    """applyTheme() persists the raw choice and resolves 'system' for display."""
+class TestThemePreview:
+    """Preferences previews a theme without saving it; closing goes back to the saved one."""
 
-    def test_explicit_theme_applied_and_saved(self, controller, stub_settings):
+    def test_preview_shows_without_saving(self, controller, stub_settings):
         _, saved = stub_settings
         spy = MagicMock()
         controller.themeChanged.connect(spy)
-        controller.applyTheme("dark")
+        controller.previewTheme("dark")
         assert controller.currentTheme == "dark"
         spy.assert_called_once_with("dark")
-        assert saved[-1]["theme"] == "dark"
+        controller.previewTheme("system")
+        assert controller.currentTheme == "light"
+        assert saved == []
 
-    def test_system_theme_resolved_but_raw_saved(self, controller, monkeypatch, stub_settings):
-        _, saved = stub_settings
-        monkeypatch.setattr(app_ctrl, "_detect_system_theme", lambda: "dark")
-        controller.applyTheme("system")
+    def test_preview_survives_the_window_being_activated_again(self, controller):
+        controller.previewTheme("dark")
+        controller.detectTheme()  # Preferences regained focus after an Alt+Tab
         assert controller.currentTheme == "dark"
-        assert saved[-1]["theme"] == "system"
 
-    def test_failed_save_is_logged(self, controller, monkeypatch):
-        monkeypatch.setattr(app_ctrl, "save_settings", lambda s: False)
-        log = MagicMock()
-        monkeypatch.setattr(app_ctrl, "write_log", log)
-        controller.applyTheme("dark")
+    def test_ending_the_preview_shows_the_saved_theme(self, controller, stub_settings):
+        store, _ = stub_settings
+        controller.previewTheme("dark")
+        controller.endPreview()  # closed without saving
+        assert controller.currentTheme == "light"
+        store["theme"] = "dark"  # saved, then closed
+        controller.previewTheme("dark")
+        controller.endPreview()
         assert controller.currentTheme == "dark"
-        log.assert_called_once()
 
 
 class TestOpenedFiles:
@@ -138,15 +142,76 @@ class TestOpenedFiles:
         assert controller.isFolder(str(tmp_path / "file.txt")) is False
 
 
+class TestScreens:
+    """availableGeometry() lets a window centre, maximize and clamp within its own monitor."""
+
+    def test_point_on_a_screen_gives_that_screens_work_area(self, controller):
+        screen = QGuiApplication.primaryScreen()
+        centre = screen.geometry().center()
+        assert controller.availableGeometry(centre.x(), centre.y()) == screen.availableGeometry()
+
+    def test_point_off_every_screen_falls_back_to_the_primary(self, controller):
+        assert controller.availableGeometry(-100_000, -100_000) == QGuiApplication.primaryScreen().availableGeometry()
+
+    def test_screen_at_the_point_is_used(self, controller, monkeypatch):
+        other = MagicMock()
+        other.availableGeometry.return_value = QRect(1920, 0, 1280, 984)
+        monkeypatch.setattr(app_ctrl.QGuiApplication, "screenAt", lambda point: other)
+        assert controller.availableGeometry(2000, 10) == QRect(1920, 0, 1280, 984)
+
+
+class TestKeyboard:
+    @pytest.mark.parametrize("state, expected", [(0x0001, True), (0x0000, False), (-0x7FFF, True), (-0x8000, False)])
+    def test_caps_lock_reads_the_toggle_bit(self, controller, monkeypatch, state, expected):
+        keys: list[int] = []
+        monkeypatch.setattr(app_ctrl, "_GetKeyState", lambda key: keys.append(key) or state)
+        assert controller.capsLockOn() is expected
+        assert keys == [0x14]  # VK_CAPITAL
+
+
+class TestEncryptedExtensions:
+    def test_lists_every_encrypted_extension_once_sorted(self, controller):
+        assert controller.encryptedExtensions == sorted(ENCRYPTED_EXTS)
+        assert controller.encryptedExtensions == [".gfgcha", ".gfglck", ".gfglock"]
+
+
+class TestNotices:
+    """Start-up notices reach QML through one notice signal."""
+
+    def _notices(self, controller) -> list:
+        notices: list = []
+        controller.notice.connect(notices.append)
+        return notices
+
+    def test_launch_notice_is_shown(self, controller, monkeypatch):
+        monkeypatch.setattr(app_ctrl, "take_read_error", lambda: False)
+        notices = self._notices(controller)
+        controller.show_notices("2 items couldn't be found.")
+        assert notices == ["2 items couldn't be found."]
+
+    def test_damaged_preferences_file_is_reported_with_the_launch_notice(self, controller, monkeypatch):
+        monkeypatch.setattr(app_ctrl, "take_read_error", lambda: True)
+        notices = self._notices(controller)
+        controller.show_notices("1 item couldn't be found.")
+        assert notices == ["1 item couldn't be found. Your preferences file couldn't be read, so the defaults are in use."]
+
+    def test_nothing_to_say_emits_nothing(self, controller, monkeypatch):
+        monkeypatch.setattr(app_ctrl, "take_read_error", lambda: False)
+        notices = self._notices(controller)
+        controller.show_notices("")
+        assert notices == []
+
+
 class TestUpdates:
-    def test_open_updates_opens_browser(self, controller, monkeypatch):
+    def test_open_updates_goes_through_the_shell(self, controller, monkeypatch):
         open_mock = MagicMock(return_value=True)
-        monkeypatch.setattr(app_ctrl.webbrowser, "open", open_mock)
+        monkeypatch.setattr(app_ctrl.QDesktopServices, "openUrl", open_mock)
         controller.openUpdates()
-        open_mock.assert_called_once_with(app_ctrl._UPDATES_URL)
+        open_mock.assert_called_once()
+        assert open_mock.call_args.args[0].toString() == app_ctrl._UPDATES_URL
 
     def test_browser_failure_is_logged(self, controller, monkeypatch):
-        monkeypatch.setattr(app_ctrl.webbrowser, "open", lambda url: False)
+        monkeypatch.setattr(app_ctrl.QDesktopServices, "openUrl", lambda url: False)
         log = MagicMock()
         monkeypatch.setattr(app_ctrl, "write_log", log)
         controller.openUpdates()

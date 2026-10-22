@@ -1,0 +1,62 @@
+{
+  "password": "T3st!P@ss#2025_gfg",
+  "created_by": "gfgLock 3.1.0",
+  "files": {
+    "report.docx.gfglock": {
+      "algorithm": "gcm",
+      "stored_name": "report.docx",
+      "size": 7560,
+      "sha256": "ac1178f071c5c8f9a1f649723286384d37ce1cb61bfc3f43f1cdba842d1272de",
+      "engine": "native"
+    },
+    "20261021120000_a1b2c3d4.gfglock": {
+      "algorithm": "gcm",
+      "stored_name": "résumé ü.pdf",
+      "size": 7560,
+      "sha256": "ac1178f071c5c8f9a1f649723286384d37ce1cb61bfc3f43f1cdba842d1272de",
+      "engine": "native"
+    },
+    "empty.txt.gfglock": {
+      "algorithm": "gcm",
+      "stored_name": "empty.txt",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "engine": "native"
+    },
+    "notes.txt.gfglck": {
+      "algorithm": "cfb",
+      "stored_name": "notes.txt",
+      "size": 7560,
+      "sha256": "ac1178f071c5c8f9a1f649723286384d37ce1cb61bfc3f43f1cdba842d1272de",
+      "engine": "native"
+    },
+    "20261021120500_e5f6a7b8.gfglck": {
+      "algorithm": "cfb",
+      "stored_name": "secret plan.txt",
+      "size": 7560,
+      "sha256": "ac1178f071c5c8f9a1f649723286384d37ce1cb61bfc3f43f1cdba842d1272de",
+      "engine": "native"
+    },
+    "photo.jpg.gfgcha": {
+      "algorithm": "chacha",
+      "stored_name": "photo.jpg",
+      "size": 7560,
+      "sha256": "ac1178f071c5c8f9a1f649723286384d37ce1cb61bfc3f43f1cdba842d1272de",
+      "engine": "native"
+    },
+    "fallback.bin.gfgcha": {
+      "algorithm": "chacha",
+      "stored_name": "fallback.bin",
+      "size": 7560,
+      "sha256": "ac1178f071c5c8f9a1f649723286384d37ce1cb61bfc3f43f1cdba842d1272de",
+      "engine": "python"
+    },
+    "fallback.bin.gfglock": {
+      "algorithm": "gcm",
+      "stored_name": "fallback.bin",
+      "size": 7560,
+      "sha256": "ac1178f071c5c8f9a1f649723286384d37ce1cb61bfc3f43f1cdba842d1272de",
+      "engine": "python"
+    }
+  }
+}

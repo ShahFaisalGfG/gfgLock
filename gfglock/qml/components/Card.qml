@@ -42,7 +42,7 @@ Rectangle {
                 Icon {
                     anchors.centerIn: parent
                     name: card.iconName
-                    size: 16
+                    size: Theme.iconLg
                     color: Theme.accent
                 }
             }

@@ -39,7 +39,7 @@ Rectangle {
 
         Icon {
             name: "info"
-            size: 14
+            size: Theme.iconMd
             color: Theme.inverseText
         }
         Text {

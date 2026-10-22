@@ -1,6 +1,8 @@
 # file_model.py - QAbstractListModel backing the QML file list
 
 import os
+import time
+from collections import Counter
 from typing import Any, Optional
 
 from PySide6.QtCore import (
@@ -9,6 +11,7 @@ from PySide6.QtCore import (
     QPersistentModelIndex,
     Property,
     Qt,
+    QTimer,
     Signal,
     Slot,
 )
@@ -24,9 +27,20 @@ STATUS_FAILED = "failed"
 _FINISHED = (STATUS_DONE, STATUS_SKIPPED)
 _RUNNABLE = (STATUS_WAITING, STATUS_FAILED)
 
+# While a run changes rows, statusCountsChanged is sent at most this often (see flush_counts).
+COUNTS_INTERVAL_MS = 100
+
+
+def _key(path: str) -> str:
+    """The form a path is looked up by: normalized and case-folded the Windows way."""
+    return os.path.normcase(os.path.normpath(path))
+
 
 class FileListModel(QAbstractListModel):
-    """List model that exposes file metadata and each file's result to QML via named roles."""
+    """List model that exposes file metadata and each file's result to QML via named roles.
+
+    The status counts are kept up to date on every change, so reading them never walks the rows.
+    """
 
     NameRole = Qt.ItemDataRole.UserRole + 1
     PathRole = Qt.ItemDataRole.UserRole + 2
@@ -53,9 +67,15 @@ class FileListModel(QAbstractListModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._files: list[dict] = []
-        self._rows: dict[str, int] = {}     # normcase(path) -> row
+        self._rows: dict[str, int] = {}     # _key(path) -> row
         self._selected: set[int] = set()
         self._total_bytes: int = 0
+        self._statuses: Counter[str] = Counter()
+        self._counts_timer = QTimer(self)
+        self._counts_timer.setSingleShot(True)
+        self._counts_timer.setInterval(COUNTS_INTERVAL_MS)
+        self._counts_timer.timeout.connect(self._send_counts)
+        self._counts_sent = 0.0
 
     # ── QAbstractListModel interface ─────────────────────────────────────────
 
@@ -84,29 +104,11 @@ class FileListModel(QAbstractListModel):
 
     # ── Adding and removing ──────────────────────────────────────────────────
 
-    @Slot(str)
-    def addFile(self, path: str) -> None:
-        """Add a file by path if not already in the list."""
-        self.addFiles([path])
+    def add_scanned(self, entries: list) -> int:
+        """Insert (path, size) rows from a scan in one model update, skipping paths already listed.
 
-    @Slot(list)
-    def addFiles(self, paths: list) -> int:
-        """Add existing files in one model update, skipping duplicates; return how many were added."""
-        additions = []
-        pending: set[str] = set()
-        for raw_path in paths:
-            path = os.path.normpath(str(raw_path))
-            key = os.path.normcase(path)
-            if key in self._rows or key in pending or not os.path.isfile(path):
-                continue
-            additions.append(self._make_item(path))
-            pending.add(key)
-        self._insert_items(additions)
-        return len(additions)
-
-    @Slot(list)
-    def addScanned(self, entries: list) -> None:
-        """Insert (path, size) pairs from a folder scan without touching the filesystem."""
+        Returns how many rows were added.
+        """
         additions = []
         pending: set[str] = set()
         for entry in entries:
@@ -122,6 +124,7 @@ class FileListModel(QAbstractListModel):
             additions.append(self._make_item(path, size))
             pending.add(key)
         self._insert_items(additions)
+        return len(additions)
 
     def _insert_items(self, items: list[dict]) -> None:
         """Append prepared file rows and emit one contiguous model update."""
@@ -133,6 +136,7 @@ class FileListModel(QAbstractListModel):
         for row, item in enumerate(items, start=first):
             self._rows[os.path.normcase(item["path"])] = row
         self._total_bytes += sum(item["bytes"] for item in items)
+        self._statuses[STATUS_WAITING] += len(items)
         self.endInsertRows()
         self._emit_counts()
 
@@ -144,6 +148,7 @@ class FileListModel(QAbstractListModel):
         self.beginRemoveRows(QModelIndex(), row, row)
         removed = self._files.pop(row)
         self._total_bytes -= removed["bytes"]
+        self._statuses[removed["status"]] -= 1
         self._selected = {i if i < row else i - 1 for i in self._selected if i != row}
         self._reindex()
         self.endRemoveRows()
@@ -178,6 +183,7 @@ class FileListModel(QAbstractListModel):
         self.beginResetModel()
         self._files = kept
         self._total_bytes = sum(item["bytes"] for item in kept)
+        self._statuses = Counter(item["status"] for item in kept)
         self._selected.clear()
         self._reindex()
         self.endResetModel()
@@ -195,7 +201,7 @@ class FileListModel(QAbstractListModel):
         output: Optional[str] = None,
     ) -> None:
         """Record what is happening to one file; None leaves a field as it is."""
-        row = self._rows.get(os.path.normcase(os.path.normpath(path)))
+        row = self._rows.get(_key(path))
         if row is None:
             return
         item = self._files[row]
@@ -209,16 +215,18 @@ class FileListModel(QAbstractListModel):
         roles = [role for role, key in self._ROLE_KEYS.items() if key in changes and item[key] != changes[key]]
         if not roles:
             return
-        status_changed = item["status"] != status
+        previous = item["status"]
         item.update(changes)
         index = self.index(row)
         self.dataChanged.emit(index, index, roles)
-        if status_changed:
-            self.statusCountsChanged.emit()
+        if previous != status:
+            self._statuses[previous] -= 1
+            self._statuses[status] += 1
+            self._schedule_counts()
 
     def set_progress(self, path: str, progress: float) -> None:
         """Update one working file's progress (0-1)."""
-        row = self._rows.get(os.path.normcase(os.path.normpath(path)))
+        row = self._rows.get(_key(path))
         if row is not None and self._files[row]["progress"] != progress:
             self._files[row]["progress"] = progress
             index = self.index(row)
@@ -229,24 +237,38 @@ class FileListModel(QAbstractListModel):
         return [item["path"] for item in self._files if item["status"] in _RUNNABLE]
 
     def reset_for_run(self, paths: list[str]) -> None:
-        """Mark the given files as waiting, clearing an earlier failure reason."""
-        for path in paths:
-            self.set_status(path, STATUS_WAITING, progress=0.0, message="")
+        """Mark the given files as waiting and clear an earlier failure reason, in one model update."""
+        rows = [row for row in (self._rows.get(_key(path)) for path in paths) if row is not None]
+        if not rows:
+            return
+        for row in rows:
+            item = self._files[row]
+            self._statuses[item["status"]] -= 1
+            item.update(status=STATUS_WAITING, progress=0.0, message="")
+        self._statuses[STATUS_WAITING] += len(rows)
+        self.dataChanged.emit(self.index(min(rows)), self.index(max(rows)),
+                              [self.StatusRole, self.ProgressRole, self.MessageRole])
+        self._send_counts()
+
+    def flush_counts(self) -> None:
+        """Send a statusCountsChanged that is still waiting for its interval, now (a run ended)."""
+        if self._counts_timer.isActive():
+            self._send_counts()
 
     @Property(int, notify=statusCountsChanged)
     def runnableCount(self) -> int:
         """How many files the next run would process."""
-        return sum(item["status"] in _RUNNABLE for item in self._files)
+        return self._statuses[STATUS_WAITING] + self._statuses[STATUS_FAILED]
 
     @Property(int, notify=statusCountsChanged)
     def finishedCount(self) -> int:
         """How many files were encrypted, decrypted, or skipped."""
-        return sum(item["status"] in _FINISHED for item in self._files)
+        return self._statuses[STATUS_DONE] + self._statuses[STATUS_SKIPPED]
 
     @Property(int, notify=statusCountsChanged)
     def failedCount(self) -> int:
         """How many files failed in the last run."""
-        return sum(item["status"] == STATUS_FAILED for item in self._files)
+        return self._statuses[STATUS_FAILED]
 
     # ── Selection ────────────────────────────────────────────────────────────
 
@@ -263,11 +285,6 @@ class FileListModel(QAbstractListModel):
     def selectAll(self) -> None:
         """Select all items."""
         self._replace_selection(set(range(len(self._files))))
-
-    @Slot()
-    def clearSelection(self) -> None:
-        """Deselect all items."""
-        self._replace_selection(set())
 
     @Slot(int)
     def setSingle(self, row: int) -> None:
@@ -318,22 +335,12 @@ class FileListModel(QAbstractListModel):
     @Property(str, notify=totalSizeChanged)
     def totalSize(self) -> str:
         """Formatted combined size of all files, cached at add time."""
-        return format_bytes(float(self._total_bytes))
+        return format_bytes(float(self._total_bytes), strip_zeros=True)
 
     @Property(int, notify=selectionChanged)
     def selectedCount(self) -> int:
         """Number of currently selected items - bindable QML property."""
         return len(self._selected)
-
-    @Slot(result=list)
-    def getPaths(self) -> list:
-        """Return a list of all file paths in the model."""
-        return [f["path"] for f in self._files]
-
-    @Slot(result=int)
-    def fileCount(self) -> int:
-        """Return the total number of files."""
-        return len(self._files)
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -342,26 +349,38 @@ class FileListModel(QAbstractListModel):
         self._rows = {os.path.normcase(item["path"]): row for row, item in enumerate(self._files)}
 
     def _emit_counts(self) -> None:
+        """Announce a change in the rows themselves; the status counts go out at once with it."""
         self.countChanged.emit(len(self._files))
         self.totalSizeChanged.emit()
+        self._send_counts()
+
+    def _schedule_counts(self) -> None:
+        """Send statusCountsChanged now when the last one is an interval old, else at the interval.
+
+        Checking the time here, and not only in the timer, keeps the counts moving while queued
+        results keep the event loop too busy to run timers.
+        """
+        if time.monotonic() - self._counts_sent >= COUNTS_INTERVAL_MS / 1000:
+            self._send_counts()
+        elif not self._counts_timer.isActive():
+            self._counts_timer.start()
+
+    def _send_counts(self) -> None:
+        """Send statusCountsChanged now, dropping a scheduled one."""
+        self._counts_timer.stop()
+        self._counts_sent = time.monotonic()
         self.statusCountsChanged.emit()
 
     @staticmethod
-    def _make_item(path: str, size_bytes: int | None = None) -> dict:
-        """Build a file metadata dict for a path, using a known size when the caller has one."""
-        if size_bytes is None:
-            try:
-                size_bytes = os.path.getsize(path)
-            except OSError:
-                size_bytes = -1
-        size_str = format_bytes(float(size_bytes)) if size_bytes >= 0 else "?"
+    def _make_item(path: str, size_bytes: int) -> dict:
+        """Build a file row for a path whose size the scan measured."""
         name = os.path.basename(path)
         return {
             "name": name,
             "path": path,
             "folder": os.path.dirname(path),
-            "size": size_str,
-            "bytes": max(size_bytes, 0),
+            "size": format_bytes(float(size_bytes), strip_zeros=True),
+            "bytes": size_bytes,
             "ext": os.path.splitext(name)[1].lstrip(".").upper() or "FILE",
             "status": STATUS_WAITING,
             "progress": 0.0,
