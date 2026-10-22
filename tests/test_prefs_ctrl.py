@@ -274,6 +274,8 @@ class TestReadSize:
 
 class TestSpeedTest:
     DEFAULT_THREADS = EncryptionDefaults.DEFAULT_THREADS
+    # A measured count that is never this PC's default, so the message names it on its own.
+    PICKED_THREADS = 3 if DEFAULT_THREADS == 2 else 2
 
     def _finished(self, controller) -> list:
         calls: list = []
@@ -287,19 +289,20 @@ class TestSpeedTest:
         monkeypatch.setattr(prefs_ctrl.QThreadPool, "globalInstance", lambda: MagicMock(start=workers.append))
         return workers
 
-    def _result(self, threads: int = 2) -> SpeedResult:
+    def _result(self, threads: int = PICKED_THREADS) -> SpeedResult:
         return SpeedResult(Choice(32 * MB, threads, 410e6), Choice(0, self.DEFAULT_THREADS, 395e6))
 
     def test_result_is_saved_and_described(self, controller, disk):
+        picked = self.PICKED_THREADS
         calls = self._finished(controller)
         results = _results(controller)
         controller._on_read_size_finished(self._result(), "")
         ((encrypt, decrypt, encrypt_threads, decrypt_threads, message),) = calls
-        assert (encrypt, decrypt, encrypt_threads, decrypt_threads) == (32 * MB, 0, 2, self.DEFAULT_THREADS)
+        assert (encrypt, decrypt, encrypt_threads, decrypt_threads) == (32 * MB, 0, picked, self.DEFAULT_THREADS)
         assert (controller.encReadSize, controller.decReadSize) == (32 * MB, 0)
-        assert (controller.encThreads, controller.decThreads) == (2, self.DEFAULT_THREADS)
+        assert (controller.encThreads, controller.decThreads) == (picked, self.DEFAULT_THREADS)
         assert disk.data["encryption"]["read_size"] == 32 * MB and disk.data["decryption"]["cpu_threads"] == self.DEFAULT_THREADS
-        assert message.startswith("Best on this PC: 32 MB reads and 2 files at a time (410 MB/s) for encrypting")
+        assert message.startswith(f"Best on this PC: 32 MB reads and {picked} files at a time (410 MB/s) for encrypting")
         assert f"the default 4 MB reads and the default {self.DEFAULT_THREADS} files at a time (395 MB/s)" in message
         assert message.endswith("at least 5% faster. Saved.")
         assert results == []  # the speed test reports through its own signal

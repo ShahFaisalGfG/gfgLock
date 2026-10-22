@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-2025
+    # Visual Studio 2022 (17.x) builds the native module, matching the VC++ runtime PySide6 and
+    # Python ship (scripts/build_native.ps1); windows-2025 runners no longer carry it.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
