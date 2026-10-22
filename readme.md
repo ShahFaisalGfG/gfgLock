@@ -443,7 +443,7 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 
 Released under the [MIT License](LICENSE) - free to use, modify, and distribute.
 
-Built with ❤️ by **Shah Faisal** · [Portfolio](https://shahfaisalgfg.github.io/shahfaisal/) · [shahfaisalgfg@gmail.com](mailto:shahfaisalgfg@gmail.com)
+Built with ❤️ by **Shah Faisal** · [Portfolio](https://shahfaisalgfg.github.io/) · [shahfaisalgfg@gmail.com](mailto:shahfaisalgfg@gmail.com)
 
 ---
 

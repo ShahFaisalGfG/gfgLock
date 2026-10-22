@@ -16,7 +16,7 @@
   #define MyAppPublisher "gfgRoyal"
 #endif
 #ifndef MyAppURL
-  #define MyAppURL "https://shahfaisalgfg.github.io/shahfaisal/"
+  #define MyAppURL "https://shahfaisalgfg.github.io/"
 #endif
 #ifndef MyAppExeName
   #define MyAppExeName "gfgLock.exe"
