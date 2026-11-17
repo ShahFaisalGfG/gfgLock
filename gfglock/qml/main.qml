@@ -49,7 +49,7 @@ AppWindow {
             compact: true
             text: "Preferences"
             iconName: "settings"
-            toolTipText: "Appearance, speed, notifications, and logs (Ctrl+,)"
+            toolTipText: "Appearance, speed, notifications, logs, and updates (Ctrl+,)"
             focusPolicy: Qt.TabFocus
             onClicked: mainWin.openPreferences()
         },
@@ -128,6 +128,14 @@ AppWindow {
         function onNotice(message) { toast.show(message) }
     }
 
+    // The result of Check now; Preferences and the About dialog show it in place while open.
+    Connections {
+        target: updateController
+        function onNotice(message) {
+            if (!mainWin._prefsWindow && !aboutDialog.visible) toast.show(message)
+        }
+    }
+
     // A choice the Encrypt tab saves on its own can fail to save; Preferences shows its own
     // save results while it is open.
     Connections {
@@ -159,6 +167,14 @@ AppWindow {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
+
+        UpdateBanner {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spaceLg
+            Layout.rightMargin: Theme.spaceLg
+            Layout.topMargin: Theme.spaceSm
+            controller: updateController
+        }
 
         TabBar {
             id: tabs
@@ -366,11 +382,33 @@ AppWindow {
                 color: Theme.textMuted
                 wrapMode: Text.WordWrap
             }
-            AppButton {
-                text: "Check for updates"
-                iconName: "openExternal"
-                toolTipText: "Open the gfgLock releases page in your browser"
-                onClicked: appController.openUpdates()
+            RowLayout {
+                spacing: Theme.spaceSm
+                AppButton {
+                    text: "Check for updates"
+                    iconName: "sync"
+                    enabled: updateController.status !== "checking" && updateController.status !== "downloading"
+                    toolTipText: "Ask GitHub whether a newer version of gfgLock is out"
+                    onClicked: updateController.checkNow()
+                }
+                AppButton {
+                    kind: "ghost"
+                    text: "Releases"
+                    iconName: "openExternal"
+                    toolTipText: "Open the gfgLock releases page in your browser"
+                    onClicked: updateController.openDownloadPage()
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: text !== ""
+                text: updateController.message
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                color: updateController.status === "error" ? Theme.danger : Theme.textMuted
+                wrapMode: Text.WordWrap
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
             }
         }
     }

@@ -17,6 +17,7 @@ from gfglock.config.defaults import (
     PerformanceDefaults,
     ReadSizeDefaults,
     ThemeDefaults,
+    UpdateDefaults,
     thread_limit,
 )
 from gfglock.core.file_ops import EXTENSIONS
@@ -129,6 +130,16 @@ class PrefsController(QObject):
     def operationNotifications(self) -> bool:
         """True when desktop notifications fire on operation completion (default on)."""
         return self._get("advanced", "operation_notifications", default=NotificationDefaults.OPERATION_NOTIFICATIONS)
+
+    @Property(bool, notify=settingsChanged)
+    def autoCheckUpdates(self) -> bool:
+        """True when gfgLock checks for a new version once a day (default on)."""
+        return self._get("advanced", "auto_check_updates", default=UpdateDefaults.AUTO_CHECK)
+
+    @Property(bool, notify=settingsChanged)
+    def autoInstallUpdates(self) -> bool:
+        """True when a new version downloads in the background and installs on close (default on)."""
+        return self._get("advanced", "auto_install_updates", default=UpdateDefaults.AUTO_INSTALL)
 
     @Property(int, constant=True)
     def cpuCount(self) -> int:

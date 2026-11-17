@@ -9,7 +9,8 @@ from PySide6.QtWidgets import QApplication
 
 from gfglock.controllers import encrypt_ctrl
 from gfglock.models import file_model
-from gfglock.services import folder_scanner, notifier, worker
+from gfglock.controllers import update_ctrl
+from gfglock.services import folder_scanner, notifier, update_feed, update_install, worker
 from gfglock.utils import logging as log_mod
 
 
@@ -119,7 +120,8 @@ class TestNoBareProgramNames:
     """Nothing in the run pipeline starts a program by a bare name, which Windows would look up in
     the app's own folder and the current folder first (A3)."""
 
-    @pytest.mark.parametrize("module", [notifier, encrypt_ctrl, worker, folder_scanner, file_model, log_mod])
+    @pytest.mark.parametrize("module", [notifier, encrypt_ctrl, worker, folder_scanner, file_model, log_mod,
+                                        update_ctrl, update_feed, update_install])
     def test_no_subprocess(self, module):
         source = inspect.getsource(module)
         assert "subprocess" not in source and "Popen" not in source and "os.system" not in source

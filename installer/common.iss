@@ -10,7 +10,7 @@
   #define MyAppName "gfgLock"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "3.2.0"
+  #define MyAppVersion "3.2.1"
 #endif
 #ifndef MyAppPublisher
   #define MyAppPublisher "gfgRoyal"
@@ -168,6 +168,8 @@ Filename: "{#RepoUrl}"; Description: "View README on GitHub"; Flags: shellexec n
 [UninstallDelete]
 ; Shell DLLs moved aside by an upgrade (MoveShellDllAside) once nothing holds them any more
 Type: files; Name: "{app}\gfglock_shell.*.old"
+
+#include "update_support.iss"
 
 [Code]
 const

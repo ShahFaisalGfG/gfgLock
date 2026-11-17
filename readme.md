@@ -4,7 +4,7 @@
 
 # gfgLock
 
-**Free, open-source file encryption for Windows - offline, private, and built to last.**
+**Free, open-source file encryption for Windows - private, works offline, and built to last.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4.svg?logo=windows&logoColor=white)](https://github.com/ShahFaisalGfG/gfgLock/releases)
@@ -33,6 +33,7 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
   - [Download \& Install](#download--install)
     - [Option 1 - Windows Package Manager (Recommended)](#option-1---windows-package-manager-recommended)
     - [Option 2 - Installers](#option-2---installers)
+    - [Updating](#updating)
   - [Quick Start](#quick-start)
   - [Screenshots](#screenshots)
   - [Encryption Algorithms](#encryption-algorithms)
@@ -45,6 +46,7 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
     - [Appearance](#appearance)
     - [Speed](#speed)
     - [Notifications \& Logs](#notifications--logs)
+    - [Updates](#updates)
   - [Building from Source](#building-from-source)
     - [Prerequisites](#prerequisites)
     - [Development Setup](#development-setup)
@@ -53,7 +55,8 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
   - [Contributing](#contributing)
   - [Roadmap](#roadmap)
   - [Changelog](#changelog)
-    - [v3.2.0 - October 2026 *(current)*](#v320---october-2026-current)
+    - [v3.2.1 - November 2026 *(current)*](#v321---november-2026-current)
+    - [v3.2.0 - October 2026](#v320---october-2026)
     - [v3.1.0 - October 2026](#v310---october-2026)
     - [v3.0.1 - July 2026](#v301---july-2026)
     - [v3.0.0 - June 2026](#v300---june-2026)
@@ -84,7 +87,8 @@ If you've ever thought *"I wish I could just lock this file"* - this is for you.
 
 Most encryption tools make you choose between complexity and trust. Either the UI is a maze, the algorithm is outdated, or the app needs a cloud account to function. gfgLock was built to close that gap.
 
-- 🔒 **100 % offline** - no accounts, no cloud sync, no telemetry, no pinging home
+- 🔒 **Private by design** - works fully offline: no accounts, no cloud sync, no telemetry. The only connection is an update check you can turn off
+- 🔄 **Updates itself** - checks once a day and installs a new version when you close it, only after its publisher signature checks out
 - ⚡ **Hardware-accelerated** - native C++ extension backed by OpenSSL; seamless Python fallback on any machine
 - 🎨 **Modern, clean UI** - PySide6 + QML with System, Light, and Dark themes
 - 🧩 **Two authenticated ciphers** - AES-256 GCM and ChaCha20-Poly1305 detect damaged or altered files; files made with the older AES-256 CFB still open
@@ -124,11 +128,17 @@ winget install gfgRoyal.gfgLock
 
 | Package | Admin Required | Best For |
 | --- | :---: | --- |
-| [`gfgLock_3.2.0_system_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ✅ | Shared / corporate machines |
-| [`gfgLock_3.2.0_user_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | Personal machines - recommended |
-| [`gfgLock_3.2.0_portable.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | USB drives and PCs where you can't install; settings and logs stay in a `gfgLock data` folder beside the exe |
+| [`gfgLock_3.2.1_system_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ✅ | Shared / corporate machines |
+| [`gfgLock_3.2.1_user_installer.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | Personal machines - recommended |
+| [`gfgLock_3.2.1_portable.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | USB drives and PCs where you can't install; settings and logs stay in a `gfgLock data` folder beside the exe |
 
-The [Releases](https://github.com/ShahFaisalGfG/gfgLock/releases) page also has `gfgLock_3.2.0_portable.7z`: the same portable app unpacked into a folder, which starts faster than the single exe. gfgLock needs Windows 10 version 1809 or later on a 64-bit Intel or AMD PC.
+The [Releases](https://github.com/ShahFaisalGfG/gfgLock/releases) page also has `gfgLock_3.2.1_portable.7z`: the same portable app unpacked into a folder, which starts faster than the single exe. gfgLock needs Windows 10 version 1809 or later on a 64-bit Intel or AMD PC.
+
+### Updating
+
+From 3.2.1 on, gfgLock updates itself. Once a day it asks GitHub whether a newer version is out; a copy installed with either installer, or the portable exe, downloads it in the background and installs it when you close gfgLock (an all-users install asks for administrator approval first). Before anything runs, the update's publisher signature and the SHA-256 checksum of every file are checked. **Restart now** in the notice installs at once. The portable `.7z` folder can't replace itself, so it shows a link to the new release instead. Both steps can be turned off in **Preferences > Updates**.
+
+gfgLock 3.2.0 and older can't update themselves: install 3.2.1 once over them (`winget upgrade gfgRoyal.gfgLock` or an installer above). Your settings are kept.
 
 ---
 
@@ -239,6 +249,8 @@ Decrypting restores the name, the contents, and the modification time. Other det
 - ❌ No cloud sync or remote backup
 - ❌ No accounts or registration required
 - ❌ No third-party analytics or tracking
+- ✅ The only connection is the update check: at most once a day, one request to GitHub carrying gfgLock's name and version, never your files, passwords, or settings. Turn it off in **Preferences > Updates**
+- ✅ An update installs only when its publisher signature (ECDSA P-256, checked with Windows' own crypto) and every file's SHA-256 checksum match
 
 ### Best Practices
 
@@ -275,6 +287,13 @@ Open **Preferences** from the title bar (**Ctrl+,**). Changes apply when you pre
 | **Notify when finished** | Show a Windows notification when a job ends while gfgLock is in the background, or after a job longer than 10 seconds |
 | **Keep logs** / **What to log** | Write log files with errors only, or every file processed. Logs list file names, never passwords; with **Hide file names** on they don't record the original names of encrypted files. Each log keeps up to 5 MB plus one older copy |
 | **Open logs folder** / **Clear logs** | Show the log files in File Explorer, or empty them |
+
+### Updates
+
+| Setting | Description |
+|---|---|
+| **Check automatically** | Ask GitHub at most once a day whether a newer version is out (on by default). **Check now** asks at once, and the About dialog (**F1**) has the same button |
+| **Install automatically** | Download a new version in the background and install it when you close gfgLock (on by default). Not on a metered connection; the notice offers **Update** instead. Turned off, the notice asks before downloading |
 
 ---
 
@@ -366,7 +385,10 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 
 ## Changelog
 
-### v3.2.0 - October 2026 *(current)*
+### v3.2.1 - November 2026 *(current)*
+- 🔄 **Updates itself:** a daily check finds new versions, which download in the background and install when you close gfgLock, or at once with **Restart now**. Every update is checked against the publisher's signature and SHA-256 checksums before it runs; metered connections wait. Both steps can be turned off in the new **Preferences > Updates** page, and **Check for updates** in the About dialog now checks in place.
+
+### v3.2.0 - October 2026
 - 🔐 **New file format for new files:** Argon2id key derivation (once per run, with a key of its own for every file), an authenticated header, and 1 MB chunks that are each checked. Files cut short, reordered, or edited anywhere refuse to open, files over 64 GB work, and a wrong password is noticed at the first chunk. Files made with 3.2 need 3.2 or later; every older file still opens.
 - 🛡️ **Fixed data loss with CFB:** a wrong password could produce a valid-looking name about 1 time in 450, and the `.gfglck` file was then deleted. AES-256 CFB is now decrypt-only, and a `.gfglck` file is removed only when the restored name matches it.
 - 🛡️ **Fixed:** hard-linked files stayed readable through their other links (they are skipped now); a file edited during encryption could be deleted along with the newer content; a folder whose name ends with an apostrophe arrived from Explorer without it; dropping a folder during another folder's scan stopped the first scan partway; files sent from Explorer while gfgLock started or was busy could be lost.

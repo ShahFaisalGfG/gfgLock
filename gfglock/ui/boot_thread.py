@@ -30,6 +30,7 @@ class BootThread(QThread):
             import gfglock.controllers.app_ctrl  # noqa: F401
             import gfglock.controllers.encrypt_ctrl  # noqa: F401
             import gfglock.controllers.prefs_ctrl  # noqa: F401
+            import gfglock.controllers.update_ctrl  # noqa: F401
 
             self.boot_ready.emit()
         except Exception as error:  # reported (and logged) by the window's start-up, which quits

@@ -59,3 +59,9 @@ release.sh
 # ── Never ignored ─────────────────────────────────────────────────────────────
 # The test fixtures are encrypted files; a fixture name may match a pattern above.
 !tests/fixtures/**
+
+# ── Updater ───────────────────────────────────────────────────────────────────
+# A local staging build's test feed (scripts/bundle.ps1 -UpdateFeed), and the update
+# state a run from source keeps next to settings.json
+gfglock/config/update_staging.py
+gfglock/utils/updates.json

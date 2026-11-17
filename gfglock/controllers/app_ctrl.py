@@ -1,18 +1,16 @@
-# app_ctrl.py - app-wide controller: theme, app information, screens, start-up notices, and updates
+# app_ctrl.py - app-wide controller: theme, app information, screens, and start-up notices
 
 import ctypes
 import os
 import winreg
 
 from PySide6.QtCore import Property, QObject, QPoint, QRect, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtGui import QGuiApplication
 
 from gfglock.config.defaults import AppInfo
 from gfglock.core.file_ops import ENCRYPTED_EXTS
-from gfglock.utils.logging import write_log
 from gfglock.utils.settings import load_settings, take_read_error
 
-_UPDATES_URL = "https://github.com/ShahFaisalGfG/gfgLock/releases"
 _SETTINGS_RESET = "Your preferences file couldn't be read, so the defaults are in use."
 _VK_CAPITAL = 0x14
 
@@ -129,12 +127,6 @@ class AppController(QObject):
     def capsLockOn(self) -> bool:
         """True while Caps Lock is on, for the hint under a password field."""
         return bool(_GetKeyState(_VK_CAPITAL) & 1)
-
-    @Slot()
-    def openUpdates(self) -> None:
-        """Open the GitHub releases page in the default browser (through the shell, never a browser by name)."""
-        if not QDesktopServices.openUrl(QUrl(_UPDATES_URL)):
-            write_log(f"Could not open {_UPDATES_URL}", "critical")
 
     def show_notices(self, *notices: str) -> None:
         """Show the start-up notices as one toast, adding one when the preferences file couldn't be read."""

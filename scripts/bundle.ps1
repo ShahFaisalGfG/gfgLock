@@ -119,9 +119,28 @@ function New-AppBundle {
     param(
         [Parameter(Mandatory)] [string]$Name,
         [Parameter(Mandatory)] [ValidateSet("onedir", "onefile")] [string]$Mode,
-        [Parameter(Mandatory)] [string]$DistPath
+        [Parameter(Mandatory)] [string]$DistPath,
+        # Local staging builds only: the test update server (http://127.0.0.1:<port>) and the
+        # public key (PEM file) its manifests are signed with. Release builds never pass these.
+        [string]$UpdateFeed = "",
+        [string]$UpdateKeyFile = ""
     )
     $root = Split-Path -Parent $PSScriptRoot
+    $staging = "$root\gfglock\config\update_staging.py"
+    if ($UpdateFeed) {
+        if ($UpdateFeed -notmatch '^http://127\.0\.0\.1:\d{2,5}$') { Fail "-UpdateFeed must be http://127.0.0.1:<port>" }
+        if (-not (Test-Path $UpdateKeyFile)) { Fail "-UpdateFeed needs -UpdateKeyFile with the test feed's public key" }
+        $key = (Get-Content $UpdateKeyFile -Raw).Trim()
+        Set-Content -Path $staging -Encoding utf8NoBOM -Value @"
+# Written by scripts\bundle.ps1 -UpdateFeed for a local staging build; never commit or release it.
+BASE_URL = "$UpdateFeed"
+PUBLIC_KEYS = ("""$key
+""",)
+"@
+        Write-Host "   Staging build: updates come from $UpdateFeed" -ForegroundColor Yellow
+    } elseif (Test-Path $staging) {
+        Fail "$staging is left from a staging build; delete it first."
+    }
     $output = if ($Mode -eq "onedir") { Join-Path $DistPath $Name } else { Join-Path $DistPath "$Name.exe" }
     $exe = if ($Mode -eq "onedir") { Join-Path $output "$Name.exe" } else { $output }
     foreach ($path in @($output, "$root\build\pyinstaller\$Name")) {
@@ -141,6 +160,7 @@ function New-AppBundle {
         $exitCode = $LASTEXITCODE
     } finally {
         $env:PATH = $savedPath
+        if ($UpdateFeed) { Remove-Item $staging -Force -ErrorAction SilentlyContinue }
     }
     if ($exitCode -ne 0) { Fail "PyInstaller failed (exit $exitCode). Check output above." }
     if (-not (Test-Path $exe)) { Fail "Expected executable not found: $exe" }

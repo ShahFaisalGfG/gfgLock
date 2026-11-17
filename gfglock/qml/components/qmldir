@@ -14,3 +14,4 @@ RunBar 1.0 RunBar.qml
 StyledComboBox 1.0 StyledComboBox.qml
 TitleBar 1.0 TitleBar.qml
 Toast 1.0 Toast.qml
+UpdateBanner 1.0 UpdateBanner.qml

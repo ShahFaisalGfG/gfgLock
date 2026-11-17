@@ -200,19 +200,3 @@ class TestNotices:
         notices = self._notices(controller)
         controller.show_notices("")
         assert notices == []
-
-
-class TestUpdates:
-    def test_open_updates_goes_through_the_shell(self, controller, monkeypatch):
-        open_mock = MagicMock(return_value=True)
-        monkeypatch.setattr(app_ctrl.QDesktopServices, "openUrl", open_mock)
-        controller.openUpdates()
-        open_mock.assert_called_once()
-        assert open_mock.call_args.args[0].toString() == app_ctrl._UPDATES_URL
-
-    def test_browser_failure_is_logged(self, controller, monkeypatch):
-        monkeypatch.setattr(app_ctrl.QDesktopServices, "openUrl", lambda url: False)
-        log = MagicMock()
-        monkeypatch.setattr(app_ctrl, "write_log", log)
-        controller.openUpdates()
-        log.assert_called_once()
