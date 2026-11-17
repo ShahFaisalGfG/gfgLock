@@ -109,6 +109,25 @@ The release workflow also packs the one-folder bundle as `gfgLock_<version>_port
 
 The version comes from `pyproject.toml`; keep `APP_VERSION` in `gfglock\config\defaults.py` the same (a test checks it).
 
+### In-app updates and the signing key
+
+Every release carries `update.json` and `update.json.sig`. The release workflow writes the manifest with `scripts\make_update_manifest.py` (each installer and the portable exe, with its size and SHA-256) and signs it with `scripts\sign_update.py`, using the `UPDATE_SIGNING_KEY` repository secret (ECDSA P-256). gfgLock verifies the signature against `UpdateInfo.PUBLIC_KEYS` in `gfglock\config\defaults.py` before it trusts anything in the manifest, and the workflow refuses to sign with a key that list doesn't hold.
+
+The private key lives in Doppler (project `gfglock`, config `prd`, secret `UPDATE_SIGNING_KEY`) and is copied from there to the repository's `UPDATE_SIGNING_KEY` Actions secret; its public half is in `UpdateInfo.PUBLIC_KEYS`. Run these in WSL, where the Doppler and GitHub CLIs are signed in:
+
+```bash
+# Copy the key from Doppler to GitHub again (after replacing it, say)
+doppler secrets get UPDATE_SIGNING_KEY -p gfglock -c prd --plain | gh secret set UPDATE_SIGNING_KEY --repo ShahFaisalGfG/gfgLock
+# Print the public half, the form `UpdateInfo.PUBLIC_KEYS` holds
+doppler secrets get UPDATE_SIGNING_KEY -p gfglock -c prd --plain | openssl ec -pubout
+# Sign a local build with it
+doppler run -p gfglock -c prd -- python3 scripts/sign_update.py build/update.json --expect gfglock/config/defaults.py
+```
+
+To replace the key, store a new one in Doppler, release one version signed with the old key whose list holds both public keys, then copy the new key to GitHub. If the key were lost, installed copies could no longer verify updates. Doppler keeps it, with its version history; never commit it or leave a copy in a file.
+
+To try an update end to end, build a staging copy whose updater reads a local test feed instead of GitHub: pass `-UpdateFeed http://127.0.0.1:<port> -UpdateKeyFile <test public key>.pem` to `New-AppBundle` in `scripts\bundle.ps1`. It writes `gfglock\config\update_staging.py` for that build only; the release workflow fails if the file exists. Serve a folder laid out like a GitHub release (`releases\latest\download\update.json` and `.sig`, `releases\download\v<version>\<files>`) with `python -m http.server <port>`.
+
 Every icon size and `gfgLock.ico` are drawn by `scripts\make_icons.py`; after changing it, run `python scripts\make_icons.py` to regenerate them.
 
 The `licenses` folder holds the full licence text of every bundled component, and `THIRD_PARTY_NOTICES.md` lists the components and every bundled DLL. When a bundled component changes, copy its licence from the package's `*.dist-info` folder (or `native\vcpkg_installed\x64-windows\share\<port>\copyright` for vcpkg ports) and update both.

@@ -148,6 +148,12 @@ def hold_app_mutexes() -> None:
             _LocalFree(descriptor)
 
 
+def release_app_mutexes() -> None:
+    """Let go of the installer mutexes early: an update's installer waits for them as gfgLock exits."""
+    while _app_mutexes:
+        _CloseHandle(_app_mutexes.pop())
+
+
 class SingleInstance(QObject):
     """Routes later launches to the first gfgLock window of this user session."""
 

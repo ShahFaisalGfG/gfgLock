@@ -31,7 +31,8 @@ AppWindow {
     readonly property var sections: [
         { name: "Appearance", icon: "settings" },
         { name: "Speed", icon: "speed" },
-        { name: "Notifications & logs", icon: "notify" }
+        { name: "Notifications & logs", icon: "notify" },
+        { name: "Updates", icon: "sync" }
     ]
 
     // 1 up to every thread, or one fewer when a thread is kept free for Windows.
@@ -114,7 +115,15 @@ AppWindow {
         notifySwitch.checked = prefsController.operationNotifications
         logsSwitch.checked = prefsController.enableLogs
         logLevelCombo.value = prefsController.logLevel
+        autoCheckSwitch.checked = prefsController.autoCheckUpdates
+        autoInstallSwitch.checked = prefsController.autoInstallUpdates
         prefsWin.dirty = false
+    }
+
+    // "Last checked 17 Nov 2026 10:42", or "" before the first check.
+    function lastChecked() {
+        var ms = updateController.lastCheckedMs
+        return ms > 0 ? "Last checked " + new Date(ms).toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
     }
 
     // The theme is already showing (it previews as it is chosen), so saving only stores it.
@@ -431,6 +440,75 @@ AppWindow {
                                 iconName: "delete"
                                 toolTipText: "Empty the log files (your files are not affected)"
                                 onClicked: prefsController.clearLogs()
+                            }
+                        }
+                    }
+                }
+
+                // Updates
+                PrefsPage {
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Updates"
+                        description: updateController.canSelfUpdate
+                            ? "gfgLock asks GitHub at most once a day whether a newer version is out. The request carries only gfgLock's name and version; your files, passwords, and settings never leave this PC. An update installs only after its publisher signature and checksums match."
+                            : "This copy runs from an unpacked folder, so it can't replace itself. gfgLock still tells you when a new version is out, with a link to download it."
+                        FormRow {
+                            label: "Check automatically"
+                            hint: "Once a day while gfgLock is open."
+                            Item { Layout.fillWidth: true }
+                            AppSwitch {
+                                id: autoCheckSwitch
+                                accessibleName: "Check for updates automatically"
+                                onToggled: prefsWin.set("advanced.auto_check_updates", checked)
+                            }
+                        }
+                        FormRow {
+                            visible: updateController.canSelfUpdate
+                            label: "Install automatically"
+                            hint: updateController.needsApproval
+                                ? "Downloads in the background and installs when you close gfgLock, after Windows asks for administrator approval. Not on a metered connection."
+                                : "Downloads in the background and installs when you close gfgLock. Not on a metered connection."
+                            Item { Layout.fillWidth: true }
+                            AppSwitch {
+                                id: autoInstallSwitch
+                                accessibleName: "Install updates automatically"
+                                onToggled: prefsWin.set("advanced.auto_install_updates", checked)
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spaceMd
+                            AppButton {
+                                text: "Check now"
+                                iconName: "sync"
+                                enabled: updateController.status !== "checking" && updateController.status !== "downloading"
+                                toolTipText: "Ask GitHub whether a newer version is out"
+                                onClicked: updateController.checkNow()
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: text !== ""
+                                    text: updateController.message
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    color: updateController.status === "error" ? Theme.danger : Theme.text
+                                    wrapMode: Text.WordWrap
+                                    Accessible.role: Accessible.StaticText
+                                    Accessible.name: text
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: text !== ""
+                                    text: prefsWin.lastChecked()
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    color: Theme.textMuted
+                                    wrapMode: Text.WordWrap
+                                }
                             }
                         }
                     }

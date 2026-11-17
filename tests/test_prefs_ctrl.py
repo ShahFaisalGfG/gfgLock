@@ -114,6 +114,12 @@ class TestProperties:
         monkeypatch.setattr(prefs_ctrl.os, "cpu_count", lambda: None)
         assert controller.cpuCount == 1
 
+    def test_update_switches(self, monkeypatch):
+        monkeypatch.setattr(prefs_ctrl, "load_settings", lambda: {"advanced": {"auto_check_updates": False}})
+        controller = PrefsController()
+        assert controller.autoCheckUpdates is False
+        assert controller.autoInstallUpdates is True  # missing, so the default
+
     def test_missing_key_falls_back_to_default(self, monkeypatch):
         monkeypatch.setattr(prefs_ctrl, "load_settings", lambda: {"theme": "light"})
         assert PrefsController().encThreads == EncryptionDefaults.DEFAULT_THREADS

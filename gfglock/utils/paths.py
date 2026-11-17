@@ -48,6 +48,22 @@ def app_folder() -> str | None:
     return os.path.abspath(bundle) if _is_one_file(bundle) else _exe_dir()
 
 
+def updates_dir() -> str:
+    """Where downloaded updates wait to be installed.
+
+    An installed copy uses %LOCALAPPDATA%\\gfgLock\\updates, which stays on this PC instead of
+    roaming with the profile. The portable builds use "updates" in their data folder, so they still
+    leave nothing behind; from source it is the project's build folder.
+    """
+    if not getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                            "build", "updates")
+    if is_portable():
+        return os.path.join(data_dir() or appdata_dir(), "updates")
+    local = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    return os.path.join(local, "gfgLock", "updates")
+
+
 def _exe_dir() -> str:
     return os.path.dirname(os.path.abspath(sys.executable))
 

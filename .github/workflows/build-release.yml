@@ -51,6 +51,16 @@ jobs:
             exit 1
           }
 
+      # A local staging build points the updater at a test server and a test key
+      # (scripts\bundle.ps1 -UpdateFeed); that file must never reach a release.
+      - name: Check no staging update feed is present
+        shell: pwsh
+        run: |
+          if (Test-Path gfglock\config\update_staging.py) {
+            Write-Error "gfglock\config\update_staging.py is a local test file; delete it before releasing."
+            exit 1
+          }
+
       - name: Install Python dependencies
         shell: pwsh
         run: pip install -r requirements.txt
@@ -135,8 +145,29 @@ jobs:
           . .\scripts\bundle.ps1
           New-PortableArchive -BundleDir "dist\$env:APP_NAME" -ArchivePath "build\${env:APP_NAME}_${env:VER}_portable.7z"
 
-      # Creates and publishes the GitHub Release with its four assets.
-      # Must use RELEASE_PAT (not GITHUB_TOKEN) - events fired by GITHUB_TOKEN
+      # update.json lists what the in-app updater installs (each installer and the portable exe,
+      # with sizes and SHA-256 hashes) and is signed with UPDATE_SIGNING_KEY. --expect stops a
+      # release signed with a key gfgLock doesn't carry, which no installed copy could verify.
+      # The portable .7z isn't listed: that copy can't replace itself and links to the release.
+      - name: Write and sign the update manifest
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          APP_NAME: ${{ steps.meta.outputs.APP_NAME }}
+          VER: ${{ steps.meta.outputs.VER }}
+        run: |
+          $base = "${env:APP_NAME}_${env:VER}"
+          python scripts\make_update_manifest.py --app $env:APP_NAME --version $env:VER `
+            --repo $env:GITHUB_REPOSITORY --out build\update.json `
+            --package "kind=system;files=build\installer\${base}_system_installer.exe" `
+            --package "kind=user;files=build\installer\${base}_user_installer.exe" `
+            --package "kind=portable-exe;files=build\${base}_portable.exe"
+          if ($LASTEXITCODE -ne 0) { throw "make_update_manifest.py failed (exit $LASTEXITCODE)" }
+          python scripts\sign_update.py build\update.json --expect gfglock\config\defaults.py
+          if ($LASTEXITCODE -ne 0) { throw "sign_update.py failed (exit $LASTEXITCODE)" }
+
+      # Creates and publishes the GitHub Release with its four assets and the signed update
+      # manifest. Must use RELEASE_PAT (not GITHUB_TOKEN) - events fired by GITHUB_TOKEN
       # do not cascade into other workflows, so winget-release.yml would never trigger.
       - name: Create GitHub Release
         shell: pwsh
@@ -153,5 +184,7 @@ jobs:
             "build\installer\${base}_system_installer.exe" `
             "build\installer\${base}_user_installer.exe" `
             "build\${base}_portable.exe" `
-            "build\${base}_portable.7z"
+            "build\${base}_portable.7z" `
+            "build\update.json" `
+            "build\update.json.sig"
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit $LASTEXITCODE)" }

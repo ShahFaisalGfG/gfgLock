@@ -41,6 +41,7 @@ class _Startup:
         self._app_ctrl = None
         self._controllers: list = []
         self._prefs_ctrl = None
+        self._update_ctrl = None
 
         self._splash = SplashScreen(resource_path(SPLASH_LOGO))
         self._splash.show()
@@ -58,6 +59,7 @@ class _Startup:
             from gfglock.controllers.app_ctrl import AppController
             from gfglock.controllers.encrypt_ctrl import EncryptController
             from gfglock.controllers.prefs_ctrl import PrefsController
+            from gfglock.controllers.update_ctrl import UpdateController
 
             icon = QIcon()
             for size, relative in WINDOW_ICONS.items():
@@ -72,6 +74,9 @@ class _Startup:
             dec_ctrl = EncryptController("decrypt")
             prefs_ctrl = PrefsController()
             prefs_ctrl.set_run_controllers([enc_ctrl, dec_ctrl])
+            update_ctrl = UpdateController(_update_config())
+            update_ctrl.set_busy_sources([enc_ctrl, dec_ctrl])
+            prefs_ctrl.settingsChanged.connect(update_ctrl.preferencesChanged)
 
             engine = QQmlApplicationEngine()
             ctx = engine.rootContext()
@@ -79,6 +84,7 @@ class _Startup:
             ctx.setContextProperty("encryptController", enc_ctrl)
             ctx.setContextProperty("decryptController", dec_ctrl)
             ctx.setContextProperty("prefsController", prefs_ctrl)
+            ctx.setContextProperty("updateController", update_ctrl)
 
             qml_dir = resource_path("gfglock/qml")
             engine.addImportPath(qml_dir)
@@ -94,6 +100,7 @@ class _Startup:
             self._app_ctrl = app_ctrl
             self._controllers = [enc_ctrl, dec_ctrl]
             self._prefs_ctrl = prefs_ctrl
+            self._update_ctrl = update_ctrl
             # Later launches (another Explorer right-click) hand their files to this window; the
             # ones that arrived while it loaded are delivered by attach(), after this launch's own.
             self._instance.filesReceived.connect(app_ctrl.openFiles)
@@ -104,6 +111,7 @@ class _Startup:
                 app_ctrl.openFiles(launch.mode, list(launch.paths))
             app_ctrl.show_notices(launch.notice)
             self._instance.attach()
+            update_ctrl.start()
             self._splash.close()
         except Exception as error:  # the start-up boundary: anything here would leave no window
             self._on_failed(f"The window couldn't be built: {error}")
@@ -121,6 +129,8 @@ class _Startup:
             controller.shutdown()
         if self._prefs_ctrl is not None:
             self._prefs_ctrl.shutdown()
+        if self._update_ctrl is not None:
+            self._update_ctrl.shutdown()
         if self._controllers:
             # Folder scans drain in each controller's own pool (its shutdown waits for them). A
             # stopped run and the speed test end within a block on the global pool; wait for them
@@ -131,6 +141,54 @@ class _Startup:
         self._app_ctrl = None
         self._controllers = []
         self._prefs_ctrl = None
+
+    def install_update(self) -> None:
+        """Hand a downloaded update to its installer; the last step before the process exits."""
+        if self._update_ctrl is not None:
+            self._update_ctrl.install_on_exit()
+            self._update_ctrl = None
+
+
+def _update_config():
+    """The updater's settings for this copy: its feed and keys, state file, preferences, and log.
+
+    The update modules were imported by the boot thread. A local staging build (scripts\\bundle.ps1
+    -UpdateFeed) adds gfglock\\config\\update_staging.py, which points the feed at a test server
+    with a test key; release builds never contain it.
+    """
+    from gfglock.config.defaults import AppInfo, UpdateDefaults, UpdateInfo
+    from gfglock.controllers.update_ctrl import UpdaterConfig
+    from gfglock.services.update_feed import UpdateSource
+    from gfglock.services.update_install import STATE_FILE
+    from gfglock.utils.paths import updates_dir
+    from gfglock.utils.settings import get_settings_file, load_settings
+    from gfglock.utils.single_instance import release_app_mutexes
+
+    try:
+        from gfglock.config import update_staging  # type: ignore[attr-defined]
+    except ImportError:
+        update_staging = None
+
+    def read_prefs() -> tuple[bool, bool]:
+        advanced = load_settings().get("advanced", {})
+        return (bool(advanced.get("auto_check_updates", UpdateDefaults.AUTO_CHECK)),
+                bool(advanced.get("auto_install_updates", UpdateDefaults.AUTO_INSTALL)))
+
+    source = UpdateSource(
+        app=AppInfo.APP_NAME,
+        version=AppInfo.APP_VERSION,
+        base_url=getattr(update_staging, "BASE_URL", UpdateInfo.REPO_URL),
+        public_keys=tuple(getattr(update_staging, "PUBLIC_KEYS", UpdateInfo.PUBLIC_KEYS)),
+        allow_local_http=update_staging is not None,
+    )
+    return UpdaterConfig(
+        source=source,
+        state_path=os.path.join(os.path.dirname(get_settings_file()), STATE_FILE),
+        downloads_dir=updates_dir(),
+        read_prefs=read_prefs,
+        log=lambda message, error: write_log(message, "critical" if error else "general"),
+        release_locks=release_app_mutexes,
+    )
 
 
 def main() -> None:
@@ -171,6 +229,7 @@ def main() -> None:
     startup = _Startup(app, instance, launch)
     code = app.exec()
     startup.shutdown()
+    startup.install_update()
     sys.exit(code)
 
 

@@ -8,9 +8,34 @@ class AppInfo:
     """Application information and metadata."""
 
     APP_NAME = "gfgLock"
-    APP_VERSION = "3.2.0"
+    APP_VERSION = "3.2.1"
     APP_AUTHOR = "Shah Faisal"
     APP_DESCRIPTION = "Lock files and folders with a password, using strong encryption"
+
+
+class UpdateInfo:
+    """Where updates come from, and the keys that sign them (scripts/sign_update.py)."""
+
+    REPO_URL = "https://github.com/ShahFaisalGfG/gfgLock"
+    # The public half of each release signing key, exactly as `openssl ec -pubout` prints it. The
+    # release workflow refuses to sign with a key that is not listed here. A release signed with
+    # the current key can add the next one, so the key can be replaced without breaking updates.
+    # The private half is kept in Doppler (project gfglock, config prd) and copied to the
+    # UPDATE_SIGNING_KEY Actions secret.
+    PUBLIC_KEYS: tuple[str, ...] = (
+        """-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWS0lnkKLld14J3FV6CEax5JfeBap
+ytmtA7WdH052ZQuqMKUmPEcBn+GK67An11Ny+SJ32MKvMaB3X206A+ofVg==
+-----END PUBLIC KEY-----
+""",
+    )
+
+
+class UpdateDefaults:
+    """Default update preferences: check once a day, and install in the background."""
+
+    AUTO_CHECK = True
+    AUTO_INSTALL = True
 
 
 def _get_cpu_thread_count() -> int:
@@ -131,5 +156,7 @@ def get_default_settings() -> Dict[str, Any]:
             "log_level": LoggingDefaults.DEFAULT_LOG_LEVEL,
             "clamp_cpu_threads": PerformanceDefaults.CLAMP_CPU_THREADS,
             "operation_notifications": NotificationDefaults.OPERATION_NOTIFICATIONS,
+            "auto_check_updates": UpdateDefaults.AUTO_CHECK,
+            "auto_install_updates": UpdateDefaults.AUTO_INSTALL,
         },
     }

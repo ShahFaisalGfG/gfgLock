@@ -363,7 +363,7 @@
 <div align="center">
 <p><img alt="gfgLock Logo" src="icons/Square150x150Logo.scale-100.png" /></p>
 <h1 id="gfglock">gfgLock</h1>
-<p><strong>Free, open-source file encryption for Windows - offline, private, and built to last.</strong></p>
+<p><strong>Free, open-source file encryption for Windows - private, works offline, and built to last.</strong></p>
 <p><a href="LICENSE.txt"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
 <a href="https://github.com/ShahFaisalGfG/gfgLock/releases"><img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4.svg?logo=windows&amp;logoColor=white" /></a>
 <a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/ShahFaisalGfG/gfgLock?color=brightgreen&amp;label=Latest%20Release" /></a>
@@ -386,6 +386,7 @@
 <li><a href="#download--install">Download &amp; Install</a><ul>
 <li><a href="#option-1---windows-package-manager-recommended">Option 1 - Windows Package Manager (Recommended)</a></li>
 <li><a href="#option-2---installers">Option 2 - Installers</a></li>
+<li><a href="#updating">Updating</a></li>
 </ul>
 </li>
 <li><a href="#quick-start">Quick Start</a></li>
@@ -404,6 +405,7 @@
 <li><a href="#appearance">Appearance</a></li>
 <li><a href="#speed">Speed</a></li>
 <li><a href="#notifications--logs">Notifications &amp; Logs</a></li>
+<li><a href="#updates">Updates</a></li>
 </ul>
 </li>
 <li><a href="#building-from-source">Building from Source</a><ul>
@@ -416,7 +418,8 @@
 <li><a href="#contributing">Contributing</a></li>
 <li><a href="#roadmap">Roadmap</a></li>
 <li><a href="#changelog">Changelog</a><ul>
-<li><a href="#v320---october-2026-current">v3.2.0 - October 2026 <em>(current)</em></a></li>
+<li><a href="#v321---november-2026-current">v3.2.1 - November 2026 <em>(current)</em></a></li>
+<li><a href="#v320---october-2026">v3.2.0 - October 2026</a></li>
 <li><a href="#v310---october-2026">v3.1.0 - October 2026</a></li>
 <li><a href="#v301---july-2026">v3.0.1 - July 2026</a></li>
 <li><a href="#v300---june-2026">v3.0.0 - June 2026</a></li>
@@ -446,7 +449,8 @@
 <h2 id="why-gfglock">Why gfgLock?</h2>
 <p>Most encryption tools make you choose between complexity and trust. Either the UI is a maze, the algorithm is outdated, or the app needs a cloud account to function. gfgLock was built to close that gap.</p>
 <ul>
-<li>🔒 <strong>100 % offline</strong> - no accounts, no cloud sync, no telemetry, no pinging home</li>
+<li>🔒 <strong>Private by design</strong> - works fully offline: no accounts, no cloud sync, no telemetry. The only connection is an update check you can turn off</li>
+<li>🔄 <strong>Updates itself</strong> - checks once a day and installs a new version when you close it, only after its publisher signature checks out</li>
 <li>⚡ <strong>Hardware-accelerated</strong> - native C++ extension backed by OpenSSL; seamless Python fallback on any machine</li>
 <li>🎨 <strong>Modern, clean UI</strong> - PySide6 + QML with System, Light, and Dark themes</li>
 <li>🧩 <strong>Two authenticated ciphers</strong> - AES-256 GCM and ChaCha20-Poly1305 detect damaged or altered files; files made with the older AES-256 CFB still open</li>
@@ -487,23 +491,26 @@
 </thead>
 <tbody>
 <tr>
-<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.2.0_system_installer.exe</code></a></td>
+<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.2.1_system_installer.exe</code></a></td>
 <td style="text-align: center;">✅</td>
 <td>Shared / corporate machines</td>
 </tr>
 <tr>
-<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.2.0_user_installer.exe</code></a></td>
+<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.2.1_user_installer.exe</code></a></td>
 <td style="text-align: center;">❌</td>
 <td>Personal machines - recommended</td>
 </tr>
 <tr>
-<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.2.0_portable.exe</code></a></td>
+<td><a href="https://github.com/ShahFaisalGfG/gfgLock/releases/latest"><code>gfgLock_3.2.1_portable.exe</code></a></td>
 <td style="text-align: center;">❌</td>
 <td>USB drives and PCs where you can't install; settings and logs stay in a <code>gfgLock data</code> folder beside the exe</td>
 </tr>
 </tbody>
 </table>
-<p>The <a href="https://github.com/ShahFaisalGfG/gfgLock/releases">Releases</a> page also has <code>gfgLock_3.2.0_portable.7z</code>: the same portable app unpacked into a folder, which starts faster than the single exe. gfgLock needs Windows 10 version 1809 or later on a 64-bit Intel or AMD PC.</p>
+<p>The <a href="https://github.com/ShahFaisalGfG/gfgLock/releases">Releases</a> page also has <code>gfgLock_3.2.1_portable.7z</code>: the same portable app unpacked into a folder, which starts faster than the single exe. gfgLock needs Windows 10 version 1809 or later on a 64-bit Intel or AMD PC.</p>
+<h3 id="updating">Updating</h3>
+<p>From 3.2.1 on, gfgLock updates itself. Once a day it asks GitHub whether a newer version is out; a copy installed with either installer, or the portable exe, downloads it in the background and installs it when you close gfgLock (an all-users install asks for administrator approval first). Before anything runs, the update's publisher signature and the SHA-256 checksum of every file are checked. <strong>Restart now</strong> in the notice installs at once. The portable <code>.7z</code> folder can't replace itself, so it shows a link to the new release instead. Both steps can be turned off in <strong>Preferences &gt; Updates</strong>.</p>
+<p>gfgLock 3.2.0 and older can't update themselves: install 3.2.1 once over them (<code>winget upgrade gfgRoyal.gfgLock</code> or an installer above). Your settings are kept.</p>
 <hr />
 <h2 id="quick-start">Quick Start</h2>
 <p><strong>To lock files</strong></p>
@@ -688,6 +695,8 @@ HKDF-SHA256
 <li>❌ No cloud sync or remote backup</li>
 <li>❌ No accounts or registration required</li>
 <li>❌ No third-party analytics or tracking</li>
+<li>✅ The only connection is the update check: at most once a day, one request to GitHub carrying gfgLock's name and version, never your files, passwords, or settings. Turn it off in <strong>Preferences &gt; Updates</strong></li>
+<li>✅ An update installs only when its publisher signature (ECDSA P-256, checked with Windows' own crypto) and every file's SHA-256 checksum match</li>
 </ul>
 <h3 id="best-practices">Best Practices</h3>
 <ul>
@@ -761,6 +770,25 @@ HKDF-SHA256
 <tr>
 <td><strong>Open logs folder</strong> / <strong>Clear logs</strong></td>
 <td>Show the log files in File Explorer, or empty them</td>
+</tr>
+</tbody>
+</table>
+<h3 id="updates">Updates</h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Check automatically</strong></td>
+<td>Ask GitHub at most once a day whether a newer version is out (on by default). <strong>Check now</strong> asks at once, and the About dialog (<strong>F1</strong>) has the same button</td>
+</tr>
+<tr>
+<td><strong>Install automatically</strong></td>
+<td>Download a new version in the background and install it when you close gfgLock (on by default). Not on a metered connection; the notice offers <strong>Update</strong> instead. Turned off, the notice asks before downloading</td>
 </tr>
 </tbody>
 </table>
@@ -886,7 +914,11 @@ python -m gfglock
 <p>Have a feature idea or a use case we haven't thought of? <a href="https://github.com/ShahFaisalGfG/gfgLock/discussions">Start a discussion</a> - feature requests that get traction move up the roadmap.</p>
 <hr />
 <h2 id="changelog">Changelog</h2>
-<h3 id="v320---october-2026-current">v3.2.0 - October 2026 <em>(current)</em></h3>
+<h3 id="v321---november-2026-current">v3.2.1 - November 2026 <em>(current)</em></h3>
+<ul>
+<li>🔄 <strong>Updates itself:</strong> a daily check finds new versions, which download in the background and install when you close gfgLock, or at once with <strong>Restart now</strong>. Every update is checked against the publisher's signature and SHA-256 checksums before it runs; metered connections wait. Both steps can be turned off in the new <strong>Preferences &gt; Updates</strong> page, and <strong>Check for updates</strong> in the About dialog now checks in place.</li>
+</ul>
+<h3 id="v320---october-2026">v3.2.0 - October 2026</h3>
 <ul>
 <li>🔐 <strong>New file format for new files:</strong> Argon2id key derivation (once per run, with a key of its own for every file), an authenticated header, and 1 MB chunks that are each checked. Files cut short, reordered, or edited anywhere refuse to open, files over 64 GB work, and a wrong password is noticed at the first chunk. Files made with 3.2 need 3.2 or later; every older file still opens.</li>
 <li>🛡️ <strong>Fixed data loss with CFB:</strong> a wrong password could produce a valid-looking name about 1 time in 450, and the <code>.gfglck</code> file was then deleted. AES-256 CFB is now decrypt-only, and a <code>.gfglck</code> file is removed only when the restored name matches it.</li>

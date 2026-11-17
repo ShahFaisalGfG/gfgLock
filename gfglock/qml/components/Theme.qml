@@ -104,6 +104,7 @@ QtObject {
         clear: "",
         openExternal: "",
         sync: "",
+        download: "",
         chevronDown: "",
         lock: "",
         unlock: "",

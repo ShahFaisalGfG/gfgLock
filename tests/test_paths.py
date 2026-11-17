@@ -23,6 +23,24 @@ def _frozen(monkeypatch, exe_dir, onefile: bool):
     monkeypatch.setattr(sys, "_MEIPASS", bundle, raising=False)
 
 
+class TestUpdatesDir:
+    """Downloaded updates stay off the roaming profile, and a portable copy keeps them beside itself."""
+
+    def test_installed_app_uses_local_appdata(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+        _frozen(monkeypatch, tmp_path / "Program Files" / "gfgLock", onefile=False)
+        assert paths.updates_dir() == os.path.join(str(tmp_path / "local"), "gfgLock", "updates")
+
+    def test_portable_exe_uses_its_data_folder(self, monkeypatch, tmp_path):
+        usb = tmp_path / "usb"
+        usb.mkdir()
+        _frozen(monkeypatch, usb, onefile=True)
+        assert paths.updates_dir() == os.path.join(str(usb), paths.PORTABLE_FOLDER, "updates")
+
+    def test_source_uses_the_build_folder(self):
+        assert paths.updates_dir().endswith(os.path.join("build", "updates"))
+
+
 def test_running_from_source_has_no_data_folder():
     assert paths.data_dir() is None
 

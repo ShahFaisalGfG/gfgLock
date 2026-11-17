@@ -41,6 +41,12 @@ class TestGetDefaultSettings:
         assert defaults["advanced"]["enable_logs"] is False
         assert defaults["theme"] == "system"
 
+    def test_updates_are_checked_and_installed_by_default(self):
+        """Both update switches start on; Preferences can turn either off."""
+        advanced = settings_mod.get_default_settings()["advanced"]
+        assert advanced["auto_check_updates"] is True
+        assert advanced["auto_install_updates"] is True
+
 
 class TestLoadSettings:
     """load_settings must merge on-disk overrides onto the built-in defaults."""

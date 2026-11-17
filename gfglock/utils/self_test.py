@@ -153,6 +153,19 @@ def _check_images() -> None:
         raise RuntimeError("missing images: " + ", ".join(missing))
 
 
+def _check_updates() -> None:
+    """The updater can work: HTTPS with Windows' trusted root certificates, and every signing key reads."""
+    import ssl
+
+    from gfglock.config.defaults import UpdateInfo
+    from gfglock.utils import signature
+
+    if not ssl.create_default_context().cert_store_stats().get("x509_ca"):
+        raise RuntimeError("no trusted root certificates were loaded")
+    for pem in UpdateInfo.PUBLIC_KEYS:
+        signature.public_point(pem)
+
+
 CHECKS: list[Check] = [
     ("Native extension", _check_native_extension),
     ("OpenSSL version", _check_openssl),
@@ -160,6 +173,7 @@ CHECKS: list[Check] = [
     ("Encryption engines agree", _check_engines),
     ("QML", _check_qml),
     ("Images", _check_images),
+    ("Updates", _check_updates),
 ]
 
 
