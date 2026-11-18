@@ -4,11 +4,13 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // Status, progress, and Start / Cancel for one tab. The status line says what is happening, why
-// Start is unavailable, or how the last run went.
+// Start is unavailable, or how the last run went; below it, between runs, the update notice.
 Rectangle {
     id: bar
 
     required property var controller
+    // The app's UpdateController, whose notice shows here while no run is going.
+    property var updates: null
     // Why Start is unavailable, or "" when the tab is ready.
     property string blocker: ""
     // A folder scan as the page shows it: only once it has run for a moment, so checking a few
@@ -70,9 +72,12 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
+                // An empty status line gives its height to the update notice.
+                visible: bar.busy || statusText.text.length > 0
                 spacing: Theme.spaceSm
 
                 Text {
+                    id: statusText
                     Layout.fillWidth: true
                     text: {
                         if (bar.busy) {
@@ -116,6 +121,12 @@ Rectangle {
                 value: bar.controller.progress
                 Accessible.role: Accessible.ProgressBar
                 Accessible.name: "Overall progress"
+            }
+
+            UpdateNotice {
+                Layout.fillWidth: true
+                controller: bar.updates
+                visible: !bar.busy && bar.updates !== null && bar.updates.bannerVisible
             }
         }
 
