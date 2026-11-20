@@ -42,6 +42,7 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
     - [Key Derivation](#key-derivation)
     - [Privacy Guarantees](#privacy-guarantees)
     - [Best Practices](#best-practices)
+  - [Code Signing Policy](#code-signing-policy)
   - [Settings \& Preferences](#settings--preferences)
     - [Appearance](#appearance)
     - [Speed](#speed)
@@ -51,10 +52,12 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
     - [Prerequisites](#prerequisites)
     - [Development Setup](#development-setup)
     - [Full Build - Native Extension + All Installers](#full-build---native-extension--all-installers)
+    - [Signing Releases](#signing-releases)
   - [Troubleshooting](#troubleshooting)
   - [Contributing](#contributing)
   - [Roadmap](#roadmap)
   - [Changelog](#changelog)
+    - [Unreleased](#unreleased)
     - [v3.2.1 - November 2026 *(current)*](#v321---november-2026-current)
     - [v3.2.0 - October 2026](#v320---october-2026)
     - [v3.1.0 - October 2026](#v310---october-2026)
@@ -133,6 +136,8 @@ winget install gfgRoyal.gfgLock
 | [`gfgLock_3.2.1_portable.exe`](https://github.com/ShahFaisalGfG/gfgLock/releases/latest) | ❌ | USB drives and PCs where you can't install; settings and logs stay in a `gfgLock data` folder beside the exe |
 
 The [Releases](https://github.com/ShahFaisalGfG/gfgLock/releases) page also has `gfgLock_3.2.1_portable.7z`: the same portable app unpacked into a folder, which starts faster than the single exe. gfgLock needs Windows 10 version 1809 or later on a 64-bit Intel or AMD PC.
+
+The Windows files are signed as the [Code signing policy](#code-signing-policy) describes, and the installers show the [privacy policy](PRIVACY.md) before they install.
 
 ### Updating
 
@@ -249,7 +254,7 @@ Decrypting restores the name, the contents, and the modification time. Other det
 - ❌ No cloud sync or remote backup
 - ❌ No accounts or registration required
 - ❌ No third-party analytics or tracking
-- ✅ The only connection is the update check: at most once a day, one request to GitHub carrying gfgLock's name and version, never your files, passwords, or settings. Turn it off in **Preferences > Updates**
+- ✅ The only connection is the update check: at most once a day, one request to GitHub carrying gfgLock's name and version, never your files, passwords, or settings. Turn it off in **Preferences > Updates** or during installation; the [privacy policy](PRIVACY.md) has the details
 - ✅ An update installs only when its publisher signature (ECDSA P-256, checked with Windows' own crypto) and every file's SHA-256 checksum match
 
 ### Best Practices
@@ -258,6 +263,19 @@ Decrypting restores the name, the contents, and the modification time. Other det
 - Keep encrypted files in a **secure location** - gfgLock protects content, not storage
 - Enable **logging** for audit trails in compliance-sensitive environments
 - **Back up your passwords** - there is no recovery mechanism by design
+
+---
+
+## Code Signing Policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+Releases are built from this repository by GitHub Actions and signed through SignPath once the project is accepted into the SignPath Foundation's program for open-source projects; until then they are unsigned. Signed files name SignPath Foundation as their publisher, and each release is approved by hand before it is signed.
+
+- Committers and reviewers: [Shah Faisal](https://github.com/ShahFaisalGfG)
+- Approvers: [Shah Faisal](https://github.com/ShahFaisalGfG)
+
+Privacy policy: see [PRIVACY.md](PRIVACY.md). This program connects only to GitHub, for its update check, as that page describes.
 
 ---
 
@@ -334,6 +352,17 @@ This single script runs `scripts\build_native.ps1` (bootstraps vcpkg, installs O
 
 > **First-run note:** vcpkg is downloaded from GitHub as a source archive of the pinned commit, and it then downloads and builds OpenSSL - internet access is required for the first build only.
 
+Every exe and native module the build makes carries gfgLock's name as its product name and the version from `pyproject.toml`.
+
+### Signing Releases
+
+The release workflow signs through SignPath when the repository has the variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, and `SIGNPATH_POLICY_SLUG` and the secret `SIGNPATH_API_TOKEN`; without them it publishes unsigned files. Each release makes two signing requests, and each waits up to two hours for approval in SignPath:
+
+1. `gfgLock.exe` and the Explorer extension `gfglock_shell.dll`, before the installers are built from them.
+2. Both installers and the portable exe.
+
+The SignPath project takes its artifact configurations from `.signpath/artifact-configurations/`: `programs.xml` under the slug `programs` and `packages.xml` under `packages`. Both accept a file only when its product name is gfgLock and its product version is the release's.
+
 ---
 
 ## Troubleshooting
@@ -384,6 +413,9 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 ---
 
 ## Changelog
+
+### Unreleased
+- 🔏 A [privacy policy](PRIVACY.md) describes gfgLock's one connection, its update check; the installers show it and let you turn the check off. Every exe and native module carries gfgLock's name and version, and releases are ready to be signed through SignPath ([Code signing policy](#code-signing-policy))
 
 ### v3.2.1 - November 2026 *(current)*
 - 🔄 **Updates itself:** a daily check finds new versions, which download in the background and install when you close gfgLock, or at once with **Restart now**. Every update is checked against the publisher's signature and SHA-256 checksums before it runs; metered connections wait. Both steps can be turned off in the new **Preferences > Updates** page, and **Check for updates** in the About dialog now checks in place.

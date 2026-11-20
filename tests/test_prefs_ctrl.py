@@ -233,6 +233,13 @@ class TestResetDefaults:
         theme_spy.assert_called_once_with(ThemeDefaults.DEFAULT_THEME)
         assert disk.saves == 1
 
+    def test_keeps_the_note_of_the_installers_choices(self, disk):
+        """Otherwise the next start would apply the installer's choices again and undo the reset."""
+        disk.data["install"] = {"connections": "UpdateChecks=0"}
+        PrefsController().resetDefaults()
+        assert disk.data["install"] == {"connections": "UpdateChecks=0"}
+        assert disk.data["advanced"]["auto_check_updates"] is True
+
 
 class TestLogs:
     def test_clear_logs_reports_success(self, controller, monkeypatch):

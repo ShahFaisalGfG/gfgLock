@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from gfglock.ui.boot_thread import BootThread
 from gfglock.ui.splash_screen import SplashScreen
 from gfglock.utils.helpers import resource_path
+from gfglock.utils.install_choices import apply_install_choices
 from gfglock.utils.logging import write_log
 from gfglock.utils.self_test import run_self_test
 from gfglock.utils.single_instance import LaunchRequest, SingleInstance, hold_app_mutexes
@@ -220,6 +221,8 @@ def main() -> None:
     if instance.try_forward(launch):
         sys.exit(0)
     hold_app_mutexes()  # only a launch that opens a window; one that handed over its files has exited
+    # Before anything reads the settings: the connections the installer was told to turn off.
+    apply_install_choices()
 
     # Qt's automatic quit-on-last-window-closed can misfire the instant the
     # splash (a QWidget) closes while a QML window is the only one left open -

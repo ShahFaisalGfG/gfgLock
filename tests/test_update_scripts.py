@@ -22,6 +22,26 @@ def _load(name: str):
 
 
 manifest_script = _load("make_update_manifest")
+meta_script = _load("read_meta")
+
+
+class TestVersionDetails:
+    def test_every_exe_names_the_app_and_its_version(self, tmp_path):
+        """Code signing requires each exe's product name and version to be the project's."""
+        out = tmp_path / "gfgLock.version.txt"
+        assert meta_script.main(["--version-file", str(out), "--exe", "gfgLock", "--description", "gfgLock"]) == 0
+        text = out.read_text(encoding="utf-8")
+        meta = meta_script.app_meta()
+        for key, value in (("ProductName", meta["AppName"]), ("ProductVersion", meta["Version"]),
+                           ("FileVersion", meta["Version"]), ("OriginalFilename", "gfgLock.exe"),
+                           ("LegalCopyright", meta_script.copyright_line())):
+            assert f"StringStruct({key!r}, {value!r})" in text
+        versioninfo = pytest.importorskip("PyInstaller.utils.win32.versioninfo")
+        assert type(versioninfo.load_version_info_from_text_file(str(out))).__name__ == "VSVersionInfo"
+
+    def test_the_metadata_prints_as_json_without_options(self, capsys):
+        assert meta_script.main([]) == 0
+        assert json.loads(capsys.readouterr().out)["AppName"] == meta_script.app_meta()["AppName"]
 
 
 @pytest.fixture

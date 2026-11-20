@@ -32,7 +32,7 @@ class TestGetDefaultSettings:
     def test_top_level_keys_present(self):
         """All expected top-level setting groups must be present."""
         defaults = settings_mod.get_default_settings()
-        assert set(defaults.keys()) == {"theme", "encryption", "decryption", "advanced"}
+        assert set(defaults.keys()) == {"theme", "encryption", "decryption", "advanced", "install"}
 
     def test_known_default_values(self):
         """A few representative default values must match the documented defaults."""

@@ -37,6 +37,9 @@
 #define IconsDir "..\gfglock\assets\icons"
 #define ScreenshotsDir "..\screenshots"
 #define RepoUrl "https://github.com/ShahFaisalGfG/gfgLock"
+; The installer's connection choice, which the app applies at its next start
+; (gfglock\utils\install_choices.py reads it; HKA is HKLM for all users, HKCU for one).
+#define ChoicesKey "Software\" + MyAppName + "\Install"
 
 [Setup]
 AppId={#AppGuid}
@@ -47,6 +50,16 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
+; The setup exe's version details: the app's name and version, as code signing requires.
+VersionInfoVersion={#MyAppVersion}
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Setup
+VersionInfoCopyright=Copyright (c) 2025-2026 Shah Faisal
+; The privacy policy, shown before installing: the one connection the app makes (its update
+; check), and how to turn it off (the choice below).
+InfoBeforeFile=..\PRIVACY.md
 
 ; One gfgLock folder in the Start menu, without a page to rename it
 DefaultGroupName={#MyAppName}
@@ -89,6 +102,8 @@ english.FileAssociations=File associations:
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: "{cm:FileAssociations}"
+; Clearing it turns update checks off at the app's next start; Preferences turns them back on.
+Name: "updatecheck"; Description: "Check GitHub for gfgLock updates once a day"; GroupDescription: "Connections the app makes on its own (see the privacy policy):"
 
 [Files]
 ; The app bundle from scripts\bundle.ps1. The shell DLL comes from build\shell (each installer
@@ -98,6 +113,7 @@ Source: "{#IconsDir}\gfgLock.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
 ; Documentation and the licence texts of every bundled component
 Source: "..\readme.html"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}\docs"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\PRIVACY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\licenses\*"; DestDir: "{app}\docs\licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ScreenshotsDir}\*"; DestDir: "{app}\docs\screenshots"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -120,6 +136,11 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Registry]
 ; HKA is HKLM for the all-users installer and HKCU for the per-user one, so Software\Classes
 ; registers the entries for all users or for the current user.
+
+; The connection choice: 1 keeps update checks on, 0 turns them off.
+Root: HKA; Subkey: "{#ChoicesKey}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "{#ChoicesKey}"; ValueType: dword; ValueName: "UpdateChecks"; ValueData: 1; Tasks: updatecheck
+Root: HKA; Subkey: "{#ChoicesKey}"; ValueType: dword; ValueName: "UpdateChecks"; ValueData: 0; Tasks: not updatecheck
 
 ; File associations (only with the "associate" task)
 Root: HKA; Subkey: "Software\Classes\.gfglock"; ValueType: string; ValueName: ""; ValueData: "gfgLock.gfglock"; Flags: uninsdeletevalue uninsdeletekeyifempty; Tasks: associate
