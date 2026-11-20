@@ -196,8 +196,11 @@ class PrefsController(QObject):
 
     @Slot()
     def resetDefaults(self) -> None:
-        """Reset all settings to factory defaults and save them."""
+        """Reset all settings to factory defaults and save them (keeping the note of the installer's
+        choices, so a reset isn't undone at the next start)."""
+        install = self._get("install", default={"connections": ""})
         self._settings = get_default_settings()
+        self._settings["install"] = install
         self._persist()
         self.themeChanged.emit(self._get("theme", default=ThemeDefaults.DEFAULT_THEME))
 

@@ -65,14 +65,25 @@ add_custom_command(TARGET gfglock_native POST_BUILD
         "${_OUT_DIR}/$<TARGET_FILE_NAME:gfglock_native>"
 )
 
-# ── Shell extension COM DLL (Windows 11 first-level context menu) ─────────────
+# ── Version resources ─────────────────────────────────────────────────────────
+# Both targets carry gfgLock's name and version (code signing requires them); their resources read
+# these from a generated header, with the module's own file name (pybind11 sets its suffix).
 
-# The version resource reads these from a generated header.
+get_target_property(_NATIVE_SUFFIX gfglock_native SUFFIX)
+if(NOT _NATIVE_SUFFIX)
+    set(_NATIVE_SUFFIX ".pyd")
+endif()
 file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/gfglock_version.h" CONTENT
 "#pragma once
 #define GFGLOCK_VERSION_BINARY ${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0
 #define GFGLOCK_VERSION_TEXT \"${PROJECT_VERSION}\"
+#define GFGLOCK_NATIVE_FILE \"gfglock_native${_NATIVE_SUFFIX}\"
 ")
+
+target_sources(gfglock_native PRIVATE src/gfglock_native.rc)
+target_include_directories(gfglock_native PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+# ── Shell extension COM DLL (Windows 11 first-level context menu) ─────────────
 
 add_library(gfglock_shell SHARED src/shell_extension.cpp src/gfglock_shell.def src/gfglock_shell.rc)
 

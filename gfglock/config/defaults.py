@@ -159,4 +159,7 @@ def get_default_settings() -> Dict[str, Any]:
             "auto_check_updates": UpdateDefaults.AUTO_CHECK,
             "auto_install_updates": UpdateDefaults.AUTO_INSTALL,
         },
+        # The installer's connection choices as this user's settings last applied them
+        # ("UpdateChecks=1"); see utils/install_choices.py.
+        "install": {"connections": ""},
     }

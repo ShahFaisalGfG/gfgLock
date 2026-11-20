@@ -9,6 +9,7 @@ on:
 # The release is created with RELEASE_PAT (see the last step), so the workflow token only reads.
 permissions:
   contents: read
+  actions: read  # SignPath reads this run and downloads the files to sign
 
 jobs:
   build:
@@ -109,6 +110,39 @@ jobs:
           . .\scripts\bundle.ps1
           $null = New-AppBundle -Name $env:APP_NAME -Mode onedir -DistPath "dist"
 
+      # Code signing through SignPath (readme > Code Signing Policy) once the repository has the
+      # SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, and SIGNPATH_POLICY_SLUG variables and the
+      # SIGNPATH_API_TOKEN secret; without them the release is unsigned. gfgLock.exe and the Explorer
+      # extension are signed first, so the installers and the portable .7z ship signed copies.
+      - name: Upload the programs for signing
+        id: unsigned-programs
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-programs
+          path: |
+            dist/${{ steps.meta.outputs.APP_NAME }}/${{ steps.meta.outputs.APP_NAME }}.exe
+            build/shell/gfglock_shell.dll
+          if-no-files-found: error
+
+      # Waits up to two hours for the release's approval in SignPath, then puts the signed files in
+      # place of the unsigned ones (the artifact keeps their paths from the repository root).
+      - name: Sign the programs
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: programs
+          github-artifact-id: ${{ steps.unsigned-programs.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: .
+          parameters: |
+            version: ${{ toJSON(steps.meta.outputs.VER) }}
+
       # Pinned, so every release compiles with the same Inno Setup. "upgrade" with
       # --allow-downgrade installs exactly this version whether or not the image has another.
       - name: Install Inno Setup 6
@@ -133,6 +167,35 @@ jobs:
         run: |
           . .\scripts\bundle.ps1
           $null = New-AppBundle -Name "${env:APP_NAME}_${env:VER}_portable" -Mode onefile -DistPath "build"
+
+      - name: Upload the installers and portable exe for signing
+        id: unsigned-packages
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-packages
+          path: |
+            build/installer/${{ steps.meta.outputs.APP_NAME }}_${{ steps.meta.outputs.VER }}_system_installer.exe
+            build/installer/${{ steps.meta.outputs.APP_NAME }}_${{ steps.meta.outputs.VER }}_user_installer.exe
+            build/${{ steps.meta.outputs.APP_NAME }}_${{ steps.meta.outputs.VER }}_portable.exe
+          if-no-files-found: error
+
+      # Signed before the update manifest lists their sizes and hashes.
+      - name: Sign the installers and portable exe
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: packages
+          github-artifact-id: ${{ steps.unsigned-packages.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: build
+          parameters: |
+            version: ${{ toJSON(steps.meta.outputs.VER) }}
 
       # The portable .7z is the onedir bundle (no extraction to a temp folder at each start) with
       # the marker that keeps its settings and logs beside it, and the licence texts.
@@ -178,9 +241,14 @@ jobs:
           VER: ${{ steps.meta.outputs.VER }}
         run: |
           $base = "${env:APP_NAME}_${env:VER}"
+          # Every release page links the code signing policy, as SignPath's terms ask.
+          $notes = "build\release_notes.md"
+          $policy = "https://github.com/$env:GITHUB_REPOSITORY#code-signing-policy"
+          $text = (Get-Content -Raw "release_notes/release_notes_v$env:VER.md").TrimEnd()
+          Set-Content -Path $notes -Encoding utf8NoBOM -Value "$text`n`n---`n`nCode signing policy: $policy"
           gh release create $env:TAG `
             --title "$env:APP_NAME v$env:VER" `
-            --notes-file "release_notes/release_notes_v$env:VER.md" `
+            --notes-file $notes `
             "build\installer\${base}_system_installer.exe" `
             "build\installer\${base}_user_installer.exe" `
             "build\${base}_portable.exe" `

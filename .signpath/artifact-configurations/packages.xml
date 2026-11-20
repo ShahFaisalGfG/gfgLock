@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Both installers and the portable exe (the release workflow's second signing request; SignPath
+     artifact configuration slug "packages"). Each must carry gfgLock's name as its product name and
+     the release's version. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file-set product-name="gfgLock" product-version="${version}">
+      <include path="installer/gfgLock_${version}_system_installer.exe" />
+      <include path="installer/gfgLock_${version}_user_installer.exe" />
+      <include path="gfgLock_${version}_portable.exe" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

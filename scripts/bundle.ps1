@@ -16,6 +16,26 @@ Settings and logs for this copy of gfgLock stay in the "gfgLock data" folder nex
 Delete this file to keep them in %APPDATA%\gfgLock instead.
 "@
 
+function New-VersionFile {
+    <#
+    .SYNOPSIS
+        Writes an exe's version details for PyInstaller and returns the file's path.
+    .DESCRIPTION
+        Every exe the build makes carries the app's name as its product name and the version from
+        pyproject.toml (read_meta.py writes them), which code signing requires; the description
+        names the exe in Task Manager and in its Properties.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$Exe,
+        [Parameter(Mandatory)] [string]$Description
+    )
+    $root = Split-Path -Parent $PSScriptRoot
+    $path = "$root\build\pyinstaller\$Exe.version.txt"
+    python (Join-Path $PSScriptRoot "read_meta.py") --version-file $path --exe $Exe --description $Description
+    if ($LASTEXITCODE -ne 0) { Fail "Could not write the version details of $Exe.exe (exit $LASTEXITCODE)" }
+    return $path
+}
+
 function Get-PyInstallerArgs {
     <#
     .SYNOPSIS
@@ -32,6 +52,7 @@ function Get-PyInstallerArgs {
         "--windowed",
         "--$Mode",
         "--icon",      "$root\gfglock\assets\icons\gfgLock.ico",
+        "--version-file", (New-VersionFile -Exe $Name -Description (Get-AppMeta).AppName),
         # gfglock_native.pyd lives in gfglock\core and is imported by name, so PyInstaller
         # needs the search path and an explicit hidden import to bundle it with its DLLs.
         "--paths",     "$root\gfglock\core",

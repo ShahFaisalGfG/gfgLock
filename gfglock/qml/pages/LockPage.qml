@@ -379,6 +379,7 @@ Item {
             id: runBar
             Layout.fillWidth: true
             controller: page.controller
+            updates: updateController
             blocker: page.blocker
             scanning: page._scanShown
             startText: page.encrypting ? "Encrypt" : "Decrypt"
