@@ -390,6 +390,10 @@
 </ul>
 </li>
 <li><a href="#quick-start">Quick Start</a></li>
+<li><a href="#command-line">Command Line</a><ul>
+<li><a href="#for-ai-coding-agents">For AI Coding Agents</a></li>
+</ul>
+</li>
 <li><a href="#screenshots">Screenshots</a></li>
 <li><a href="#encryption-algorithms">Encryption Algorithms</a><ul>
 <li><a href="#quick-decision-guide">Quick Decision Guide</a></li>
@@ -403,10 +407,11 @@
 </li>
 <li><a href="#code-signing-policy">Code Signing Policy</a></li>
 <li><a href="#settings--preferences">Settings &amp; Preferences</a><ul>
-<li><a href="#appearance">Appearance</a></li>
+<li><a href="#general">General</a></li>
 <li><a href="#speed">Speed</a></li>
-<li><a href="#notifications--logs">Notifications &amp; Logs</a></li>
+<li><a href="#logs">Logs</a></li>
 <li><a href="#updates">Updates</a></li>
+<li><a href="#advanced">Advanced</a></li>
 </ul>
 </li>
 <li><a href="#building-from-source">Building from Source</a><ul>
@@ -467,15 +472,20 @@
 <li><strong>Strong keys</strong> - Argon2id turns your password into a key once per run, and every file gets its own key from it</li>
 <li><strong>Native C++ engine</strong> - OpenSSL-backed AES-NI hardware acceleration with transparent Python fallback</li>
 <li><strong>Batch processing</strong> - encrypt or decrypt entire folders in one operation using multi-threading</li>
-<li><strong>A result for every file</strong> - each file shows its own progress, then <em>Done</em> with the name it was saved as, <em>Skipped</em>, or <em>Failed</em> with the reason (for example a wrong password). Failed files stay in the list, so you can fix the problem and run them again</li>
-<li><strong>Guided form</strong> - the Encrypt and Decrypt tabs say what is still missing before you can start, show password strength and mismatches, and explain what will happen to the files before anything changes</li>
+<li><strong>A result for every file</strong> - each file shows its own progress, then <em>Done</em> with the name it was saved as, <em>Skipped</em>, or <em>Failed</em> with the reason in plain words and what to do (a wrong password, a file open in another program, a full drive). Failed files stay in the list, so you can fix the problem and run them again</li>
+<li><strong>Guided form</strong> - the Encrypt and Decrypt tabs say what is still missing before you can start, show password strength and mismatches, and say what will happen to the files before anything changes</li>
+<li><strong>Replace, keep, or save elsewhere</strong> - by default each file is replaced by its encrypted (or decrypted) copy; each tab's <strong>Options</strong> can keep the originals or save the results to a folder you choose</li>
+<li><strong>Check without changing anything</strong> - <strong>Check</strong> on the Decrypt tab tests the password and that the files are intact, writing nothing</li>
+<li><strong>Found before the work starts</strong> - a file open in another program, a read-only file, or a drive without enough free space is reported before any file is changed, and a run stops with one message if a drive fills up</li>
+<li><strong>Big batches</strong> - time remaining during long runs, failed files moved to the top, <strong>Show failed only</strong>, <strong>Select failed</strong>, and <strong>Copy results</strong></li>
+<li><strong>Command line</strong> - the <code>gfglock</code> command encrypts, decrypts, and checks from any terminal or script, with JSON output for automation and an <a href="#for-ai-coding-agents">Agent Skill</a> for AI coding agents</li>
 <li><strong>Fast on big files</strong> - each file is read, encrypted, and written at the same time, so one large file encrypts about as fast as the disk can copy it</li>
 <li><strong>File Explorer context menu</strong> - right-click any file → <em>Encrypt with gfgLock</em> / <em>Decrypt with gfgLock</em> (on Windows 11 under <strong>Show more options</strong>); while gfgLock is open, more files you send this way join the same window</li>
 <li><strong>Drag &amp; drop</strong> - drop files or folders anywhere on the window; encrypted files go to the Decrypt tab, other files to the Encrypt tab, and folders to the tab in view</li>
 <li><strong>Keeps what matters</strong> - decrypted files get their original name and modification time back, and downloaded files stay marked as downloaded</li>
 <li><strong>Keyboard friendly</strong> - every control can be reached with Tab and shows a focus outline, and the main actions have shortcuts</li>
 <li><strong>Detailed logging</strong> - full activity or critical-only log levels saved to <code>%APPDATA%\gfgLock\logs\</code> (the portable exe: <code>gfgLock data\logs\</code> beside it)</li>
-<li><strong>Live theme switching</strong> - System / Light / Dark with instant preview</li>
+<li><strong>Live theme switching</strong> - System / Light / Dark, applied as you pick it</li>
 <li><strong>Zero dependencies at runtime</strong> - fully self-contained executable</li>
 </ul>
 <hr />
@@ -521,13 +531,14 @@
 <ol>
 <li>On the <strong>Encrypt</strong> tab, add files or folders: drag them onto the window, use <strong>Add files</strong> / <strong>Add folder</strong>, or right-click them in File Explorer and choose <em>Encrypt with gfgLock</em></li>
 <li><strong>Type a password twice</strong> - 12+ characters strongly recommended; the strength meter helps</li>
-<li><strong>Optional:</strong> turn on <strong>Hide file names</strong>, or pick another encryption method (AES-256 GCM is the default; see <a href="#encryption-algorithms">Encryption Algorithms</a> if unsure). The tab remembers both choices for next time</li>
-<li>Press <strong>Encrypt</strong> - each file shows its progress, then <em>Done</em> and the name it was saved as</li>
+<li><strong>Optional:</strong> press <strong>Change</strong> on the <strong>Options</strong> card to hide file names, pick another encryption method (AES-256 GCM is the default; see <a href="#encryption-algorithms">Encryption Algorithms</a> if unsure), keep the originals, or save the encrypted files to another folder. The closed card shows the choices in one line, and the tab remembers them for next time</li>
+<li>Check the line at the bottom: it says what Encrypt will do to the files. Press <strong>Encrypt</strong> - each file shows its progress, then <em>Done</em> and the name it was saved as</li>
 </ol>
 <p><strong>To open them again</strong></p>
 <ol>
 <li>On the <strong>Decrypt</strong> tab, add the encrypted files (or right-click them and choose <em>Decrypt with gfgLock</em>)</li>
-<li>Enter the password and press <strong>Decrypt</strong> - each file gets its original name back. With a wrong password the files are marked <em>Failed</em> and nothing changes; correct the password and press <strong>Decrypt</strong> again</li>
+<li>Enter the password and press <strong>Decrypt</strong> - each file gets its original name back. With a wrong password the files are marked <em>Failed</em> and nothing changes; type the password again and press <strong>Decrypt</strong>. <strong>Check</strong> tests the password and the files without changing anything</li>
+<li>Double-click a decrypted file, or press <strong>Open file</strong> at the bottom, to open it</li>
 </ol>
 <table>
 <thead>
@@ -562,16 +573,46 @@
 <td>Select all, select a file, copy the file names, remove from the list</td>
 </tr>
 <tr>
-<td><strong>Shift+F10</strong> or the <strong>Menu</strong> key in the list</td>
-<td>Show in folder, copy paths, and the other file actions</td>
+<td><strong>Enter</strong> on a finished file</td>
+<td>Open it (Decrypt tab) or show it in its folder (Encrypt tab)</td>
 </tr>
 <tr>
-<td><strong>Ctrl+S</strong> / <strong>Esc</strong> in Preferences</td>
-<td>Save / close without saving</td>
+<td><strong>Shift+F10</strong> or the <strong>Menu</strong> key in the list</td>
+<td>Open, show in folder, copy paths or results, and the other file actions</td>
+</tr>
+<tr>
+<td><strong>Esc</strong> in Preferences</td>
+<td>Close (changes are saved as you make them)</td>
 </tr>
 </tbody>
 </table>
-<p>Encrypted files are saved in the same folder as the original under its full name plus the algorithm's extension (<code>report.docx</code> → <code>report.docx.gfglock</code>), and the original is removed only after the encrypted copy is completely written to disk, and only if the original wasn't changed meanwhile. To decrypt, drop an encrypted file onto gfgLock - the method is read from the file itself, no configuration needed. Neither step ever overwrites an existing file: if the name is taken, the new file gets a suffix such as <code>report (2).docx</code>. Dropping a folder adds every file inside it, including subfolders; even folders with tens of thousands of files load in about a second. Encrypting leaves Windows, program and app folders (including AppData) and files marked <em>System</em> alone, and says how many it left out.</p>
+<p>The About dialog (<strong>F1</strong>) lists every shortcut.</p>
+<p>Encrypted files are saved in the same folder as the original (or the folder chosen in <strong>Options</strong>) under its full name plus the algorithm's extension (<code>report.docx</code> → <code>report.docx.gfglock</code>), and the original is removed only after the encrypted copy is completely written to disk, and only if the original wasn't changed meanwhile. With <strong>Keep the originals</strong> on, the original stays. To decrypt, drop an encrypted file onto gfgLock - the method is read from the file itself, no configuration needed. Neither step ever overwrites an existing file: if the name is taken, the new file gets a suffix such as <code>report (2).docx</code>. Dropping a folder adds every file inside it, including subfolders; even folders with tens of thousands of files load in about a second. Encrypting leaves Windows, program and app folders (including AppData) and files marked <em>System</em> alone, and says how many it left out.</p>
+<hr />
+<h2 id="command-line">Command Line</h2>
+<p><code>gfglock</code> does what the window does from any terminal, script, or AI coding agent: the same engine, the same safety rules, and the same preferences. The installers can add it to PATH (the unchecked task <em>Add the gfglock command to PATH</em>); otherwise it is <code>bin\gfglock.exe</code> in gfgLock's install folder or in the folder unpacked from the portable <code>.7z</code>. From source: <code>python -m gfglock.cli</code>.</p>
+<pre><code class="language-powershell">gfglock encrypt "D:\Taxes" --dry-run
+gfglock encrypt "D:\Taxes" --password-env GFGLOCK_PASSWORD
+gfglock encrypt report.docx --password-file "C:\Users\me\key.txt" --keep-originals
+gfglock verify "D:\Taxes" --password-env GFGLOCK_PASSWORD
+gfglock decrypt "D:\Taxes" --password-env GFGLOCK_PASSWORD --output-dir "D:\Opened"
+gfglock info "D:\Taxes\2025.pdf.gfglock"
+gfglock settings set encryption.cpu_threads 4
+</code></pre>
+<ul>
+<li><strong>Passwords never go on the command line</strong>, where other programs and logs could see them. Use <code>--password-env NAME</code>, <code>--password-file FILE</code>, or <code>--password-stdin</code> (the first line piped in, as UTF-8). Without one, <code>gfglock</code> asks on a terminal and refuses to run without one.</li>
+<li><strong>The same rules as the window</strong>: a file is replaced only after its new copy is written and checked, nothing is overwritten, and system and app folders are left out. <code>--dry-run</code> lists what would change, <code>--keep-originals</code> keeps the originals, and <code>--output-dir</code> saves the results elsewhere. Without them, <code>gfglock</code> does what the tab was last set to.</li>
+<li><code>verify</code> checks the password and the files without writing anything; <code>info</code> reads a file's header without a password.</li>
+<li><code>--json</code> prints JSON Lines (<code>start</code>, <code>progress</code>, <code>file</code>, <code>skipped</code>, <code>error</code>, <code>warning</code>, and a closing <code>done</code>) for scripts. The exit status is <code>0</code> when every file was done, <code>1</code> when some failed, <code>2</code> when the input, password, folders, or free space can't be used, and <code>130</code> after Ctrl+C (files in progress stay unchanged).</li>
+<li><code>gfglock --help</code> and <code>gfglock COMMAND --help</code> describe every option; <a href="https://github.com/ShahFaisalGfG/gfgLock/tree/main/skills/gfglock/references">skills/gfglock/references</a> has the full reference and the JSON events.</li>
+</ul>
+<h3 id="for-ai-coding-agents">For AI Coding Agents</h3>
+<p>The <a href="https://github.com/ShahFaisalGfG/gfgLock/blob/main/skills/gfglock/SKILL.md">gfglock Agent Skill</a> teaches coding agents (Claude Code, Codex, Cursor, Copilot, Gemini CLI, and others) to use <code>gfglock</code> safely: where to find it, how to pass the password, how to read <code>--json</code>, and to ask before replacing files.</p>
+<pre><code class="language-powershell">gfglock skill install
+gfglock skill install --agent cursor
+gfglock skill show
+</code></pre>
+<p><code>gfglock skill install</code> copies it into <code>~/.agents/skills</code> and <code>~/.claude/skills</code>; <code>--agent NAME</code> or <code>--dir FOLDER</code> choose other folders, and <code>gfglock skill show</code> prints it for agents that can't load skills. It can also be added straight from GitHub with <code>npx skills add ShahFaisalGfG/gfgLock</code>.</p>
 <hr />
 <h2 id="screenshots">Screenshots</h2>
 <details>
@@ -708,6 +749,7 @@ HKDF-SHA256
 <li>Keep encrypted files in a <strong>secure location</strong> - gfgLock protects content, not storage</li>
 <li>Enable <strong>logging</strong> for audit trails in compliance-sensitive environments</li>
 <li><strong>Back up your passwords</strong> - there is no recovery mechanism by design</li>
+<li><strong>Know what a replaced original leaves behind</strong> - gfgLock deletes the original the way Windows does. On a hard drive (not an SSD), a deleted file can sometimes be recovered with recovery tools until its space is reused. Encrypt files before they hold secrets on a shared hard drive, or keep them on an encrypted drive (BitLocker)</li>
 </ul>
 <hr />
 <h2 id="code-signing-policy">Code Signing Policy</h2>
@@ -720,8 +762,9 @@ HKDF-SHA256
 <p>Privacy policy: see <a href="PRIVACY.md">PRIVACY.md</a>. This program connects only to GitHub, for its update check, as that page describes.</p>
 <hr />
 <h2 id="settings--preferences">Settings &amp; Preferences</h2>
-<p>Open <strong>Preferences</strong> from the title bar (<strong>Ctrl+,</strong>). Changes apply when you press <strong>Save</strong>; the theme previews as you pick it, and Cancel or <strong>Esc</strong> puts the saved one back. <strong>Reset to defaults</strong> asks first, then saves the defaults at once. The encryption method and <strong>Hide file names</strong> live on the Encrypt tab, which remembers them.</p>
-<h3 id="appearance">Appearance</h3>
+<p>Open <strong>Preferences</strong> from the title bar (<strong>Ctrl+,</strong>). Each change is saved as you make it, and <strong>Close</strong> or <strong>Esc</strong> closes the window. <strong>Reset to defaults</strong> asks first, then saves the defaults at once. The <code>gfglock settings</code> command reads and changes the same preferences.</p>
+<p>Each tab keeps its own choices on its <strong>Options</strong> card and remembers them: the encryption method and <strong>Hide file names</strong> (Encrypt), <strong>Keep the originals</strong> (or keep the encrypted files, on Decrypt), and <strong>Save to</strong> (next to each file, or a folder you choose).</p>
+<h3 id="general">General</h3>
 <table>
 <thead>
 <tr>
@@ -733,6 +776,10 @@ HKDF-SHA256
 <tr>
 <td><strong>App theme</strong></td>
 <td>System (follows your Windows light or dark mode), Light, or Dark</td>
+</tr>
+<tr>
+<td><strong>Notify when finished</strong></td>
+<td>Show a Windows notification when a job ends while gfgLock is in the background, or after a job longer than 10 seconds</td>
 </tr>
 </tbody>
 </table>
@@ -753,17 +800,9 @@ HKDF-SHA256
 <td><strong>Keep the PC responsive</strong></td>
 <td>Leave one processor thread free for Windows (on by default; turn off to use every thread)</td>
 </tr>
-<tr>
-<td><strong>Read size</strong></td>
-<td>How much of a file is read at once, set separately for encrypting and decrypting. The <strong>Default (4 MB)</strong> suits most PCs; 1 MB to 64 MB can be picked by hand. Each file being worked on holds about eight times the size in memory, and gfgLock picks a smaller size when free memory is short</td>
-</tr>
-<tr>
-<td><strong>Optimize for this PC</strong></td>
-<td>Times a test file in the temp folder with every read size, then times each number of files at a time (about a minute, with a progress bar), and saves the fastest of each for encrypting and for decrypting. A value replaces the default only when it is at least 5% faster. It can't run while a job is running</td>
-</tr>
 </tbody>
 </table>
-<h3 id="notifications--logs">Notifications &amp; Logs</h3>
+<h3 id="logs">Logs</h3>
 <table>
 <thead>
 <tr>
@@ -772,10 +811,6 @@ HKDF-SHA256
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><strong>Notify when finished</strong></td>
-<td>Show a Windows notification when a job ends while gfgLock is in the background, or after a job longer than 10 seconds</td>
-</tr>
 <tr>
 <td><strong>Keep logs</strong> / <strong>What to log</strong></td>
 <td>Write log files with errors only, or every file processed. Logs list file names, never passwords; with <strong>Hide file names</strong> on they don't record the original names of encrypted files. Each log keeps up to 5 MB plus one older copy</td>
@@ -805,6 +840,25 @@ HKDF-SHA256
 </tr>
 </tbody>
 </table>
+<h3 id="advanced">Advanced</h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Read size</strong></td>
+<td>How much of a file is read at once, set separately for encrypting and decrypting. The <strong>Default (4 MB)</strong> suits most PCs; 1 MB to 64 MB can be picked by hand. Each file being worked on holds about eight times the size in memory, and gfgLock picks a smaller size when free memory is short</td>
+</tr>
+<tr>
+<td><strong>Optimize for this PC</strong></td>
+<td>Times a test file in the temp folder with every read size, then times each number of files at a time (about a minute, with a progress bar), and saves the fastest of each for encrypting and for decrypting. A value replaces the default only when it is at least 5% faster. It can't run while a job is running</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2 id="building-from-source">Building from Source</h2>
 <h3 id="prerequisites">Prerequisites</h3>
@@ -828,11 +882,16 @@ pip install -r requirements.txt
 
 # 4. Run directly (no native build required)
 python -m gfglock
+
+# The command line, and the tests (offscreen, so no window opens)
+python -m gfglock.cli --help
+$env:QT_QPA_PLATFORM = "offscreen"; python -m pytest
 </code></pre>
+<p><code>python scripts\render_screenshots.py --out screenshots --size 1000x720</code> renders the window in each state offscreen (add <code>--theme dark</code>), which is how the screenshots here are made.</p>
 <h3 id="full-build---native-extension--all-installers">Full Build - Native Extension + All Installers</h3>
 <pre><code class="language-powershell">.\scripts\build.ps1
 </code></pre>
-<p>This single script runs <code>scripts\build_native.ps1</code> (bootstraps vcpkg, installs OpenSSL through it, and builds the CMake project), then PyInstaller bundling, Inno Setup compilation, and the portable exe. Each build runs the app's <code>--self-test</code> before it counts as done. The installers land in <code>build\installer\</code> and the portable exe in <code>build\</code>. See <a href="dev_setup.md">dev_setup.md</a> for the individual scripts (<code>build_installer.ps1 -Kind User|System</code>, <code>build_portable.ps1</code>).</p>
+<p>This single script runs <code>scripts\build_native.ps1</code> (bootstraps vcpkg, installs OpenSSL through it, and builds the CMake project), then PyInstaller bundling (the app, and the command line <code>bin\gfglock.exe</code> beside it), Inno Setup compilation, and the portable exe. Each build runs the app's <code>--self-test</code>, and <code>gfglock --version</code>, before it counts as done. The installers land in <code>build\installer\</code> and the portable exe in <code>build\</code>. See <a href="dev_setup.md">dev_setup.md</a> for the individual scripts (<code>build_installer.ps1 -Kind User|System</code>, <code>build_portable.ps1</code>).</p>
 <blockquote>
 <p><strong>First-run note:</strong> vcpkg is downloaded from GitHub as a source archive of the pinned commit, and it then downloads and builds OpenSSL - internet access is required for the first build only.</p>
 </blockquote>
@@ -840,7 +899,7 @@ python -m gfglock
 <h3 id="signing-releases">Signing Releases</h3>
 <p>The release workflow signs through SignPath when the repository has the variables <code>SIGNPATH_ORGANIZATION_ID</code>, <code>SIGNPATH_PROJECT_SLUG</code>, and <code>SIGNPATH_POLICY_SLUG</code> and the secret <code>SIGNPATH_API_TOKEN</code>; without them it publishes unsigned files. Each release makes two signing requests, and each waits up to two hours for approval in SignPath:</p>
 <ol>
-<li><code>gfgLock.exe</code> and the Explorer extension <code>gfglock_shell.dll</code>, before the installers are built from them.</li>
+<li><code>gfgLock.exe</code>, the command line <code>bin\gfglock.exe</code>, and the Explorer extension <code>gfglock_shell.dll</code>, before the installers are built from them.</li>
 <li>Both installers and the portable exe.</li>
 </ol>
 <p>The SignPath project takes its artifact configurations from <code>.signpath/artifact-configurations/</code>: <code>programs.xml</code> under the slug <code>programs</code> and <code>packages.xml</code> under <code>packages</code>. Both accept a file only when its product name is gfgLock and its product version is the release's.</p>
@@ -860,7 +919,7 @@ python -m gfglock
 </tr>
 <tr>
 <td>A file is marked <em>Failed</em></td>
-<td>Its row says why. "Wrong password or the file was modified" means the password is wrong or the file was damaged; correct the password and press <strong>Decrypt</strong> again. "Made by a newer gfgLock version" means the file needs a newer gfgLock. Nothing is changed when a file fails</td>
+<td>Its row says why and what to do. "Wrong password, or the file is damaged" means the password is wrong or the file was damaged; type the password again and press <strong>Decrypt</strong>. "Made by a newer gfgLock" means the file needs a newer gfgLock (update it from About). "Open in another program" means a program such as Word still has the file open; close it and try again. Nothing is changed when a file fails. In a long list, <strong>Show failed only</strong> in the list menu (<strong>⋯</strong>) shows just those files</td>
 </tr>
 <tr>
 <td>A <code>.gfglck</code> file was kept after decrypting</td>
@@ -884,7 +943,11 @@ python -m gfglock
 </tr>
 <tr>
 <td>Logs not created</td>
-<td>Turn on <strong>Keep logs</strong> in <strong>Preferences → Notifications &amp; logs</strong>; check write permissions on <code>%APPDATA%\gfgLock\logs\</code> (portable exe: <code>gfgLock data\logs\</code> beside it)</td>
+<td>Turn on <strong>Keep logs</strong> in <strong>Preferences → Logs</strong>; check write permissions on <code>%APPDATA%\gfgLock\logs\</code> (portable exe: <code>gfgLock data\logs\</code> beside it)</td>
+</tr>
+<tr>
+<td><code>gfglock</code> isn't found in a terminal</td>
+<td>Install again with <em>Add the gfglock command to PATH</em> ticked and open a new terminal, or run <code>bin\gfglock.exe</code> from gfgLock's folder</td>
 </tr>
 </tbody>
 </table>
@@ -938,6 +1001,17 @@ python -m gfglock
 <h3 id="unreleased">Unreleased</h3>
 <ul>
 <li>🔏 A <a href="PRIVACY.md">privacy policy</a> describes gfgLock's one connection, its update check; the installers show it and let you turn the check off. Every exe and native module carries gfgLock's name and version, and releases are ready to be signed through SignPath (<a href="#code-signing-policy">Code signing policy</a>)</li>
+<li>⌨️ <strong>Command line:</strong> <code>gfglock encrypt</code>, <code>decrypt</code>, <code>verify</code>, <code>info</code>, and <code>settings</code>, with passwords from an environment variable, a file, or stdin (never the command line), JSON Lines output, and clear exit codes. The installers can add it to PATH, and its <a href="#for-ai-coding-agents">Agent Skill</a> teaches AI coding agents to use it</li>
+<li>🗂️ <strong>Keep the originals, or save to another folder:</strong> each tab's Options can keep the files that were read, or save the results to a folder you choose. Replacing them stays the default</li>
+<li>✅ <strong>Check:</strong> the Decrypt tab tests the password and that the files are intact, without writing anything</li>
+<li>💬 <strong>Plain reasons:</strong> every failure says what happened and what to do ("Wrong password, or the file is damaged", "The file is open in another program. Close it and try again", "The drive is full. Free up 1.2 GB and try again"). A wrong password says so in red, without timings; mixed failures are counted by reason</li>
+<li>🛑 <strong>Found before the work:</strong> a file open in another program, or a drive without enough free space, is reported before anything changes, and a run stops with one message if a drive fills up</li>
+<li>📋 <strong>Big batches:</strong> time remaining, failed files first, <strong>Show failed only</strong>, <strong>Select failed</strong>, and <strong>Copy results</strong>; <strong>Open</strong> a decrypted file from its row, by double-click or Enter, or from <strong>Open file</strong> at the bottom; <strong>Open folder</strong> names its folder, or lists each folder a run wrote to</li>
+<li>🧭 <strong>Tidier tabs:</strong> the options fold into one line, and what Encrypt or Decrypt will do is said at the bottom, so everything fits at small window sizes. The empty list mentions File Explorer's right-click menu</li>
+<li>⚙️ <strong>Preferences:</strong> changes are saved as you make them, with <strong>Close</strong>; Appearance and Notifications form a General page, and Read size sits under Advanced beside <strong>Optimize for this PC</strong>. The Updates page says what happens when automatic checks are off</li>
+<li>♿ <strong>Screen readers and keyboard:</strong> run results and notices are announced, moving through the list reads each file, Preferences' sections are read as tabs, the show-password button is out of the Tab order, and the window starts with focus on Add files (or the password)</li>
+<li>🔄 <strong>Update messages</strong> say in plain words what went wrong ("Couldn't check for updates. Check your internet connection and try again."), with the details in the log</li>
+<li>ℹ️ <strong>About</strong> has a table of every shortcut and links to the privacy policy, the licences, and reporting a problem; a start-up failure says what to do next</li>
 </ul>
 <h3 id="v321---november-2026-current">v3.2.1 - November 2026 <em>(current)</em></h3>
 <ul>

@@ -8,8 +8,9 @@ import QtQuick.Layouts
 // support, one shared context menu, and an empty-state prompt. Drops are handled by the window,
 // which sends each file to the tab it belongs on.
 //
-// Keys: Up/Down move, Shift+Up/Down extend, Space toggles, Ctrl+A selects all, Ctrl+C copies the
-// names, Delete removes, Menu or Shift+F10 opens the context menu for the current row.
+// Keys: Up/Down move, Shift+Up/Down extend, Space toggles, Enter opens a finished file, Ctrl+A
+// selects all, Ctrl+C copies the names, Delete removes, Menu or Shift+F10 opens the context menu
+// for the current row. Screen readers hear each row the keyboard moves to.
 FocusScope {
     id: root
 
@@ -22,6 +23,9 @@ FocusScope {
     property string emptyIcon: "lock"
     property string addFilesTip: "Choose files (Ctrl+O)"
     property string addFolderTip: "Add every file in a folder and its subfolders (Ctrl+Shift+O)"
+    // True when a finished row's result is a file to open (Decrypt); on the Encrypt tab, Enter and
+    // double-click show the encrypted file in its folder instead.
+    property bool opensFiles: true
     // What the empty list explains, one step per line, for this tab.
     property var firstRunSteps: []
 
@@ -30,13 +34,17 @@ FocusScope {
     signal stopScanRequested()
     signal clearRequested()
     signal showInFolderRequested(int row)
+    signal openRequested(int row)
     signal copyNamesRequested()
     signal copyPathsRequested()
+    signal copyResultsRequested()
     // The empty list got its first files. `focused` is true when keyboard focus is on the list or
     // the scan banner's Stop button, which stay in view; the empty state's buttons hide.
     signal filled(bool focused)
 
     property int _anchor: -1
+
+    function focusAddFiles() { addFilesButton.forceActiveFocus() }
 
     function _click(index, modifiers) {
         if (modifiers & Qt.ShiftModifier) {
@@ -53,6 +61,10 @@ FocusScope {
         listView.forceActiveFocus()
     }
 
+    function _isFinished(index) {
+        return root.fileModel.outputAt(index).length > 0
+    }
+
     // Opens the row menu at the mouse pointer, or below the row when opened from the keyboard.
     function _openMenu(index, fromKeyboard) {
         if (index < 0) return
@@ -60,8 +72,15 @@ FocusScope {
         if (!item || !item.selected)
             root._click(index, Qt.NoModifier)
         contextMenu.row = index
+        contextMenu.finished = root._isFinished(index)
         if (fromKeyboard && item) contextMenu.popup(item, Theme.spaceLg, item.height)
         else contextMenu.popup()
+    }
+
+    // Says the row the keyboard moved to, as a screen reader would read it.
+    function _announce(index) {
+        var item = listView.itemAtIndex(index) as FileItem
+        if (item) item.Accessible.announce(item.name + ", " + item.statusText + (item.message ? ", " + item.message : ""))
     }
 
     // After rows are removed the anchor may point at another file, so a Shift+click range starts
@@ -75,6 +94,9 @@ FocusScope {
             else if (root._lastCount === 0 && count > 0) root.filled(listView.activeFocus || stopScanButton.activeFocus)
             root._lastCount = count
         }
+        // Showing failed files only, or moving them first, puts other files at the anchor's row.
+        function onFailedOnlyChanged() { root._anchor = -1 }
+        function onModelReset() { root._anchor = -1 }
     }
 
     clip: true
@@ -83,7 +105,7 @@ FocusScope {
     ColumnLayout {
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.max(Theme.spaceMd, (root.height - height) / 2)
-        width: Math.min(parent.width - 2 * Theme.spaceXl, 330)
+        width: Math.min(parent.width - 2 * Theme.spaceXl, 340)
         spacing: Theme.spaceMd
         visible: root.fileModel.count === 0 && !root.scanning
 
@@ -96,6 +118,7 @@ FocusScope {
             Icon { anchors.centerIn: parent; name: root.emptyIcon; size: Theme.iconXl; color: Theme.accent }
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             text: root.emptyTitle
@@ -105,8 +128,10 @@ FocusScope {
             color: Theme.text
             wrapMode: Text.WordWrap
             Accessible.role: Accessible.Heading
+            Accessible.name: text
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             text: root.emptyText
@@ -119,6 +144,7 @@ FocusScope {
             Layout.alignment: Qt.AlignHCenter
             spacing: Theme.spaceSm
             AppButton {
+                id: addFilesButton
                 kind: "primary"
                 text: "Add files"
                 iconName: "add"
@@ -144,6 +170,7 @@ FocusScope {
             Repeater {
                 model: root.firstRunSteps
                 delegate: Text {
+                    textFormat: Text.PlainText
                     required property int index
                     required property string modelData
                     width: firstRunSteps.width
@@ -183,6 +210,7 @@ FocusScope {
                     Accessible.ignored: true
                 }
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: "Scanning folder... " + root.scanFound.toLocaleString(Qt.locale(), "f", 0) + " files found"
                     font.family: Theme.fontFamily
@@ -199,6 +227,41 @@ FocusScope {
                     text: "Stop"
                     toolTipText: "Stop scanning; files found so far stay in the list"
                     onClicked: root.stopScanRequested()
+                }
+            }
+        }
+
+        // "Show failed only" is on: say so, with the way back.
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+            visible: root.fileModel.failedOnly
+            color: Theme.dangerSoft
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.spaceMd
+                anchors.rightMargin: Theme.spaceSm
+                spacing: Theme.spaceSm
+
+                Icon { name: "filter"; size: Theme.iconMd; color: Theme.danger }
+                Text {
+                    textFormat: Text.PlainText
+                    Layout.fillWidth: true
+                    text: "Showing the " + root.fileModel.failedCount + " failed of " + root.fileModel.count + " files"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.text
+                    elide: Text.ElideRight
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
+                }
+                AppButton {
+                    kind: "ghost"
+                    compact: true
+                    text: "Show all"
+                    toolTipText: "Show every file in the list again"
+                    onClicked: root.fileModel.setFailedOnly(false)
                 }
             }
         }
@@ -234,12 +297,13 @@ FocusScope {
                 listHasFocus: listView.activeFocus
                 listBusy: root.busy
                 onClicked: (index, modifiers) => root._click(index, modifiers)
+                onDoubleClicked: index => { if (root._isFinished(index)) root.openRequested(index) }
                 onContextMenuRequested: index => root._openMenu(index)
                 onRemoveRequested: index => root.fileModel.removeAt(index)
             }
 
             Keys.onPressed: function(event) {
-                var count = root.fileModel.count
+                var count = listView.count
                 if (count === 0) return
                 var ctrl = event.modifiers & Qt.ControlModifier
                 var shift = event.modifiers & Qt.ShiftModifier
@@ -249,7 +313,10 @@ FocusScope {
                     root.copyNamesRequested()
                 } else if (event.key === Qt.Key_Delete && !root.busy) {
                     root.fileModel.removeSelected()
-                    listView.currentIndex = Math.min(listView.currentIndex, root.fileModel.count - 1)
+                    listView.currentIndex = Math.min(listView.currentIndex, listView.count - 1)
+                } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !ctrl
+                           && listView.currentIndex >= 0 && root._isFinished(listView.currentIndex)) {
+                    root.openRequested(listView.currentIndex)
                 } else if (event.key === Qt.Key_Space && listView.currentIndex >= 0) {
                     root.fileModel.toggleSelection(listView.currentIndex)
                 } else if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && shift)) {
@@ -270,6 +337,7 @@ FocusScope {
                     }
                     listView.currentIndex = cur
                     listView.positionViewAtIndex(cur, ListView.Contain)
+                    root._announce(cur)
                 } else {
                     return
                 }
@@ -278,36 +346,47 @@ FocusScope {
         }
     }
 
-    Menu {
+    AppMenu {
         id: contextMenu
         property int row: -1
+        property bool finished: false
         readonly property int selected: root.fileModel.selectedCount
 
-        MenuItem {
+        AppMenuItem {
+            text: "Open"
+            visible: contextMenu.finished && root.opensFiles
+            onTriggered: root.openRequested(contextMenu.row)
+        }
+        AppMenuItem {
             text: "Show in folder"
             onTriggered: root.showInFolderRequested(contextMenu.row)
         }
-        MenuItem {
+        AppMenuItem {
             text: contextMenu.selected > 1 ? "Copy " + contextMenu.selected + " file names" : "Copy file name"
             onTriggered: root.copyNamesRequested()
         }
-        MenuItem {
+        AppMenuItem {
             text: contextMenu.selected > 1 ? "Copy " + contextMenu.selected + " full paths" : "Copy full path"
             onTriggered: root.copyPathsRequested()
         }
-        MenuSeparator {}
-        MenuItem {
+        AppMenuItem {
+            text: "Copy results"
+            onTriggered: root.copyResultsRequested()
+        }
+        AppMenuSeparator {}
+        AppMenuItem {
             text: contextMenu.selected > 1 ? "Remove " + contextMenu.selected + " from the list" : "Remove from the list"
             enabled: !root.busy
             onTriggered: root.fileModel.removeSelected()
         }
-        MenuItem {
+        AppMenuItem {
             text: "Remove finished files"
             enabled: !root.busy && root.fileModel.finishedCount > 0
             onTriggered: root.fileModel.removeFinished()
         }
-        MenuItem {
+        AppMenuItem {
             text: "Clear the list"
+            danger: true
             enabled: !root.busy
             onTriggered: root.clearRequested()
         }

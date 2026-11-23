@@ -52,7 +52,16 @@ python -m gfglock encrypt "C:\path\to\file.txt"
 python -m gfglock decrypt "C:\path\to\file.txt.gfglock"
 ```
 
-In development mode, settings are kept in `gfglock\utils\settings.json` and logs in `logs\`. The installed app keeps them in `%APPDATA%\gfgLock`, and the portable builds in a `gfgLock data` folder beside the exe (`gfglock\utils\paths.py`).
+The command line runs from source the same way; it uses the same settings and logs:
+
+```powershell
+python -m gfglock.cli --help
+python -m gfglock.cli encrypt "C:\path\to\folder" --dry-run --json
+```
+
+In development mode, settings are kept in `gfglock\utils\settings.json` and logs in `logs\`. The installed app keeps them in `%APPDATA%\gfgLock`, and the portable builds in a `gfgLock data` folder beside the exe (`gfglock\utils\paths.py`); `bin\gfglock.exe` uses the folder of the `gfgLock.exe` above it.
+
+The engine the window and the command line share lives in `gfglock\core\` and never imports Qt: `batch.py` (a run over many files, its options from the settings, and its summary), `scan.py` (which files a folder gives), `file_ops.py` (one file), `reasons.py` (plain words for every failure), `passwords.py`, and `locks.py` (the installers' mutex and the temp-file folder claims).
 
 ---
 
@@ -88,6 +97,12 @@ Check a build the way the release workflow does:
 python -m gfglock --self-test
 ```
 
+Render the window in each state, offscreen, to check a layout change in both themes and at small and large sizes (the README's screenshots are made this way):
+
+```powershell
+python scripts\render_screenshots.py --out build\renders --size 820x560 --size 1920x1040 --theme light --theme dark
+```
+
 ---
 
 ## 6. Builds
@@ -104,7 +119,7 @@ Every script runs from the repository root, writes its output under `build\` (th
 The release workflow also packs the one-folder bundle as `gfgLock_<version>_portable.7z` with `New-PortableArchive` in `scripts\bundle.ps1`.
 
 - `scripts\common.ps1` holds the helpers every script shares (the venv, app metadata, the native build, Inno Setup).
-- `scripts\bundle.ps1` holds the PyInstaller options, the self-test run, and the portable archive. The hooks in `hooks\` keep only the Qt modules, plugins, and QML modules the app uses, and PyInstaller runs with PATH folders that hold another OpenSSL build hidden, so the bundle gets the pinned one.
+- `scripts\bundle.ps1` holds the PyInstaller options, the self-test run, the command line (`New-ConsoleExe` builds `dist\gfgLock\bin\gfglock.exe`, a one-file console exe without Qt that carries the Agent Skill from `skills\gfglock`), and the portable archive. The hooks in `hooks\` keep only the Qt modules, plugins, and QML modules the app uses, and PyInstaller runs with PATH folders that hold another OpenSSL build hidden, so the bundle gets the pinned one.
 - `installer\common.iss` holds what both installer scripts share; `gfglock_system_installer.iss` and `gfglock_user_installer.iss` add what differs.
 
 The version comes from `pyproject.toml`; keep `APP_VERSION` in `gfglock\config\defaults.py` the same (a test checks it).

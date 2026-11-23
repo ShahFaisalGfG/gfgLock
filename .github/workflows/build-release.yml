@@ -122,6 +122,7 @@ jobs:
           name: unsigned-programs
           path: |
             dist/${{ steps.meta.outputs.APP_NAME }}/${{ steps.meta.outputs.APP_NAME }}.exe
+            dist/${{ steps.meta.outputs.APP_NAME }}/bin/gfglock.exe
             build/shell/gfglock_shell.dll
           if-no-files-found: error
 

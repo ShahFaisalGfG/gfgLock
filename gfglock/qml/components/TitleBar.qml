@@ -73,6 +73,7 @@ Rectangle {
         }
 
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: titleBar.title
             color: Theme.text

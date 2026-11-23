@@ -6,6 +6,9 @@
 # is the one-file exe, or when the file gfgLock-portable.txt sits next to the exe (the portable .7z
 # ships the one-folder build with that marker). Running from source has no data folder: the callers
 # keep their files inside the project.
+# The command line, bin\gfglock.exe, is a one-file exe inside the app's folder. It calls
+# use_app_folder(1) so it uses the same data folder as gfgLock.exe one folder up, rather than
+# counting as a portable one-file exe of its own.
 
 import os
 import shutil
@@ -15,6 +18,15 @@ PORTABLE_FOLDER = "gfgLock data"
 PORTABLE_MARKER = "gfgLock-portable.txt"
 _UNSET = object()
 _data_dir: object = _UNSET
+# For an exe shipped inside the app's folder: how many folders up gfgLock.exe is (None for gfgLock.exe).
+_levels_up: int | None = None
+
+
+def use_app_folder(levels_up: int) -> None:
+    """Resolve the data folder as gfgLock.exe, `levels_up` folders above this exe, does."""
+    global _levels_up, _data_dir
+    _levels_up = levels_up
+    _data_dir = _UNSET
 
 
 def appdata_dir() -> str:
@@ -31,9 +43,9 @@ def is_portable() -> bool:
     bundle = getattr(sys, "_MEIPASS", None)
     if not getattr(sys, "frozen", False) or bundle is None:
         return False
-    if os.path.isfile(os.path.join(_exe_dir(), PORTABLE_MARKER)):
+    if os.path.isfile(os.path.join(_app_dir(), PORTABLE_MARKER)):
         return True
-    return _is_one_file(bundle)
+    return _levels_up is None and _is_one_file(bundle)
 
 
 def app_folder() -> str | None:
@@ -45,6 +57,8 @@ def app_folder() -> str | None:
     bundle = getattr(sys, "_MEIPASS", None)
     if not getattr(sys, "frozen", False) or bundle is None:
         return None
+    if _levels_up is not None:
+        return _app_dir()
     return os.path.abspath(bundle) if _is_one_file(bundle) else _exe_dir()
 
 
@@ -68,6 +82,14 @@ def _exe_dir() -> str:
     return os.path.dirname(os.path.abspath(sys.executable))
 
 
+def _app_dir() -> str:
+    """The folder of gfgLock.exe: this exe's own, or the one use_app_folder() points to."""
+    folder = _exe_dir()
+    for _ in range(_levels_up or 0):
+        folder = os.path.dirname(folder)
+    return folder
+
+
 def _is_one_file(bundle: str) -> bool:
     """The one-file exe unpacks to a temp folder; a one-folder build keeps _internal beside the exe."""
     return os.path.normcase(os.path.dirname(os.path.abspath(bundle))) != os.path.normcase(_exe_dir())
@@ -85,7 +107,7 @@ def _resolve() -> str | None:
     if not getattr(sys, "frozen", False):
         return None
     if is_portable():
-        folder = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), PORTABLE_FOLDER)
+        folder = os.path.join(_app_dir(), PORTABLE_FOLDER)
         if _writable(folder):
             _adopt_installed_settings(folder)
             return folder

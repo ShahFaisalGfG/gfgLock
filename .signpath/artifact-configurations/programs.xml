@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- gfgLock.exe and the Explorer extension, signed before the installers are built from them (the
-     release workflow's first signing request; SignPath artifact configuration slug "programs"). The
-     artifact keeps their paths from the repository root. Each must carry gfgLock's name as its
-     product name and the release's version. -->
+<!-- gfgLock.exe, its command line (bin/gfglock.exe), and the Explorer extension, signed before the
+     installers are built from them (the release workflow's first signing request; SignPath
+     artifact configuration slug "programs"). The artifact keeps their paths from the repository
+     root. Each must carry gfgLock's name as its product name and the release's version. -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <parameters>
     <parameter name="version" required="true" />
@@ -10,6 +10,7 @@
   <zip-file>
     <pe-file-set product-name="gfgLock" product-version="${version}">
       <include path="dist/gfgLock/gfgLock.exe" />
+      <include path="dist/gfgLock/bin/gfglock.exe" />
       <include path="build/shell/gfglock_shell.dll" />
       <for-each>
         <authenticode-sign />

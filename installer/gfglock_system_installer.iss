@@ -4,6 +4,10 @@
 ; installer are in common.iss.
 ; =======================================================
 
+; The command line goes on the system PATH (the "addtopath" task).
+#define PathRoot "HKLM"
+#define PathKey "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+
 #include "common.iss"
 
 [Setup]

@@ -54,7 +54,7 @@ def v1_overhead(algorithm: str) -> int:
     return V1_SALT_SIZE + _V1_IV_SIZES[algorithm] + V1_CHUNK_FIELD_SIZE + tag
 
 # Error messages shared word for word with the native engine.
-_AUTH_FAILED = "wrong password or the file was modified (authentication failed)"
+_AUTH_FAILED = "wrong password, or the file is damaged"
 _TRUNCATED = "the file is truncated or corrupted"
 _CORRUPTED = "the file is corrupted"
 _SIZE_CHANGED = "the source file changed size while it was being read"

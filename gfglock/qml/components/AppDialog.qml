@@ -44,6 +44,7 @@ Dialog {
 
     // No backgrounds behind the title or the buttons: Material's would paint over the border.
     header: Text {
+        textFormat: Text.PlainText
         visible: text.length > 0
         text: dialog.title
         leftPadding: Theme.spaceXl

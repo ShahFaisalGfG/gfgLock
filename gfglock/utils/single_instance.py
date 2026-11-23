@@ -27,22 +27,17 @@ from typing import Any
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
+from gfglock.core.locks import APP_MUTEXES, hold_app_mutexes, release_app_mutexes
 from gfglock.utils.logging import write_log
 
+__all__ = ["APP_MUTEXES", "LaunchRequest", "SingleInstance", "hold_app_mutexes", "release_app_mutexes"]
+
 APP_PREFIX = "gfgLock"
-# Inno Setup's AppMutex waits while either exists, so the installers never replace a running copy.
-APP_MUTEXES = ("gfgLockAppMutex", "Global\\gfgLockAppMutex")
 _CONNECT_MS = 2000
 _ANSWER_MS = 10_000      # how long a later launch waits for the window to take its request
 _LOCK_MS = 30_000        # longer than one sender holds the lock: connect + _ANSWER_MS
 _ACK_WRITE_MS = 1000
 _ACK = b"OK\n"
-# Everyone may open the installers' mutexes to wait on them (SYNCHRONIZE) and nothing more, so an
-# installer running in another session or as another account still sees a running copy.
-_APP_MUTEX_SDDL = "D:(A;;0x00100000;;;WD)"
-_SDDL_REVISION_1 = 1
-_SYNCHRONIZE = 0x00100000
-
 _TOKEN_QUERY = 0x0008
 _TOKEN_USER = 1
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -71,17 +66,6 @@ _OpenProcess = _api(_kernel32, "OpenProcess", wintypes.HANDLE, wintypes.DWORD, w
 _CloseHandle = _api(_kernel32, "CloseHandle", wintypes.BOOL, wintypes.HANDLE)
 _LocalFree = _api(_kernel32, "LocalFree", wintypes.HLOCAL, wintypes.HLOCAL)
 _CreateMutexW = _api(_kernel32, "CreateMutexW", wintypes.HANDLE, wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR)
-_CreateMutexExW = _api(_kernel32, "CreateMutexExW", wintypes.HANDLE,
-                       wintypes.LPVOID, wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD)
-_ConvertSddl = _api(_advapi32, "ConvertStringSecurityDescriptorToSecurityDescriptorW", wintypes.BOOL,
-                    wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(wintypes.LPVOID), ctypes.POINTER(wintypes.ULONG))
-
-
-class _SecurityAttributes(ctypes.Structure):
-    """SECURITY_ATTRIBUTES for CreateMutexW."""
-
-    _fields_ = [("nLength", wintypes.DWORD), ("lpSecurityDescriptor", wintypes.LPVOID),
-                ("bInheritHandle", wintypes.BOOL)]
 _WaitForSingleObject = _api(_kernel32, "WaitForSingleObject", wintypes.DWORD, wintypes.HANDLE, wintypes.DWORD)
 _ReleaseMutex = _api(_kernel32, "ReleaseMutex", wintypes.BOOL, wintypes.HANDLE)
 _GetNamedPipeServerProcessId = _api(_kernel32, "GetNamedPipeServerProcessId", wintypes.BOOL,
@@ -93,9 +77,6 @@ _GetTokenInformation = _api(_advapi32, "GetTokenInformation", wintypes.BOOL, win
 _ConvertSidToStringSidW = _api(_advapi32, "ConvertSidToStringSidW", wintypes.BOOL,
                                wintypes.LPVOID, ctypes.POINTER(wintypes.LPWSTR))
 _AllowSetForegroundWindow = _api(_user32, "AllowSetForegroundWindow", wintypes.BOOL, wintypes.DWORD)
-
-# Handles of APP_MUTEXES, open until the process exits.
-_app_mutexes: list[int] = []
 
 
 @dataclass(frozen=True)
@@ -121,37 +102,6 @@ class LaunchRequest:
                 and all(isinstance(path, str) for path in paths)):
             raise ValueError("the message has fields of the wrong type")
         return cls(mode, tuple(paths), notice)
-
-
-def hold_app_mutexes() -> None:
-    """Create the mutexes the installers check (AppMutex) and keep them until this process exits.
-
-    Creating the Global one can be refused in some sessions; the installers then see the other one.
-    """
-    descriptor = wintypes.LPVOID()
-    if not _ConvertSddl(_APP_MUTEX_SDDL, _SDDL_REVISION_1, ctypes.byref(descriptor), None):
-        write_log(f"Could not build the installer mutex access rules: {ctypes.WinError(ctypes.get_last_error())}",
-                  "critical")
-    attributes = _SecurityAttributes(ctypes.sizeof(_SecurityAttributes), descriptor, False)
-    security = ctypes.cast(ctypes.pointer(attributes), wintypes.LPVOID) if descriptor else None
-    try:
-        for name in APP_MUTEXES:
-            # Asking only for SYNCHRONIZE (all the access rules grant) also opens one that another
-            # gfgLock window or session made; CreateMutexW would ask for full access and be refused.
-            handle = _CreateMutexExW(security, name, 0, _SYNCHRONIZE)
-            if handle:
-                _app_mutexes.append(handle)
-            else:
-                write_log(f"Could not create the mutex {name}: {ctypes.WinError(ctypes.get_last_error())}", "critical")
-    finally:
-        if descriptor:
-            _LocalFree(descriptor)
-
-
-def release_app_mutexes() -> None:
-    """Let go of the installer mutexes early: an update's installer waits for them as gfgLock exits."""
-    while _app_mutexes:
-        _CloseHandle(_app_mutexes.pop())
 
 
 class SingleInstance(QObject):

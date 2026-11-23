@@ -15,7 +15,7 @@ from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication
 
 from gfglock.utils import single_instance
-from gfglock.utils.single_instance import LaunchRequest, SingleInstance, hold_app_mutexes
+from gfglock.utils.single_instance import LaunchRequest, SingleInstance
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -292,38 +292,3 @@ class TestMutexes:
         holder.join(10)
         waiter.join(10)
         assert order == ["first in", "first out", "second in"]
-
-    def test_app_mutexes_exist_for_the_installers(self, monkeypatch):
-        names = (f"gfgLockTestMutex-{uuid.uuid4().hex}", f"Global\\gfgLockTestMutex-{uuid.uuid4().hex}")
-        held: list[int] = []
-        monkeypatch.setattr(single_instance, "APP_MUTEXES", names)
-        monkeypatch.setattr(single_instance, "_app_mutexes", held)
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenMutexW.restype = wintypes.HANDLE
-        kernel32.OpenMutexW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
-        hold_app_mutexes()
-        try:
-            assert held  # the Global one may be refused in some sessions; the local one never is
-            handle = kernel32.OpenMutexW(0x00100000, False, names[0])  # SYNCHRONIZE
-            assert handle
-            kernel32.CloseHandle(handle)
-        finally:
-            for handle in held:
-                kernel32.CloseHandle(handle)
-
-    def test_a_second_window_opens_the_existing_mutexes(self, monkeypatch):
-        """A second window (or session) gets a handle too, and nothing is logged as refused."""
-        names = (f"gfgLockTestMutex-{uuid.uuid4().hex}",)
-        held: list[int] = []
-        logged: list[str] = []
-        monkeypatch.setattr(single_instance, "APP_MUTEXES", names)
-        monkeypatch.setattr(single_instance, "_app_mutexes", held)
-        monkeypatch.setattr(single_instance, "write_log", lambda message, *args, **kwargs: logged.append(message))
-        try:
-            hold_app_mutexes()
-            hold_app_mutexes()
-            assert len(held) == 2 and all(held)
-            assert logged == []
-        finally:
-            for handle in held:
-                ctypes.WinDLL("kernel32").CloseHandle(wintypes.HANDLE(handle))

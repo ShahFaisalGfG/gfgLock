@@ -3,6 +3,7 @@
 import os
 import threading
 import time
+from collections import Counter
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,13 +14,14 @@ from gfglock.controllers import encrypt_ctrl
 from gfglock.controllers.encrypt_ctrl import EncryptController
 from gfglock.core.file_ops import FileResult
 from gfglock.core.format_v2 import KdfParams, KeyRing
+from gfglock.core import batch
+from gfglock.core.batch import BatchRun, RunOptions, RunResult
 from gfglock.models.file_model import FileListModel
 from gfglock.services import folder_scanner
-from gfglock.services import worker as worker_mod
 from gfglock.services.worker import EncryptDecryptWorker
 
 _CHEAP_KDF = KdfParams(memory_kib=64, iterations=1, lanes=1)
-_WRONG_PASSWORD = "Wrong password or the file was modified (authentication failed)"
+_WRONG_PASSWORD = "Wrong password, or the file is damaged"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -250,8 +252,8 @@ class TestStartSettings:
     def _capture_worker(self, controller, monkeypatch, settings):
         made: dict = {}
 
-        def fake_worker(**kwargs):
-            made.update(kwargs)
+        def fake_worker(paths, keys, options):
+            made.update(paths=paths, keys=keys, options=options)
             return MagicMock()
 
         monkeypatch.setattr(encrypt_ctrl, "EncryptDecryptWorker", fake_worker)
@@ -269,7 +271,8 @@ class TestStartSettings:
         })
         monkeypatch.setattr(encrypt_ctrl.os, "cpu_count", lambda: 8)
         decryptor.start("pw", False, "")
-        assert made["threads"] == 2 and made["read_size"] == 8 * 1024 * 1024 and made["mode"] == "decrypt"
+        options = made["options"]
+        assert options.threads == 2 and options.read_size == 8 * 1024 * 1024 and options.mode == "decrypt"
         assert isinstance(made["keys"], KeyRing) and made["keys"].password == "pw"
         assert decryptor.busy
 
@@ -281,7 +284,8 @@ class TestStartSettings:
         })
         monkeypatch.setattr(encrypt_ctrl.os, "cpu_count", lambda: 4)
         encryptor.start("pw", True, "chacha20_poly1305")
-        assert made["threads"] == 3 and made["algorithm"] == "chacha" and made["encrypt_name"] is True
+        options = made["options"]
+        assert options.threads == 3 and options.algorithm == "chacha" and options.hide_names is True
 
     @pytest.mark.parametrize("choice,saved,cipher", [
         ("aes256_gcm", "", "gcm"),
@@ -296,7 +300,7 @@ class TestStartSettings:
         _add(encryptor, tmp_path / "a.txt")
         made = self._capture_worker(encryptor, monkeypatch, {"advanced": {"encryption_mode": saved}})
         encryptor.start("pw", False, choice)
-        assert made["algorithm"] == cipher
+        assert made["options"].algorithm == cipher
 
     def test_no_password_or_no_files_does_nothing(self, encryptor, monkeypatch, tmp_path):
         made = self._capture_worker(encryptor, monkeypatch, {})
@@ -330,8 +334,8 @@ class TestRuns:
         locked = tmp_path / "notes.txt.gfglock"
         assert locked.exists() and not source.exists()
         assert _rows(encryptor.fileModel) == [("done", "Saved as notes.txt.gfglock")]
-        assert encryptor.summary.startswith("1 file encrypted in ")
-        assert encryptor.lastFolder == str(tmp_path)
+        assert encryptor.summary.startswith("1 file encrypted in ") and not encryptor.summaryIsError
+        assert encryptor.lastFolders == [str(tmp_path)] and encryptor.lastFile == str(locked)
         assert encryptor.fileModel.runnableCount == 0
         assert (encryptor.progress, encryptor.filesDone, encryptor.filesTotal) == (1.0, 1, 1)
 
@@ -339,9 +343,10 @@ class TestRuns:
         decryptor.start("wrong password", False, "")
         _wait_until_idle(decryptor)
         status, message = _rows(decryptor.fileModel)[0]
-        assert status == "failed" and "wrong password" in message.lower()
+        assert status == "failed" and message == _WRONG_PASSWORD
         assert locked.exists()
-        assert decryptor.summary.startswith("0 of 1 file decrypted") and "1 failed: wrong password" in decryptor.summary
+        assert decryptor.summary == "Wrong password. Nothing was changed. Type it again and press Decrypt."
+        assert decryptor.summaryIsError
 
         # A failed file stays in the list and runs again with the right password.
         assert decryptor.fileModel.runnableCount == 1
@@ -380,15 +385,15 @@ class TestRuns:
         """Stop cancels the run's stop token: the file in progress stays unchanged and waits for the next run."""
         (tmp_path / "a.txt").write_text("a")
         _add(encryptor, tmp_path / "a.txt")
-        original_build = EncryptDecryptWorker._build_job
+        original_build = BatchRun._build_job
         started, resume = threading.Event(), threading.Event()
 
-        def held(worker, path, read_size):
+        def held(run, path, read_size):
             started.set()
             resume.wait(5)
-            return original_build(worker, path, read_size)
+            return original_build(run, path, read_size)
 
-        monkeypatch.setattr(EncryptDecryptWorker, "_build_job", held)
+        monkeypatch.setattr(BatchRun, "_build_job", held)
         encryptor.start("pw", False, "aes256_gcm")
         assert started.wait(5)
         encryptor.cancel()  # Stop pressed while the file is in progress
@@ -402,7 +407,7 @@ class TestRuns:
 
     def test_stop_after_the_last_file_reports_a_complete_run(self, encryptor, no_notifications):
         encryptor._cancel_requested = True  # Stop arrived after every file had ended
-        encryptor._on_finished(1.0, 2, 2, 0, 0)
+        encryptor._on_finished(RunResult("encrypt", 2, elapsed=1.0, done=2))
         assert encryptor.summary == "All 2 files encrypted in 1.0 s."
         assert encryptor.progress == 1.0
 
@@ -412,11 +417,13 @@ class TestRunPerformance:
 
     def test_a_run_over_20000_rows_stays_fast(self, encryptor, monkeypatch):
         """Before 3.2.0 this run took about 355 s on the development PC; it now takes about 5 s."""
-        def instant(path, keys, algorithm, encrypt_name=False, read_size=0, progress=None, stop=None):
+        def instant(path, keys, algorithm, encrypt_name=False, read_size=0, progress=None, stop=None,
+                    keep_original=False, output_dir=""):
             return FileResult(True, f"Encrypted: {path}", "done", output=f"{path}.gfglock")
 
-        monkeypatch.setattr(worker_mod.file_ops, "encrypt_file", instant)
-        monkeypatch.setattr(worker_mod.file_ops, "remove_stale_temps", lambda folders: 0)
+        monkeypatch.setattr(batch.file_ops, "encrypt_file", instant)
+        monkeypatch.setattr(batch.file_ops, "remove_stale_temps", lambda folders: 0)
+        monkeypatch.setattr(encrypt_ctrl, "space_shortages", lambda items, options: [])
         monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {
             "encryption": {"cpu_threads": 4},
             "advanced": {"clamp_cpu_threads": False, "operation_notifications": False}})
@@ -451,7 +458,7 @@ class TestRunPerformance:
         encryptor._busy = True
         start = time.monotonic()
         for i in range(2000):
-            encryptor._on_progress(float(i), 4000.0)
+            encryptor._on_progress(float(i), 4000.0, -1.0)
         assert len(emitted) <= (time.monotonic() - start) * 10 + 1
         deadline = time.monotonic() + 2
         while encryptor._run_timer.isActive() and time.monotonic() < deadline:
@@ -466,17 +473,17 @@ class TestProgress:
         """The last files are still being flushed when every byte has been read (U6)."""
         encryptor._busy = True
         encryptor._worker = MagicMock()
-        encryptor._on_progress(100.0, 100.0)
+        encryptor._on_progress(100.0, 100.0, -1.0)
         assert encryptor.progress == 0.99
-        encryptor._on_finished(1.0, 1, 1, 0, 0)
+        encryptor._on_finished(RunResult("encrypt", 1, elapsed=1.0, done=1))
         assert encryptor.progress == 1.0
 
     def test_a_stopped_run_keeps_its_progress(self, encryptor, no_notifications):
         encryptor._busy = True
         encryptor._worker = MagicMock()
-        encryptor._on_progress(30.0, 100.0)
+        encryptor._on_progress(30.0, 100.0, -1.0)
         encryptor.cancel()
-        encryptor._on_finished(1.0, 3, 1, 0, 0)
+        encryptor._on_finished(RunResult("encrypt", 3, elapsed=1.0, done=1, cancelled=True))
         assert encryptor.progress == pytest.approx(0.3)
 
     def test_the_end_of_a_run_is_sent_at_once(self, encryptor, no_notifications):
@@ -487,40 +494,35 @@ class TestProgress:
         counted.clear()
         encryptor._busy = True
         encryptor._worker = MagicMock()
-        encryptor._on_file_result("C:\\x\\a.txt", "done", "", "C:\\x\\a.txt.gfglock")
+        encryptor._on_file_result("C:\\x\\a.txt", "done", "", "", "C:\\x\\a.txt.gfglock")
         emitted.clear()
-        encryptor._on_finished(1.0, 1, 1, 0, 0)
+        encryptor._on_finished(RunResult("encrypt", 1, elapsed=1.0, done=1))
         assert emitted == [True] and counted
 
 
 class TestSummary:
-    @pytest.mark.parametrize("args,expected", [
-        ((2.04, 3, 3, 0, 0, False), "All 3 files encrypted in 2.0 s."),
-        ((0.4, 1, 1, 0, 0, False), "1 file encrypted in 0.4 s."),
-        ((0.03, 2, 2, 0, 0, False), "All 2 files encrypted in under 0.1 s."),
-        ((75.2, 3, 3, 0, 0, False), "All 3 files encrypted in 1 min 15 s."),
-        ((3725.0, 3, 3, 0, 0, False), "All 3 files encrypted in 1 h 2 min."),
-        ((1.0, 4, 2, 1, 1, False), "2 of 4 files encrypted in 1.0 s, 1 skipped, 1 failed."),
-        ((1.0, 5, 2, 0, 0, True), "Stopped: 2 of 5 files encrypted. The rest were not changed."),
-        ((4.2, 10, 1, 2, 0, True), "Stopped: 1 of 10 files encrypted, 2 failed. The rest were not changed."),
-        ((2.0, 2, 2, 0, 0, True), "Stopped: 2 of 2 files encrypted."),
+    @pytest.mark.parametrize("seconds,expected", [
+        (2.04, "2.0 s"), (0.03, "under 0.1 s"), (75.2, "1 min 15 s"), (3725.0, "1 h 2 min"),
     ])
-    def test_summary_lines(self, encryptor, args, expected):
-        """A stopped run names its failures, and fast runs say "under 0.1 s" (A14)."""
-        encryptor._failure_reasons = {"Disk full", "Access is denied"}
-        assert encryptor._build_summary(*args) == expected
+    def test_durations(self, seconds, expected):
+        """Fast runs say "under 0.1 s" (A14)."""
+        assert batch.format_duration(seconds) == expected
 
-    def test_one_shared_failure_reason_is_stated_once(self, decryptor):
-        """When every failure has the same reason, the summary says it (U7)."""
-        for name in ("a", "b", "c"):
-            decryptor._on_file_result(f"C:\\x\\{name}.gfglock", "failed", _WRONG_PASSWORD, "")
-        assert decryptor._build_summary(1.2, 3, 0, 3, 0, False) == (
-            "0 of 3 files decrypted in 1.2 s, 3 failed: wrong password or the file was modified "
-            "(authentication failed).")
+    def test_failures_are_grouped_and_shown_as_an_error(self, decryptor, no_notifications):
+        result = RunResult("decrypt", 12, elapsed=1.2, done=3, failed=9,
+                           failures=Counter({"wrong_password": 6, "in_use": 3}))
+        decryptor._on_finished(result)
+        assert decryptor.summary == "3 of 12 files decrypted. 9 failed: 6 wrong password, 3 in use."
+        assert decryptor.summaryIsError
+
+    def test_a_wrong_password_says_what_to_do(self, decryptor, no_notifications):
+        decryptor._on_finished(RunResult("verify", 2, done=0, failed=2, failures=Counter({"wrong_password": 2})))
+        assert decryptor.summary == "Wrong password. Type it again and press Check."
 
     def test_a_done_row_with_a_reason_shows_both(self, decryptor):
         decryptor.fileModel.add_scanned([("C:\\x\\old.gfglck", 10)])
-        decryptor._on_file_result("C:\\x\\old.gfglck", "done", "The encrypted file was kept", "C:\\x\\old.txt")
+        decryptor._on_file_result("C:\\x\\old.gfglck", "done", "cfb_kept", "The encrypted file was kept",
+                                  "C:\\x\\old.txt")
         assert _rows(decryptor.fileModel) == [("done", "Saved as old.txt. The encrypted file was kept")]
 
     def test_summary_clears_when_the_list_changes(self, encryptor, tmp_path):
@@ -551,23 +553,23 @@ class TestNotifications:
     def test_preference_off_sends_nothing(self, encryptor, sent, monkeypatch):
         monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {"advanced": {"operation_notifications": False}})
         self._state(monkeypatch, active=False)
-        encryptor._notify_complete(60.0, 0, False)
+        encryptor._notify_complete(RunResult("encrypt", 1, elapsed=60.0, done=1))
         sent.assert_not_called()
 
     def test_a_short_run_in_front_of_the_user_sends_nothing(self, encryptor, sent, monkeypatch):
         self._state(monkeypatch, active=True)
-        encryptor._notify_complete(9.9, 0, False)
+        encryptor._notify_complete(RunResult("encrypt", 1, elapsed=9.9, done=1))
         sent.assert_not_called()
 
     def test_a_long_run_notifies_even_in_front(self, encryptor, sent, monkeypatch):
         self._state(monkeypatch, active=True)
         encryptor._summary = "All 3 files encrypted in 12.0 s."
-        encryptor._notify_complete(12.0, 0, False)
+        encryptor._notify_complete(RunResult("encrypt", 3, elapsed=12.0, done=3))
         sent.assert_called_once_with("Encryption complete", "All 3 files encrypted in 12.0 s.")
 
     def test_a_run_behind_other_windows_notifies(self, encryptor, sent, monkeypatch):
         self._state(monkeypatch, active=False)
-        encryptor._notify_complete(0.5, 0, False)
+        encryptor._notify_complete(RunResult("encrypt", 1, elapsed=0.5, done=1))
         sent.assert_called_once()
 
     @pytest.mark.parametrize("mode,failed,stopped,title", [
@@ -578,7 +580,8 @@ class TestNotifications:
     ])
     def test_titles(self, sent, monkeypatch, mode, failed, stopped, title):
         self._state(monkeypatch, active=False)
-        EncryptController(mode)._notify_complete(1.0, failed, stopped)
+        result = RunResult(mode, 3, elapsed=1.0, failed=failed, cancelled=stopped)
+        EncryptController(mode)._notify_complete(result)
         assert sent.call_args[0][0] == title
 
 
@@ -595,11 +598,11 @@ class TestCancel:
 
     def test_cancel_stops_the_files_in_progress(self, encryptor):
         """Cancel reaches the worker's stop token, which the engines check once per block."""
-        worker = EncryptDecryptWorker(["a.txt"], KeyRing("pw", _CHEAP_KDF))
+        worker = EncryptDecryptWorker(["a.txt"], KeyRing("pw", _CHEAP_KDF), RunOptions())
         encryptor._worker = worker
         encryptor._busy = True
         encryptor.cancel()
-        assert worker._stop.cancelled
+        assert worker.batch._stop.cancelled
 
     def test_cancel_without_worker_is_harmless(self, encryptor):
         encryptor.cancel()
@@ -656,3 +659,62 @@ class TestShowInFolder:
     def test_the_shell_functions_are_declared(self):
         assert encrypt_ctrl._shell32.SHOpenFolderAndSelectItems.restype is encrypt_ctrl.ctypes.HRESULT
         assert encrypt_ctrl._shell32.ILCreateFromPathW.restype is encrypt_ctrl.ctypes.c_void_p
+
+
+class TestCheckAndWhereResultsGo:
+    def test_check_marks_files_checked_and_they_still_decrypt(self, encryptor, decryptor, tmp_path, no_notifications):
+        source = tmp_path / "notes.txt"
+        source.write_text("secret notes")
+        _add(encryptor, source)
+        encryptor.start("correct horse", False, "aes256_gcm")
+        _wait_until_idle(encryptor)
+        _add(decryptor, tmp_path / "notes.txt.gfglock")
+        decryptor.check("correct horse")
+        _wait_until_idle(decryptor)
+        assert _rows(decryptor.fileModel) == [("checked", "The password is right and the file is intact")]
+        assert decryptor.summary.startswith("1 file checked in ") and decryptor.lastFolders == []
+        assert decryptor.fileModel.runnableCount == 1
+        decryptor.start("correct horse", False, "")
+        _wait_until_idle(decryptor)
+        assert source.read_text() == "secret notes"
+
+    def test_the_encrypt_tab_has_no_check(self, encryptor, tmp_path):
+        (tmp_path / "a.txt").write_text("x")
+        _add(encryptor, tmp_path / "a.txt")
+        encryptor.check("pw")
+        assert not encryptor.busy
+
+    def test_a_drive_without_room_stops_the_run_before_it_starts(self, encryptor, tmp_path, monkeypatch):
+        (tmp_path / "a.txt").write_text("x")
+        _add(encryptor, tmp_path / "a.txt")
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {})
+        monkeypatch.setattr(batch, "_free_space", lambda _folder: 0)
+        encryptor.start("pw", False, "")
+        assert not encryptor.busy and encryptor.summaryIsError and "Free up" in encryptor.summary
+
+    def test_results_go_to_the_saved_output_folder(self, encryptor, tmp_path, monkeypatch, no_notifications):
+        (tmp_path / "a.txt").write_text("x")
+        out = tmp_path / "vault"
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {
+            "encryption": {"keep_originals": True, "output_dir": str(out)},
+            "advanced": {"operation_notifications": False}})
+        _add(encryptor, tmp_path / "a.txt")
+        encryptor.start("pw", False, "aes256_gcm")
+        _wait_until_idle(encryptor)
+        assert (tmp_path / "a.txt").exists() and (out / "a.txt.gfglock").exists()
+        assert encryptor.lastFolders == [str(out)] and encryptor.lastFile == str(out / "a.txt.gfglock")
+
+    def test_a_folder_that_cant_be_made_is_said_before_starting(self, encryptor, tmp_path, monkeypatch):
+        (tmp_path / "a.txt").write_text("x")
+        blocker = tmp_path / "file-not-folder"
+        blocker.write_text("x")
+        monkeypatch.setattr(encrypt_ctrl, "load_settings", lambda: {"encryption": {"output_dir": str(blocker / "x")}})
+        _add(encryptor, tmp_path / "a.txt")
+        encryptor.start("pw", False, "")
+        assert not encryptor.busy and encryptor.summary.startswith("Couldn't use the folder")
+
+    def test_password_rules_come_from_the_shared_engine(self, encryptor, decryptor):
+        assert encryptor.passwordBlocker("abc12345", "abc", True) == "The two passwords don't match."
+        assert encryptor.passwordMismatch("abc12345", "abc", True) is True
+        assert decryptor.passwordMismatch("abc12345", "abc", True) is False
+        assert decryptor.passwordBlocker("", "", False) == "Enter the password to decrypt with."

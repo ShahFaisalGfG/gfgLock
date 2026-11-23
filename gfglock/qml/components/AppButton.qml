@@ -64,6 +64,7 @@ Button {
             color: control._fg
         }
         Text {
+            textFormat: Text.PlainText
             Layout.alignment: Qt.AlignVCenter
             visible: control.text.length > 0
             text: control.text

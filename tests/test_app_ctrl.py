@@ -96,34 +96,17 @@ class TestDetectTheme:
         spy.assert_not_called()
 
 
-class TestThemePreview:
-    """Preferences previews a theme without saving it; closing goes back to the saved one."""
+class TestSavedTheme:
+    """Preferences saves a theme at once; the window shows it as soon as it asks again."""
 
-    def test_preview_shows_without_saving(self, controller, stub_settings):
-        _, saved = stub_settings
+    def test_a_saved_theme_shows(self, controller, stub_settings):
+        store, _ = stub_settings
         spy = MagicMock()
         controller.themeChanged.connect(spy)
-        controller.previewTheme("dark")
+        store["theme"] = "dark"
+        controller.detectTheme()
         assert controller.currentTheme == "dark"
         spy.assert_called_once_with("dark")
-        controller.previewTheme("system")
-        assert controller.currentTheme == "light"
-        assert saved == []
-
-    def test_preview_survives_the_window_being_activated_again(self, controller):
-        controller.previewTheme("dark")
-        controller.detectTheme()  # Preferences regained focus after an Alt+Tab
-        assert controller.currentTheme == "dark"
-
-    def test_ending_the_preview_shows_the_saved_theme(self, controller, stub_settings):
-        store, _ = stub_settings
-        controller.previewTheme("dark")
-        controller.endPreview()  # closed without saving
-        assert controller.currentTheme == "light"
-        store["theme"] = "dark"  # saved, then closed
-        controller.previewTheme("dark")
-        controller.endPreview()
-        assert controller.currentTheme == "dark"
 
 
 class TestOpenedFiles:

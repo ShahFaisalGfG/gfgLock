@@ -17,6 +17,9 @@ class UpdateInfo:
     """Where updates come from, and the keys that sign them (scripts/sign_update.py)."""
 
     REPO_URL = "https://github.com/ShahFaisalGfG/gfgLock"
+    PRIVACY_URL = f"{REPO_URL}/blob/main/PRIVACY.md"
+    LICENSES_URL = f"{REPO_URL}/blob/main/THIRD_PARTY_NOTICES.md"
+    ISSUES_URL = f"{REPO_URL}/issues/new"
     # The public half of each release signing key, exactly as `openssl ec -pubout` prints it. The
     # release workflow refuses to sign with a key that is not listed here. A release signed with
     # the current key can add the next one, so the key can be replaced without breaking updates.
@@ -75,6 +78,13 @@ class DecryptionDefaults:
     """Default decryption settings."""
 
     DEFAULT_THREADS = _get_cpu_thread_count()
+
+
+class OutputDefaults:
+    """Where a run's results go, for each direction: next to each file, replacing it, as before."""
+
+    KEEP_ORIGINALS = False
+    OUTPUT_DIR = ""  # "" puts each result next to the file it came from
 
 
 class AlgorithmDefaults:
@@ -145,10 +155,14 @@ def get_default_settings() -> Dict[str, Any]:
             "cpu_threads": EncryptionDefaults.DEFAULT_THREADS,
             "read_size": ReadSizeDefaults.DEFAULT,
             "encrypt_filenames": EncryptionDefaults.DEFAULT_ENCRYPT_FILENAMES,
+            "keep_originals": OutputDefaults.KEEP_ORIGINALS,
+            "output_dir": OutputDefaults.OUTPUT_DIR,
         },
         "decryption": {
             "cpu_threads": DecryptionDefaults.DEFAULT_THREADS,
             "read_size": ReadSizeDefaults.DEFAULT,
+            "keep_originals": OutputDefaults.KEEP_ORIGINALS,
+            "output_dir": OutputDefaults.OUTPUT_DIR,
         },
         "advanced": {
             "encryption_mode": AlgorithmDefaults.DEFAULT_ALGORITHM,

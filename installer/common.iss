@@ -4,6 +4,8 @@
 ; gfglock_user_installer.iss (current user). The build scripts
 ; pass the app metadata from pyproject.toml as /D definitions;
 ; the defaults below apply when a script is compiled by hand.
+; Each installer defines PathRoot and PathKey (where its PATH
+; lives) before including this file.
 ; =======================================================
 
 #ifndef MyAppName
@@ -73,6 +75,8 @@ WizardStyle=modern
 WizardSizePercent=110,120
 ; Explorer refreshes file icons when the file associations were written
 ChangesAssociations=WizardIsTaskSelected('associate')
+; Terminals opened afterwards see the gfglock command when it was added to PATH, or removed.
+ChangesEnvironment=yes
 
 ; The shell extension is an x64 DLL, which Explorer on Arm64 Windows can't load. PySide6 6.11
 ; needs Windows 10 version 1809 or later.
@@ -104,6 +108,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "associate"; Description: "{cm:AssociateGfglockFiles}"; GroupDescription: "{cm:FileAssociations}"
 ; Clearing it turns update checks off at the app's next start; Preferences turns them back on.
 Name: "updatecheck"; Description: "Check GitHub for gfgLock updates once a day"; GroupDescription: "Connections the app makes on its own (see the privacy policy):"
+Name: "addtopath"; Description: "Add the gfglock command to PATH (encrypt and decrypt from any terminal)"; GroupDescription: "Command line:"; Flags: unchecked
 
 [Files]
 ; The app bundle from scripts\bundle.ps1. The shell DLL comes from build\shell (each installer
@@ -136,6 +141,9 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Registry]
 ; HKA is HKLM for the all-users installer and HKCU for the per-user one, so Software\Classes
 ; registers the entries for all users or for the current user.
+
+; The command line's folder on PATH (only with the "addtopath" task); uninstalling takes it off.
+Root: {#PathRoot}; Subkey: "{#PathKey}"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Tasks: addtopath; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
 
 ; The connection choice: 1 keeps update checks on, 0 turns them off.
 Root: HKA; Subkey: "{#ChoicesKey}"; Flags: uninsdeletekey
@@ -298,4 +306,48 @@ begin
     MoveShellDllAside()
   else if CurStep = ssPostInstall then
     RemoveStaleEntry(HKA);
+end;
+
+// True when Folder is not already on PATH (compared without case and trailing backslashes).
+function NeedsAddPath(Folder: String): Boolean;
+var
+  Paths: String;
+begin
+  if not RegQueryStringValue({#PathRoot}, '{#PathKey}', 'Path', Paths) then
+  begin
+    Result := True;
+    Exit;
+  end;
+  Result := Pos(';' + Uppercase(RemoveBackslashUnlessRoot(Folder)) + ';', ';' + Uppercase(Paths) + ';') = 0;
+end;
+
+// Takes the command line's folder back off PATH when the app is uninstalled.
+procedure RemoveFromPath(Folder: String);
+var
+  Paths, Entry, Kept: String;
+  Separator: Integer;
+begin
+  if not RegQueryStringValue({#PathRoot}, '{#PathKey}', 'Path', Paths) then
+    Exit;
+  Kept := '';
+  Paths := Paths + ';';
+  while Length(Paths) > 0 do
+  begin
+    Separator := Pos(';', Paths);
+    Entry := Copy(Paths, 1, Separator - 1);
+    Delete(Paths, 1, Separator);
+    if (Entry <> '') and (CompareText(RemoveBackslashUnlessRoot(Entry), RemoveBackslashUnlessRoot(Folder)) <> 0) then
+    begin
+      if Kept <> '' then
+        Kept := Kept + ';';
+      Kept := Kept + Entry;
+    end;
+  end;
+  RegWriteExpandStringValue({#PathRoot}, '{#PathKey}', 'Path', Kept);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+    RemoveFromPath(ExpandConstant('{app}\bin'));
 end;

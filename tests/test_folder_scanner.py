@@ -1,4 +1,4 @@
-# test_folder_scanner.py - unit tests for gfglock.services.folder_scanner and folder loading
+# test_folder_scanner.py - unit tests for the folder scan (core/scan.py, services/folder_scanner.py) and folder loading
 
 import ctypes
 import gc
@@ -13,6 +13,7 @@ from PySide6.QtCore import QCoreApplication, QUrl
 from PySide6.QtWidgets import QApplication
 
 from gfglock.controllers.encrypt_ctrl import EncryptController
+from gfglock.core import scan
 from gfglock.core.file_ops import ENCRYPTED_EXTS, TEMP_SUFFIX
 from gfglock.models.file_model import FileListModel
 from gfglock.services import folder_scanner
@@ -111,7 +112,7 @@ class TestIterFiles:
                 raise PermissionError(5, "Access is denied")
             return original_scandir(path)
 
-        monkeypatch.setattr(folder_scanner.os, "scandir", scandir)
+        monkeypatch.setattr(scan.os, "scandir", scandir)
         report = ScanReport()
         found = [os.path.basename(p) for p, _ in iter_files([str(tmp_path)], lambda n: True, report=report)]
         assert found == ["a.txt"]
@@ -131,8 +132,8 @@ class TestProtectedLocations:
             monkeypatch.setenv(variable, str(base / folder))
         monkeypatch.setenv("USERPROFILE", str(base / "Users" / "me"))
         monkeypatch.setenv("APPDATA", str(base / "Roaming"))
-        monkeypatch.setattr(folder_scanner, "data_dir", lambda: str(base / "portable data"))
-        monkeypatch.setattr(folder_scanner, "app_folder", lambda: str(base / "Apps" / "gfgLock"))
+        monkeypatch.setattr(scan, "data_dir", lambda: str(base / "portable data"))
+        monkeypatch.setattr(scan, "app_folder", lambda: str(base / "Apps" / "gfgLock"))
         return base
 
     def test_every_location_is_listed(self, system):
@@ -371,7 +372,7 @@ class TestControllerFolderLoading:
                 raise PermissionError(5, "Access is denied")
             return original_scandir(path)
 
-        monkeypatch.setattr(folder_scanner.os, "scandir", scandir)
+        monkeypatch.setattr(scan.os, "scandir", scandir)
         controller = EncryptController("encrypt")
         notices = _notices(controller)
         controller.addFolder(str(tmp_path / "locked"))
@@ -389,7 +390,7 @@ class TestControllerFolderLoading:
                 raise PermissionError(5, "Access is denied")
             return original_scandir(path)
 
-        monkeypatch.setattr(folder_scanner.os, "scandir", scandir)
+        monkeypatch.setattr(scan.os, "scandir", scandir)
         controller = EncryptController("encrypt")
         notices = _notices(controller)
         controller.addFolder(str(tmp_path))

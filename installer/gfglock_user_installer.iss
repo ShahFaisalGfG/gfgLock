@@ -4,6 +4,10 @@
 ; installer are in common.iss.
 ; =======================================================
 
+; The command line goes on this user's PATH (the "addtopath" task).
+#define PathRoot "HKCU"
+#define PathKey "Environment"
+
 #include "common.iss"
 
 [Setup]

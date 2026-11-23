@@ -26,6 +26,7 @@ from gfglock.services.update_feed import (
     MANIFEST_NAME,
     SIGNATURE_NAME,
     FeedError,
+    FeedUnreachable,
     Release,
     UpdatePackage,
     UpdateSource,
@@ -53,6 +54,14 @@ FAILED = "failed"
 ERROR = "error"
 _BANNER_STATES = frozenset({AVAILABLE, DOWNLOADING, READY, FAILED, ERROR})
 
+# What the window says when a step fails; the error itself goes to the log.
+CHECK_OFFLINE = "Couldn't check for updates. Check your internet connection and try again."
+CHECK_FAILED = "Couldn't check for updates right now. Try again later."
+DOWNLOAD_INTERRUPTED = "The update download was interrupted. Click Try again; it continues where it stopped."
+DOWNLOAD_DAMAGED = "The update file was damaged, so it was deleted. Click Try again."
+DOWNLOAD_FAILED = "The update couldn't be downloaded. Click Try again."
+SAVE_FAILED = "The update couldn't be saved. Check that the drive has free space, then click Try again."
+
 
 @dataclass(frozen=True)
 class UpdaterConfig:
@@ -74,9 +83,11 @@ class UpdaterConfig:
 
 
 class _Signals(QObject):
-    checked = Signal(object, str, bool)            # (Release or None, error, metered connection)
+    # (Release or None, what went wrong for the log, what the window says, metered connection)
+    checked = Signal(object, str, str, bool)
     progress = Signal("qlonglong", "qlonglong")  # type: ignore[arg-type]  # (done, all); 64-bit for large installers
-    downloaded = Signal(object, str, bool)         # (file paths or None, error, cancelled)
+    # (file paths or None, what went wrong for the log, what the window says, cancelled)
+    downloaded = Signal(object, str, str, bool)
 
 
 class _CheckWorker(QRunnable):
@@ -91,17 +102,19 @@ class _CheckWorker(QRunnable):
     @Slot()
     def run(self) -> None:
         release: Release | None = None
-        error = ""
+        error = text = ""
         metered = False
         try:
             release = fetch_release(self._source)
             metered = install.is_metered()
+        except FeedUnreachable as failure:
+            error, text = str(failure), CHECK_OFFLINE
         except FeedError as failure:
-            error = str(failure)
+            error, text = str(failure), CHECK_FAILED
         except Exception as failure:  # the thread boundary: any error must still end the check
-            error = f"unexpected error: {failure!r}"
+            error, text = f"unexpected error: {failure!r}", CHECK_FAILED
         try:
-            self.signals.checked.emit(release, error, metered)
+            self.signals.checked.emit(release, error, text, metered)
         except RuntimeError:
             pass  # the app is shutting down and the signal object is already gone
 
@@ -125,7 +138,7 @@ class _DownloadWorker(QRunnable):
     @Slot()
     def run(self) -> None:
         paths: list[str] | None = None
-        error = ""
+        error = text = ""
         cancelled = False
         try:
             with install.background_priority():
@@ -134,11 +147,11 @@ class _DownloadWorker(QRunnable):
         except install.UpdateCancelled:
             cancelled = True
         except install.InstallError as failure:
-            error = str(failure)
+            error, text = str(failure), _download_text(failure)
         except Exception as failure:  # the thread boundary
-            error = f"The download failed: {failure!r}"
+            error, text = f"unexpected error: {failure!r}", DOWNLOAD_FAILED
         try:
-            self.signals.downloaded.emit(paths, error, cancelled)
+            self.signals.downloaded.emit(paths, error, text, cancelled)
         except RuntimeError:
             pass
 
@@ -227,6 +240,11 @@ class UpdateController(QObject):
     def needsApproval(self) -> bool:
         """True when installing asks for administrator approval (a copy installed for all users)."""
         return self._needs_approval
+
+    @Property(str, constant=True)
+    def exitWord(self) -> str:
+        """How the user ends the app, as the window says it: "close", or "quit" for an app that stays in the tray."""
+        return self._exit
 
     @Property(bool, notify=stateChanged)
     def canRestart(self) -> bool:
@@ -393,13 +411,14 @@ class UpdateController(QObject):
         self._set_status(CHECKING, "Checking for updates...")
         self._pool.start(worker)
 
-    def _on_checked(self, release: Release | None, error: str, metered: bool) -> None:
+    def _on_checked(self, release: Release | None, error: str, text: str, metered: bool) -> None:
         self._check_worker = None
         manual = self._manual
         if error:
-            self._config.log(f"Update check failed: {error}", False)
+            # A daily check that fails offline is routine; one the user asked for is worth keeping.
+            self._config.log(f"Update check failed: {error}", manual)
             if manual:
-                self._set_status(ERROR, f"Couldn't check for updates: {error}.")
+                self._set_status(ERROR, text)
                 self.notice.emit(self._message)
             else:
                 self._restore_after_check()
@@ -458,7 +477,9 @@ class UpdateController(QObject):
         try:
             save_release(release, folder)
         except OSError as error:
-            self._set_status(ERROR, f"The update couldn't be saved: {error.strerror or error}.")
+            self._config.log(f"Couldn't save the update information for {release.version}: {error}", True)
+            self._dismissed = False
+            self._set_status(ERROR, SAVE_FAILED)
             return
         if self._kind == install.PORTABLE_EXE:
             target, names = os.path.dirname(self._exe), [os.path.basename(self._exe) + ".new"]
@@ -477,7 +498,7 @@ class UpdateController(QObject):
         self._done, self._total = done, total
         self.progressChanged.emit()
 
-    def _on_downloaded(self, paths: list[str] | None, error: str, cancelled: bool) -> None:
+    def _on_downloaded(self, paths: list[str] | None, error: str, text: str, cancelled: bool) -> None:
         self._download_worker = None
         release = self._release
         if release is None:
@@ -486,8 +507,9 @@ class UpdateController(QObject):
             self._set_status(AVAILABLE, self._available_message())
             return
         if error or not paths:
-            self._config.log(f"Update download failed: {error}", True)
-            self._set_status(ERROR, error or "The update couldn't be downloaded.")
+            self._config.log(f"Update download failed: {error or 'no files were downloaded'}", True)
+            self._dismissed = False  # the user has to act, so the notice comes back
+            self._set_status(ERROR, text or DOWNLOAD_FAILED)
             return
         folder = self._folder(release.version)
         self._saved.pending_version = release.version
@@ -570,10 +592,11 @@ class UpdateController(QObject):
     def _available_message(self) -> str:
         version = self._release.version if self._release else ""
         if not self.canDownload:
-            return f"{self._app} {version} is available. Get it from the releases page."
+            return f"{self._app} {version} is available. Get it from the download page."
         _, auto_install = self._config.read_prefs()
         if auto_install and self._metered:
-            return f"{self._app} {version} is available. It isn't downloaded automatically on a metered connection."
+            return (f"{self._app} {version} is available. It downloads on its own once you're off mobile data "
+                    "or another limited connection.")
         return f"{self._app} {version} is available."
 
     def _ready_message(self) -> str:
@@ -587,8 +610,10 @@ class UpdateController(QObject):
 
     def _failed_message(self) -> str:
         version = self._release.version if self._release else ""
-        return (f"{self._app} {version} wasn't installed the last time {self._app} ended. "
-                "Install it now, or get it from the releases page.")
+        # A copy installed for all users most often fails here because the permission prompt was turned down.
+        approval = " and choose Yes when Windows asks for permission" if self._needs_approval else ""
+        return (f"{self._app} {version} wasn't installed the last time the app closed. "
+                f"Click Install now{approval}, or get it from the download page.")
 
     def _set_status(self, status: str, message: str) -> None:
         if (status, message) != (self._status, self._message):
@@ -603,11 +628,23 @@ class UpdateController(QObject):
         return any(bool(source.busy) for source in self._busy_sources)
 
     def _on_busy_changed(self, _busy: bool) -> None:
+        """A run started or finished (its busyChanged carries the new value); Restart now may change."""
         self.stateChanged.emit()
 
     def _open(self, url: str) -> None:
         if not QDesktopServices.openUrl(QUrl(url)):
             self._config.log(f"Could not open {url}", True)
+
+
+def _download_text(error: install.InstallError) -> str:
+    """What the window says about a failed update download."""
+    if isinstance(error, install.DownloadInterrupted):
+        return DOWNLOAD_INTERRUPTED
+    if isinstance(error, install.FileMismatch):
+        return DOWNLOAD_DAMAGED
+    if isinstance(error, install.SaveError):
+        return SAVE_FAILED
+    return DOWNLOAD_FAILED
 
 
 def _size(count: int) -> str:

@@ -17,7 +17,10 @@ dependencies = [
 ]
 
 [project.scripts]
-gfglock = "gfglock.app:main"
+gfglock = "gfglock.cli:main"
+
+[project.gui-scripts]
+gfglock-app = "gfglock.app:main"
 
 [project.optional-dependencies]
 dev = ["pyinstaller>=6.17", "pybind11>=3.0", "pytest>=8.0"]

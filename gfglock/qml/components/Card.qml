@@ -52,6 +52,7 @@ Rectangle {
                 spacing: 2
 
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: card.title
                     font.family: Theme.fontFamily
@@ -63,6 +64,7 @@ Rectangle {
                     Accessible.name: card.title
                 }
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: card.description.length > 0
                     text: card.description

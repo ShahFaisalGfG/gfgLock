@@ -1,4 +1,4 @@
-# encrypt_ctrl.py - one tab's file queue and the encrypt or decrypt runs over it
+# encrypt_ctrl.py - one tab's file queue and the encrypt, decrypt, or check runs over it
 
 import ctypes
 import os
@@ -9,18 +9,26 @@ from PySide6.QtCore import Property, QObject, Qt, QThreadPool, QTimer, QUrl, Sig
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
-from gfglock.config.defaults import (
-    AlgorithmDefaults,
-    DecryptionDefaults,
-    EncryptionDefaults,
-    NotificationDefaults,
-    PerformanceDefaults,
-    ReadSizeDefaults,
-    thread_limit,
+from gfglock.config.defaults import AlgorithmDefaults, NotificationDefaults
+from gfglock.core import file_ops, passwords, reasons
+from gfglock.core.batch import (
+    MODE_DECRYPT,
+    MODE_ENCRYPT,
+    MODE_VERIFY,
+    RunOptions,
+    RunResult,
+    format_time_left,
+    options_from_settings,
+    plural,
+    run_folders,
+    space_shortages,
+    summarize,
+    wrong_password_only,
 )
-from gfglock.core import file_ops
+from gfglock.core.file_ops import OUTCOME_DONE, OUTCOME_SKIPPED
 from gfglock.core.format_v2 import KeyRing
 from gfglock.models.file_model import (
+    STATUS_CHECKED,
     STATUS_DONE,
     STATUS_FAILED,
     STATUS_SKIPPED,
@@ -30,17 +38,15 @@ from gfglock.models.file_model import (
 )
 from gfglock.services.folder_scanner import FolderScanWorker, ScanReport
 from gfglock.services.notifier import notify
-from gfglock.services.worker import OUTCOME_DONE, OUTCOME_SKIPPED, EncryptDecryptWorker
+from gfglock.services.worker import EncryptDecryptWorker
 from gfglock.utils.logging import write_log, write_session_separator
 from gfglock.utils.settings import load_settings
 
-MODE_ENCRYPT = "encrypt"
-MODE_DECRYPT = "decrypt"
-# Settings section and defaults that hold each mode's thread count and read size.
-_PERFORMANCE = {MODE_ENCRYPT: ("encryption", EncryptionDefaults), MODE_DECRYPT: ("decryption", DecryptionDefaults)}
-
 _ALGO_NAMES = {option[1]: option[0] for option in AlgorithmDefaults.OPTIONS}
+_CIPHER_CODES = {cipher: code for code, cipher in AlgorithmDefaults.CIPHERS.items()}
 _OUTCOME_STATUS = {OUTCOME_DONE: STATUS_DONE, OUTCOME_SKIPPED: STATUS_SKIPPED}
+# The Start button of each run, as the summary's next step names it.
+_BUTTONS = {MODE_ENCRYPT: "Encrypt", MODE_DECRYPT: "Decrypt", MODE_VERIFY: "Check"}
 # runChanged reaches QML at most this often during a run; the final state is sent at once.
 _REFRESH_MS = 100
 # Progress shown until the run has ended: the last files are still being flushed to disk.
@@ -59,32 +65,9 @@ _shell32.ILFree.argtypes = [ctypes.c_void_p]
 _shell32.ILFree.restype = None
 
 
-def _plural(count: int, noun: str) -> str:
-    """'1 file', '3 files'."""
-    return f"{count} {noun}{'' if count == 1 else 's'}"
-
-
 def _were(count: int) -> str:
     """'was' for one, 'were' for any other count."""
     return "was" if count == 1 else "were"
-
-
-def _duration(seconds: float) -> str:
-    """'under 0.1 s', '2.1 s', '3 min 5 s', or '1 h 2 min'."""
-    if seconds < 0.1:
-        return "under 0.1 s"
-    if round(seconds, 1) < 60:
-        return f"{seconds:.1f} s"
-    minutes, secs = divmod(round(seconds), 60)
-    if minutes < 60:
-        return f"{minutes} min" + (f" {secs} s" if secs else "")
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours} h" + (f" {minutes} min" if minutes else "")
-
-
-def _lower_first(text: str) -> str:
-    """A sentence made to continue another one: 'Wrong password' -> 'wrong password' (not 'NTFS')."""
-    return text[:1].lower() + text[1:] if text[1:2].islower() else text
 
 
 def _select_in_explorer(path: str) -> None:
@@ -102,7 +85,7 @@ def _select_in_explorer(path: str) -> None:
 
 
 class EncryptController(QObject):
-    """Owns one tab's file list and runs encryption (or decryption) over it."""
+    """Owns one tab's file list and runs encryption (or decryption, or a check) over it."""
 
     busyChanged = Signal(bool)
     scanChanged = Signal()                 # folder scan started/progressed/ended
@@ -114,6 +97,7 @@ class EncryptController(QObject):
     def __init__(self, mode: str = MODE_ENCRYPT, parent=None):
         super().__init__(parent)
         self._mode = MODE_DECRYPT if mode == MODE_DECRYPT else MODE_ENCRYPT
+        self._run_mode = self._mode  # a Check run on the Decrypt tab is MODE_VERIFY
         self._file_model = FileListModel(self)
         self._threadpool = QThreadPool.globalInstance()
         # Scans get their own pool so a run (or a speed test) never holds them up.
@@ -127,13 +111,13 @@ class EncryptController(QObject):
         self._busy = False
         self._cancel_requested = False
         self._progress = 0.0
+        self._eta = -1.0
         self._files_done = 0
         self._files_total = 0
         self._current_file = ""
-        self._failure_reasons: set[str] = set()
-        self._files_stopped = 0  # files of the current run that Stop ended unchanged
         self._summary = ""
-        self._last_folder = ""
+        self._summary_error = False
+        self._outputs: list[str] = []
         self._run_timer = QTimer(self)
         self._run_timer.setSingleShot(True)
         self._run_timer.setInterval(_REFRESH_MS)
@@ -156,8 +140,13 @@ class EncryptController(QObject):
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
-        """True while files are being encrypted or decrypted."""
+        """True while files are being encrypted, decrypted, or checked."""
         return self._busy
+
+    @Property(bool, notify=busyChanged)
+    def checking(self) -> bool:
+        """True while the run is a Check: nothing is written."""
+        return self._busy and self._run_mode == MODE_VERIFY
 
     @Property(bool, notify=scanChanged)
     def scanning(self) -> bool:
@@ -173,6 +162,11 @@ class EncryptController(QObject):
     def progress(self) -> float:
         """Progress of the current run from 0 to 1, by bytes read; 1 only once the run has ended."""
         return self._progress
+
+    @Property(str, notify=runChanged)
+    def timeLeft(self) -> str:
+        """'about 3 min left' during a long run, "" while it is too early to tell."""
+        return format_time_left(self._eta) if self._busy and not self._cancel_requested else ""
 
     @Property(int, notify=runChanged)
     def filesDone(self) -> int:
@@ -196,13 +190,23 @@ class EncryptController(QObject):
 
     @Property(str, notify=summaryChanged)
     def summary(self) -> str:
-        """One-line result of the last run ("" before the first)."""
+        """How the last run went, or why it couldn't start ("" before the first)."""
         return self._summary
 
+    @Property(bool, notify=summaryChanged)
+    def summaryIsError(self) -> bool:
+        """True when the summary reports failures, or a run that couldn't start or stopped itself."""
+        return self._summary_error
+
+    @Property(list, notify=summaryChanged)
+    def lastFolders(self) -> list:
+        """The folders the last run wrote into, for "Open folder"."""
+        return run_folders(self._outputs)
+
     @Property(str, notify=summaryChanged)
-    def lastFolder(self) -> str:
-        """Folder of the last file written, for "Open folder"."""
-        return self._last_folder
+    def lastFile(self) -> str:
+        """The file the last run wrote when it wrote exactly one, for "Open file"."""
+        return self._outputs[0] if len(self._outputs) == 1 else ""
 
     # ── Adding files ────────────────────────────────────────────────────────
 
@@ -234,8 +238,8 @@ class EncryptController(QObject):
         """Stop any folder scan and remove all files from the list."""
         self.cancelScan()
         self._file_model.clearAll()
-        if self._last_folder:  # "Open folder" belongs to the files just cleared
-            self._last_folder = ""
+        if self._outputs:  # "Open folder" belongs to the files just cleared
+            self._outputs = []
             self.summaryChanged.emit()
 
     def shutdown(self) -> None:
@@ -246,13 +250,33 @@ class EncryptController(QObject):
 
     # ── Running ─────────────────────────────────────────────────────────────
 
+    @Slot(str, str, bool, result=str)
+    def passwordBlocker(self, password: str, confirm: str, confirm_finished: bool) -> str:
+        """What is still wrong with the typed password(s) before this tab can start, or ""."""
+        return passwords.blocker(self._mode, password, confirm, confirm_finished)
+
+    @Slot(str, str, bool, result=bool)
+    def passwordMismatch(self, password: str, confirm: str, confirm_finished: bool) -> bool:
+        """True when the confirmation box is complete enough to tell, and differs from the password."""
+        return self._mode == MODE_ENCRYPT and passwords.mismatch(password, confirm, confirm_finished)
+
     @Slot(str, bool, str)
     def start(self, password: str, encrypt_names: bool = False, algorithm: str = "") -> None:
         """Encrypt or decrypt every file that isn't finished yet with `password`."""
+        self._start_run(self._mode, password, encrypt_names, algorithm)
+
+    @Slot(str)
+    def check(self, password: str) -> None:
+        """Check the password and the data of every file not finished yet, changing nothing."""
+        if self._mode == MODE_DECRYPT:
+            self._start_run(MODE_VERIFY, password)
+
+    def _start_run(self, mode: str, password: str, encrypt_names: bool = False, algorithm: str = "") -> None:
+        """Start a run of `mode` over the runnable files, unless something stops it before it begins."""
         if self._busy or not password:
             return
-        paths = self._file_model.runnable_paths()
-        if not paths:
+        items = self._file_model.runnable_items()
+        if not items:
             return
         try:
             keys = KeyRing(password)
@@ -260,36 +284,46 @@ class EncryptController(QObject):
             reason = str(error)
             self.notice.emit(f"{reason[:1].upper()}{reason[1:]}.")
             return
-        settings = load_settings()
-        section_name, defaults = _PERFORMANCE[self._mode]
-        section = settings.get(section_name, {})
-        threads = self._clamp_threads(int(section.get("cpu_threads", defaults.DEFAULT_THREADS)), settings)
-        read_size = int(section.get("read_size", ReadSizeDefaults.DEFAULT) or 0)
-        choice, cipher = self._cipher(algorithm or settings.get("advanced", {}).get("encryption_mode", ""))
+        options = options_from_settings(mode, load_settings(), algorithm=algorithm, hide_names=encrypt_names)
+        problem = self._cannot_start(items, options)
+        if problem:
+            self._set_summary(problem, error=True)
+            return
 
-        algo_label = _ALGO_NAMES.get(choice, choice) if self._mode == MODE_ENCRYPT else "auto-detect"
-        start_msg = (f"[{self._mode.upper()}] {_plural(len(paths), 'file')} | {algo_label} | "
-                     f"{_plural(threads, 'thread')}")
-        write_log(start_msg, "general")
+        if mode == MODE_ENCRYPT:
+            label = _ALGO_NAMES.get(_CIPHER_CODES.get(options.algorithm, ""), options.algorithm)
+        else:
+            label = "auto-detect"
+        write_log(f"[{mode.upper()}] {plural(len(items), 'file')} | {label} | {plural(options.threads, 'thread')}",
+                  "general")
 
+        paths = [path for path, _size in items]
         self._file_model.reset_for_run(paths)
-        self._worker = EncryptDecryptWorker(
-            paths=paths, keys=keys, mode=self._mode, encrypt_name=encrypt_names,
-            threads=threads, read_size=read_size, algorithm=cipher,
-        )
+        self._run_mode = mode
+        self._worker = EncryptDecryptWorker(paths, keys, options)
         self._connect_worker(self._worker)
         self._cancel_requested = False
         self._progress = 0.0
+        self._eta = -1.0
         self._files_done = 0
         self._files_total = len(paths)
         self._current_file = ""
-        self._failure_reasons = set()
-        self._files_stopped = 0
-        self._summary = ""
-        self.summaryChanged.emit()
+        self._outputs = []
+        self._set_summary("")
         self._emit_run()
         self._set_busy(True)
         self._threadpool.start(self._worker)
+
+    def _cannot_start(self, items: list[tuple[str, int]], options: RunOptions) -> str:
+        """Why a run can't start (the output folder can't be made, a drive is too full), or ""."""
+        if options.output_dir:
+            try:
+                os.makedirs(options.output_dir, exist_ok=True)
+            except OSError as error:
+                write_log(f"Could not create {options.output_dir}: {error}", "critical")
+                return (f"Couldn't use the folder {options.output_dir} to save into "
+                        f"({reasons.label(reasons.categorize(error))}). Choose another one in Options.")
+        return " ".join(shortage.text() for shortage in space_shortages(items, options))
 
     @Slot()
     def cancel(self) -> None:
@@ -304,28 +338,32 @@ class EncryptController(QObject):
     @Slot(int)
     def showInFolder(self, row: int) -> None:
         """Open File Explorer with the row's file selected (the written file once done)."""
-        path = self._file_model.locationAt(row)
-        if not path:
+        self._show_file(self._file_model.locationAt(row))
+
+    @Slot(int)
+    def openRow(self, row: int) -> None:
+        """A finished row's default action: open the decrypted file, or show the encrypted one."""
+        output = self._file_model.outputAt(row)
+        if not output:
             return
-        try:
-            if os.path.exists(path):
-                _select_in_explorer(os.path.normpath(path))
-            elif os.path.isdir(os.path.dirname(path)):
-                os.startfile(os.path.dirname(path))  # type: ignore[attr-defined]
-        except OSError as error:
-            write_log(f"Could not open File Explorer for {path}: {error}", "critical")
-            self.notice.emit("Couldn't open File Explorer for that file.")
+        if self._mode == MODE_DECRYPT:
+            self._open(output, "Couldn't open that file. It may have been moved or deleted.")
+        else:
+            self._show_file(output)
 
     @Slot()
-    def openLastFolder(self) -> None:
-        """Open the folder of the last file written."""
-        if not self._last_folder:
-            return
-        try:
-            os.startfile(self._last_folder)  # type: ignore[attr-defined]
-        except OSError as error:
-            write_log(f"Could not open {self._last_folder}: {error}", "critical")
-            self.notice.emit("Couldn't open that folder.")
+    def openLastFile(self) -> None:
+        """Open the one file the last run decrypted, or show the one it encrypted."""
+        path = self._outputs[0] if len(self._outputs) == 1 else ""
+        if path and self._mode == MODE_DECRYPT:
+            self._open(path, "Couldn't open that file. It may have been moved or deleted.")
+        elif path:
+            self._show_file(path)
+
+    @Slot(str)
+    def openFolder(self, folder: str) -> None:
+        """Open one of the folders the last run wrote into."""
+        self._open(folder, "Couldn't open that folder. It may have been moved or deleted.")
 
     @Slot()
     def copySelectedNames(self) -> None:
@@ -340,6 +378,37 @@ class EncryptController(QObject):
         text = self._file_model.getSelectedPathsText()
         if text:
             QApplication.clipboard().setText(text)
+
+    @Slot()
+    def copyResults(self) -> None:
+        """Copy every file with its status and result, one per line, to the clipboard."""
+        text = self._file_model.resultsText()
+        if text:
+            QApplication.clipboard().setText(text)
+            self.notice.emit(f"Copied the results of {plural(len(text.splitlines()), 'file')}.")
+
+    def _show_file(self, path: str) -> None:
+        """Select a file in File Explorer, or open its folder when the file is gone."""
+        if not path:
+            return
+        try:
+            if os.path.exists(path):
+                _select_in_explorer(os.path.normpath(path))
+            elif os.path.isdir(os.path.dirname(path)):
+                os.startfile(os.path.dirname(path))  # type: ignore[attr-defined]
+            else:
+                self.notice.emit("That file and its folder were moved or deleted.")
+        except OSError as error:
+            write_log(f"Could not open File Explorer for {path}: {error}", "critical")
+            self.notice.emit("Couldn't open File Explorer for that file.")
+
+    def _open(self, path: str, failure: str) -> None:
+        """Open a file or folder with its usual program, saying so when it can't be."""
+        try:
+            os.startfile(path)  # type: ignore[attr-defined]
+        except OSError as error:
+            write_log(f"Could not open {path}: {error}", "critical")
+            self.notice.emit(failure)
 
     # ── Scanning ────────────────────────────────────────────────────────────
 
@@ -395,9 +464,9 @@ class EncryptController(QObject):
                          else f"No gfgLock-encrypted files in {where}.")
         if report.failed_roots:
             parts.append("Couldn't open that folder." if report.failed_roots == 1 and not report.folders
-                         else f"Couldn't open {_plural(report.failed_roots, 'folder')}.")
+                         else f"Couldn't open {plural(report.failed_roots, 'folder')}.")
         if report.unreadable:
-            parts.append(f"{_plural(report.unreadable, 'folder')} inside couldn't be opened and "
+            parts.append(f"{plural(report.unreadable, 'folder')} inside couldn't be opened and "
                          f"{_were(report.unreadable)} skipped.")
         if report.protected_folders or report.protected_files:
             parts.append(self._protected_text(report.protected_folders, report.protected_files))
@@ -414,22 +483,22 @@ class EncryptController(QObject):
         """Say that system and app locations were left out, which only Encrypt does."""
         parts = []
         if folders:
-            parts.append(_plural(folders, "system or app folder"))
+            parts.append(plural(folders, "system or app folder"))
         if files:
-            parts.append(_plural(files, "system or app file"))
+            parts.append(plural(files, "system or app file"))
         return f"{' and '.join(parts)} {_were(folders + files)} left out."
 
     def _left_out_text(self, count: int) -> str:
         """Why files added directly aren't in the list: they belong on the other tab."""
         if self._mode == MODE_ENCRYPT:
-            return (f"{_plural(count, 'file')} already encrypted {_were(count)} left out. "
+            return (f"{plural(count, 'file')} already encrypted {_were(count)} left out. "
                     f"Use the Decrypt tab to open {'it' if count == 1 else 'them'}.")
-        return f"{_plural(count, 'file')} not encrypted by gfgLock {_were(count)} left out."
+        return f"{plural(count, 'file')} not encrypted by gfgLock {_were(count)} left out."
 
     def _added_while_busy_text(self, count: int) -> str:
         """Files added during a run wait for the next one; say so, since the run won't pick them up."""
-        verb = "Encrypt" if self._mode == MODE_ENCRYPT else "Decrypt"
-        return (f"{_plural(count, 'file')} added. {'It' if count == 1 else 'They'} will run "
+        verb = _BUTTONS[self._mode]
+        return (f"{plural(count, 'file')} added. {'It' if count == 1 else 'They'} will run "
                 f"when you press {verb} again after this run.")
 
     # ── Run updates ─────────────────────────────────────────────────────────
@@ -443,11 +512,11 @@ class EncryptController(QObject):
         signals.file_progress.connect(self._file_model.set_progress, queued)
         signals.file_result.connect(self._on_file_result, queued)
         signals.temps_removed.connect(self._on_temps_removed, queued)
-        signals.error.connect(self.notice, queued)
         signals.finished.connect(self._on_finished, queued)
 
-    def _on_progress(self, done: float, total: float) -> None:
+    def _on_progress(self, done: float, total: float, eta: float) -> None:
         self._progress = min(_RUNNING_PROGRESS_CAP, done / total) if total > 0 else 0.0
+        self._eta = eta
         self._schedule_run()
 
     def _on_file_started(self, path: str) -> None:
@@ -455,70 +524,51 @@ class EncryptController(QObject):
         self._file_model.set_status(path, STATUS_WORKING, progress=0.0)
         self._schedule_run()
 
-    def _on_file_result(self, path: str, outcome: str, reason: str, output: str) -> None:
-        """Show one file's result on its row (the worker has logged it) and count it as done.
+    def _on_file_result(self, path: str, outcome: str, category: str, reason: str, output: str) -> None:
+        """Show one file's result on its row (the run has logged it) and count it as done.
 
-        A file that Stop ended is unchanged, so it waits for the next run instead of counting as finished.
+        A file that Stop ended is unchanged, so it waits for the next run instead of counting as
+        finished; a checked file can still be decrypted.
         """
         status = _OUTCOME_STATUS.get(outcome, STATUS_FAILED)
-        if outcome == OUTCOME_SKIPPED and reason == file_ops.STOPPED_REASON:
+        if outcome == OUTCOME_SKIPPED and category == reasons.STOPPED:
             status = STATUS_WAITING
-            self._files_stopped += 1
+        elif outcome == OUTCOME_DONE and self._run_mode == MODE_VERIFY:
+            status = STATUS_CHECKED
         if output:
             shown = f"Saved as {os.path.basename(output)}" + (f". {reason}" if reason else "")
-            self._last_folder = os.path.dirname(output)
+            self._outputs.append(output)
         else:
             shown = reason
         self._file_model.set_status(path, status, progress=1.0, message=shown, output=output)
-        if status == STATUS_FAILED:
-            self._failure_reasons.add(reason)
         self._files_done += 1
         self._schedule_run()
 
     def _on_temps_removed(self, count: int) -> None:
-        self.notice.emit(f"Removed {_plural(count, 'temporary file')} left by an earlier run that didn't finish.")
+        self.notice.emit(f"Removed {plural(count, 'temporary file')} left by an earlier run that didn't finish.")
 
-    def _on_finished(self, elapsed: float, total: int, succeeded: int, failed: int, skipped: int) -> None:
+    def _on_finished(self, result: RunResult) -> None:
         """Summarize the run, log it, and notify if enabled."""
         self._worker = None
-        skipped -= self._files_stopped  # those wait for the next run
-        # A Stop pressed after the last file ended changed nothing: the run counts as complete.
-        stopped = self._cancel_requested and succeeded + failed + skipped < total
         self._cancel_requested = False
-        if not stopped:
+        if not result.cancelled:
             self._progress = 1.0
-        self._summary = self._build_summary(elapsed, total, succeeded, failed, skipped, stopped)
-        write_log(f"[{self._mode.upper()}] {self._summary}", "critical" if failed else "general")
+        summary = summarize(result, f"press {_BUTTONS[result.mode]}")
+        if wrong_password_only(result):
+            summary += f" Type it again and press {_BUTTONS[result.mode]}."
+        self._set_summary(summary, error=bool(result.failed or result.halt or result.error), emit=False)
+        write_log(f"[{result.mode.upper()}] {self._summary}", "critical" if result.failed else "general")
         write_session_separator()
+        if result.failed and result.total >= 10:
+            self._file_model.move_failed_first()  # in a big list, the files that need attention come first
         self._file_model.flush_counts()
         self._set_busy(False)
         self.summaryChanged.emit()
         self._emit_run()
-        self._notify_complete(elapsed, failed, stopped)
-        self.operationFinished.emit(elapsed, total, succeeded, failed, skipped)
+        self._notify_complete(result)
+        self.operationFinished.emit(result.elapsed, result.total, result.done, result.failed, result.skipped)
 
-    def _build_summary(self, elapsed: float, total: int, succeeded: int, failed: int,
-                       skipped: int, cancelled: bool) -> str:
-        """One line saying how the run went, e.g. '3 of 4 files encrypted in 2.1 s, 1 failed.'
-
-        When every failure has the same reason (a wrong password, say), it follows the failure count.
-        """
-        verb = "encrypted" if self._mode == MODE_ENCRYPT else "decrypted"
-        if cancelled:
-            head = f"Stopped: {succeeded} of {_plural(total, 'file')} {verb}"
-        elif succeeded == total:
-            files = f"All {_plural(total, 'file')}" if total > 1 else _plural(total, "file")
-            head = f"{files} {verb} in {_duration(elapsed)}"
-        else:
-            head = f"{succeeded} of {_plural(total, 'file')} {verb} in {_duration(elapsed)}"
-        extras = [f"{skipped} skipped"] if skipped else []
-        if failed:
-            reason = next(iter(self._failure_reasons)) if len(self._failure_reasons) == 1 else ""
-            extras.append(f"{failed} failed" + (f": {_lower_first(reason)}" if reason else ""))
-        tail = " The rest were not changed." if cancelled and succeeded + failed + skipped < total else ""
-        return head + "".join(f", {extra}" for extra in extras) + "." + tail
-
-    def _notify_complete(self, elapsed: float, failed: int, stopped: bool) -> None:
+    def _notify_complete(self, result: RunResult) -> None:
         """Send a desktop notification when the preference is on and the user may have looked away:
         the window isn't in front, or the run took long enough to switch to something else."""
         settings = load_settings()
@@ -527,12 +577,12 @@ class EncryptController(QObject):
         ):
             return
         in_front = QGuiApplication.applicationState() == Qt.ApplicationState.ApplicationActive
-        if in_front and elapsed <= _NOTIFY_AFTER_S:
+        if in_front and result.elapsed <= _NOTIFY_AFTER_S:
             return
-        verb = "Encryption" if self._mode == MODE_ENCRYPT else "Decryption"
-        if stopped:
+        verb = {MODE_ENCRYPT: "Encryption", MODE_DECRYPT: "Decryption", MODE_VERIFY: "Check"}[result.mode]
+        if result.cancelled:
             title = f"{verb} stopped"
-        elif failed:
+        elif result.failed:
             title = f"{verb} finished with errors"
         else:
             title = f"{verb} complete"
@@ -554,26 +604,15 @@ class EncryptController(QObject):
 
     # ── Internal helpers ────────────────────────────────────────────────────
 
-    @staticmethod
-    def _cipher(choice: str) -> tuple[str, str]:
-        """The settings code and engine cipher to encrypt with. Anything else, including the
-        decrypt-only CFB, means the default algorithm."""
-        cipher = AlgorithmDefaults.CIPHERS.get(choice, "")
-        if cipher not in file_ops.ENCRYPT_ALGORITHMS:
-            choice = AlgorithmDefaults.DEFAULT_ALGORITHM
-            cipher = AlgorithmDefaults.CIPHERS[choice]
-        return choice, cipher
-
-    @staticmethod
-    def _clamp_threads(threads: int, settings: dict) -> int:
-        """Limit threads to the CPU, keeping one free when the preference asks for it."""
-        clamp = settings.get("advanced", {}).get("clamp_cpu_threads", PerformanceDefaults.CLAMP_CPU_THREADS)
-        return max(1, min(threads, thread_limit(clamp)))
+    def _set_summary(self, text: str, error: bool = False, emit: bool = True) -> None:
+        self._summary = text
+        self._summary_error = error and bool(text)
+        if emit:
+            self.summaryChanged.emit()
 
     def _clear_summary(self) -> None:
         if self._summary and not self._busy:
-            self._summary = ""
-            self.summaryChanged.emit()
+            self._set_summary("")
 
     def _set_busy(self, busy: bool) -> None:
         if busy != self._busy:

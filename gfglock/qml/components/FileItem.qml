@@ -6,11 +6,12 @@ import QtQuick.Layouts
 // One row of a queue: type badge, name, size or result, and a status badge. Status is always
 // spelled out in text and with an icon, never by color alone. Once a file has a result, its
 // message (where it was saved, why it failed, or a note on a finished file) replaces the size
-// and folder line.
+// and folder line. Double-clicking a finished row opens its result.
 Rectangle {
     id: fileItem
 
     signal clicked(int index, int modifiers)
+    signal doubleClicked(int index)
     signal contextMenuRequested(int index)
     signal removeRequested(int index)
 
@@ -31,24 +32,36 @@ Rectangle {
 
     readonly property bool _busy: fileItem.status === "working"
     readonly property bool _encrypted: appController.encryptedExtensions.indexOf("." + fileItem.ext.toLowerCase()) >= 0
-    readonly property string _statusText: {
+    readonly property string statusText: {
         switch (fileItem.status) {
         case "working":
             // Once every byte is read, the output is still being flushed to disk.
             if (fileItem.progress >= 0.999) return "Finishing..."
             return fileItem.progress > 0 ? Math.floor(fileItem.progress * 100) + "%" : "Working"
         case "done":    return "Done"
+        case "checked": return "Checked"
         case "skipped": return "Skipped"
         case "failed":  return "Failed"
         default:        return "Waiting"
         }
     }
-    readonly property color _statusColor: {
+    readonly property string _tone: {
         switch (fileItem.status) {
-        case "working": return Theme.accent
-        case "done":    return Theme.success
-        case "failed":  return Theme.danger
-        default:        return Theme.textMuted
+        case "working": return "accent"
+        case "done":    return "success"
+        case "checked": return "success"
+        case "failed":  return "danger"
+        default:        return "neutral"
+        }
+    }
+    readonly property string _statusIcon: {
+        switch (fileItem.status) {
+        case "done":    return "completed"
+        case "checked": return "check"
+        case "failed":  return "error"
+        case "skipped": return "skip"
+        case "working": return "sync"
+        default:        return ""
         }
     }
 
@@ -59,7 +72,7 @@ Rectangle {
     border.color: Theme.focusRing
 
     Accessible.role: Accessible.ListItem
-    Accessible.name: fileItem.name + ", " + fileItem._statusText + (fileItem.message ? ", " + fileItem.message : "")
+    Accessible.name: fileItem.name + ", " + fileItem.statusText + (fileItem.message ? ", " + fileItem.message : "")
     Accessible.description: fileItem.size + ", " + fileItem.folder
     Accessible.selectable: true
     Accessible.selected: fileItem.selected
@@ -104,6 +117,7 @@ Rectangle {
                 color: Theme.accent
             }
             Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 visible: !fileItem._encrypted
                 width: parent.width - 4
@@ -122,6 +136,7 @@ Rectangle {
             spacing: 2
 
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: fileItem.name
                 font.family: Theme.fontFamily
@@ -131,6 +146,7 @@ Rectangle {
                 elide: Text.ElideMiddle
             }
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: fileItem.message ? fileItem.message : fileItem.size + "  ·  " + fileItem.folder
                 font.family: Theme.fontFamily
@@ -142,26 +158,11 @@ Rectangle {
             }
         }
 
-        RowLayout {
-            spacing: 4
+        StatusBadge {
             visible: !removeButton.visible
-
-            Icon {
-                name: fileItem.status === "done" ? "completed"
-                    : fileItem.status === "failed" ? "error"
-                    : fileItem.status === "skipped" ? "skip"
-                    : fileItem._busy ? "sync" : ""
-                visible: name.length > 0
-                size: Theme.iconSm
-                color: fileItem._statusColor
-            }
-            Text {
-                text: fileItem._statusText
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontCaption
-                font.weight: fileItem._busy ? Font.DemiBold : Font.Normal
-                color: fileItem._statusColor
-            }
+            text: fileItem.statusText
+            iconName: fileItem._statusIcon
+            tone: fileItem._tone
         }
 
         AppButton {
@@ -201,6 +202,9 @@ Rectangle {
             } else {
                 fileItem.clicked(fileItem.index, mouse.modifiers)
             }
+        }
+        onDoubleClicked: function(mouse) {
+            if (mouse.button === Qt.LeftButton) fileItem.doubleClicked(fileItem.index)
         }
     }
 }

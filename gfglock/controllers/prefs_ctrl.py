@@ -6,7 +6,7 @@ import os
 from collections.abc import Sequence
 from typing import Any, Protocol, TypeVar, overload
 
-from PySide6.QtCore import Property, QObject, QThreadPool, Signal, Slot
+from PySide6.QtCore import Property, QObject, QThreadPool, QUrl, Signal, Slot
 
 from gfglock.config.defaults import (
     AlgorithmDefaults,
@@ -14,6 +14,7 @@ from gfglock.config.defaults import (
     EncryptionDefaults,
     LoggingDefaults,
     NotificationDefaults,
+    OutputDefaults,
     PerformanceDefaults,
     ReadSizeDefaults,
     ThemeDefaults,
@@ -105,6 +106,26 @@ class PrefsController(QObject):
     def encFilenames(self) -> bool:
         return self._get("encryption", "encrypt_filenames", default=EncryptionDefaults.DEFAULT_ENCRYPT_FILENAMES)
 
+    @Property(bool, notify=settingsChanged)
+    def encKeepOriginals(self) -> bool:
+        """True when encrypting keeps each original next to its encrypted copy."""
+        return self._get("encryption", "keep_originals", default=OutputDefaults.KEEP_ORIGINALS)
+
+    @Property(str, notify=settingsChanged)
+    def encOutputDir(self) -> str:
+        """The folder encrypted files go to; "" puts each next to its original."""
+        return self._get("encryption", "output_dir", default=OutputDefaults.OUTPUT_DIR)
+
+    @Property(bool, notify=settingsChanged)
+    def decKeepOriginals(self) -> bool:
+        """True when decrypting keeps each encrypted file next to the restored one."""
+        return self._get("decryption", "keep_originals", default=OutputDefaults.KEEP_ORIGINALS)
+
+    @Property(str, notify=settingsChanged)
+    def decOutputDir(self) -> str:
+        """The folder decrypted files go to; "" puts each next to its encrypted file."""
+        return self._get("decryption", "output_dir", default=OutputDefaults.OUTPUT_DIR)
+
     @Property(int, notify=settingsChanged)
     def decThreads(self) -> int:
         return self._get("decryption", "cpu_threads", default=DecryptionDefaults.DEFAULT_THREADS)
@@ -193,6 +214,24 @@ class PrefsController(QObject):
         current = (self._get("advanced", "encryption_mode"), self._get("encryption", "encrypt_filenames"))
         if current != (algorithm, hide_names):
             self._save({"advanced.encryption_mode": algorithm, "encryption.encrypt_filenames": hide_names}, quiet=True)
+
+    @Slot(str, bool, str)
+    def rememberOutputOptions(self, mode: str, keep_originals: bool, output_dir: str) -> None:
+        """Save a tab's Keep the originals and Save to choices quietly (no saveFinished on success).
+
+        output_dir is a file:/// URL or a path from the folder picker, or "" for next to each file.
+        """
+        section = {"encrypt": "encryption", "decrypt": "decryption"}.get(mode)
+        if section is None:
+            return
+        folder = QUrl(output_dir).toLocalFile() or output_dir
+        folder = os.path.normpath(folder) if folder else ""
+        if folder and not os.path.isabs(folder):
+            write_log(f"Ignored an output folder that isn't a full path: {folder!r}", "critical")
+            return
+        current = (self._get(section, "keep_originals"), self._get(section, "output_dir"))
+        if current != (keep_originals, folder):
+            self._save({f"{section}.keep_originals": keep_originals, f"{section}.output_dir": folder}, quiet=True)
 
     @Slot()
     def resetDefaults(self) -> None:
