@@ -79,7 +79,7 @@ static_assert(NONCE_PREFIX_SIZE + 4 + 1 == NONCE_SIZE, "a v2 nonce is prefix | u
 constexpr const char* STOPPED      = "stopped";
 constexpr const char* TRUNCATED    = "the file is truncated or corrupted";
 constexpr const char* CORRUPTED    = "the file is corrupted";
-constexpr const char* AUTH_FAILED  = "wrong password or the file was modified (authentication failed)";
+constexpr const char* AUTH_FAILED  = "wrong password, or the file is damaged";
 constexpr const char* SIZE_CHANGED = "the source file changed size while it was being read";
 constexpr const char* V1_BAD_NAME  = "wrong password or the file is corrupted";
 // Inputs are opened read-share only, so a file another program holds open for writing fails.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import configparser
 import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -68,11 +69,19 @@ _IsUserAnAdmin = _api(_shell32, "IsUserAnAdmin", wintypes.BOOL)
 
 
 class InstallError(Exception):
-    """A download or install step failed; the message suits the user and the log."""
+    """A download or install step failed; the message suits the log, and the app shows its own text."""
+
+
+class DownloadInterrupted(InstallError):
+    """The download stopped part way (a dropped connection or a server error); it resumes next time."""
 
 
 class FileMismatch(InstallError):
-    """A downloaded file no longer matches its published checksum; it must be downloaded again."""
+    """A downloaded file doesn't match its published size or checksum; it must be downloaded again."""
+
+
+class SaveError(InstallError):
+    """The update couldn't be written to the drive (no space, or no permission)."""
 
 
 class UpdateCancelled(Exception):
@@ -186,7 +195,7 @@ def download_package(source: UpdateSource, tag: str, package: UpdatePackage, fol
     try:
         os.makedirs(folder, exist_ok=True)
     except OSError as error:
-        raise InstallError(f"Couldn't create {folder}: {error.strerror or error}") from error
+        raise SaveError(f"Couldn't create {folder}: {error.strerror or error}") from error
     names = list(target_names) or [item.name for item in package.files]
     total = package.size
     finished = 0
@@ -219,23 +228,29 @@ def _download_file(source: UpdateSource, url: str, target: str, expected: Update
             written = _copy(response, part, start, expected, digest, progress, cancel)
     except UpdateCancelled:
         raise
+    except FileMismatch:
+        _remove(part)  # the server sent more than was published, so none of it can be trusted
+        raise
     except FeedError as error:
-        raise InstallError(str(error)) from error
+        raise DownloadInterrupted(str(error)) from error
     except (OSError, ValueError) as error:  # URLError and HTTPError are OSErrors
         if cancel.cancelled:
             raise UpdateCancelled() from error
-        raise InstallError(f"The download of {expected.name} stopped: {getattr(error, 'reason', error)}") from error
+        if getattr(error, "errno", None) == errno.ENOSPC:
+            raise SaveError(f"Couldn't save {expected.name}: {error}") from error
+        reason = getattr(error, "reason", error)
+        raise DownloadInterrupted(f"The download of {expected.name} stopped: {reason}") from error
     finally:
         cancel.watch(None)
     if written != expected.size:
-        raise InstallError(f"The download of {expected.name} ended early; it resumes next time.")
+        raise DownloadInterrupted(f"The download of {expected.name} ended early; it resumes next time.")
     if digest.hexdigest() != expected.sha256:
         _remove(part)
-        raise InstallError(f"{expected.name} didn't match its published checksum, so it was deleted.")
+        raise FileMismatch(f"{expected.name} didn't match its published checksum, so it was deleted.")
     try:
         os.replace(part, target)
     except OSError as error:
-        raise InstallError(f"Couldn't save {expected.name}: {error.strerror or error}") from error
+        raise SaveError(f"Couldn't save {expected.name}: {error.strerror or error}") from error
 
 
 def _copy(response: Any, part: str, start: int, expected: UpdateFile, digest: Any,
@@ -254,7 +269,7 @@ def _copy(response: Any, part: str, start: int, expected: UpdateFile, digest: An
                 break
             written += len(block)
             if written > expected.size:
-                raise InstallError(f"{expected.name} is larger than published, so the download stopped.")
+                raise FileMismatch(f"{expected.name} is larger than published, so it was deleted.")
             digest.update(block)
             fh.write(block)
             progress(written)

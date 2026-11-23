@@ -16,9 +16,11 @@ Item {
     readonly property string blocker: page._blocker()
     // The toast sits above the run bar.
     readonly property int runBarHeight: runBar.height
-    // The saved choice, read through a property that signals only when the value changes, so
-    // saving unrelated preferences doesn't undo a choice made on this tab.
+    // The saved choices, read through properties that signal only when a value changes, so saving
+    // unrelated preferences doesn't undo a choice made on this tab.
     readonly property bool _hideNamesSaved: prefsController.encFilenames
+    readonly property bool _keepOriginals: page.encrypting ? prefsController.encKeepOriginals : prefsController.decKeepOriginals
+    readonly property string _outputDir: page.encrypting ? prefsController.encOutputDir : prefsController.decOutputDir
     readonly property string _addFilesTip: (page.encrypting ? "Choose files to encrypt" : "Choose encrypted files to decrypt") + " (Ctrl+O)"
     readonly property string _addFolderTip: (page.encrypting ? "Add every file in a folder and its subfolders"
                                                              : "Add every encrypted file in a folder and its subfolders")
@@ -31,38 +33,85 @@ Item {
     // Confirm shows a mismatch once it is as long as the password, or after Enter or leaving it,
     // not while the second copy is still being typed.
     property bool _confirmFinished: false
-    readonly property bool _mismatch: confirmField.text.length > 0 && confirmField.text !== passwordField.text
-        && (page._confirmFinished || confirmField.text.length >= passwordField.text.length)
+    readonly property bool _mismatch: page.controller.passwordMismatch(passwordField.text, confirmField.text,
+                                                                       page._confirmFinished)
     // Added files are checked by a short scan too, so the list shows a scan only once it has run
     // for a moment; a plain add then doesn't flash the scan banner.
     property bool _scanShown: false
+    property bool _optionsOpen: false
 
     signal notice(string message)
 
     function openFiles() { filePicker.open() }
     function openFolder() { folderPicker.open() }
 
+    // Keyboard focus when the window opens: the password once files are listed, else Add files.
+    function focusStart() {
+        if (page.queue.count > 0) passwordField.forceInputFocus()
+        else fileList.focusAddFiles()
+    }
+
     function start() {
         if (page.blocker.length > 0 || page.controller.busy || page.controller.scanning) return
         page.controller.start(passwordField.text, encryptNamesSwitch.checked, algorithmCombo.currentValue || "")
     }
 
-    // Says what is still missing before Start, or "" when the tab is ready.
+    function check() {
+        if (page.encrypting || page.blocker.length > 0 || page.controller.busy || page.controller.scanning) return
+        page.controller.check(passwordField.text)
+    }
+
+    // Says what is still missing before Start, or "" when the tab is ready. The password rules are
+    // shared with the command line (core/passwords.py).
     function _blocker() {
-        var verb = page.encrypting ? "encrypt" : "decrypt"
         if (page._scanShown) return "Wait for the folder scan to finish, or stop it."
         if (page.queue.count === 0)
             return page.encrypting ? "Add the files or folders you want to encrypt." : "Add the encrypted files you want to decrypt."
         if (page.queue.runnableCount === 0)
             return "Every file in the list is finished. Add more files, or remove the finished ones."
-        if (passwordField.text.length === 0) return "Enter the password to " + verb + " with."
-        if (page._mismatch) return "The two passwords don't match."
-        if (page.encrypting && confirmField.text !== passwordField.text) return "Type the password again to confirm it."
-        return ""
+        return page.controller.passwordBlocker(passwordField.text, confirmField.text, page._confirmFinished)
+    }
+
+    // What Start will do to the files, said before anything changes.
+    function _readyText() {
+        var where = page._outputDir ? " in " + page._outputDir : ""
+        if (page.encrypting) {
+            var ext = page._method ? page._method.ext : ""
+            var example = encryptNamesSwitch.checked ? "a randomly named " + ext + " file" : "report.docx" + ext
+            if (page._keepOriginals)
+                return "Ready. Each file gets an encrypted copy" + (where || " beside it")
+                    + " (report.docx becomes " + example + "), and the originals stay."
+            return "Ready. Each file is replaced by an encrypted copy" + (where || " in the same folder")
+                + ": report.docx becomes " + example + "."
+        }
+        var text = "Ready. Each file is restored under its original name" + (where || " next to itself")
+            + (page._keepOriginals ? ", and the encrypted file stays." : ", and the encrypted copy is removed.")
+            + " With a wrong password nothing changes."
+        if (page.queue.legacyCount > 0 && !page._keepOriginals)
+            text += " An older .gfglck file may be kept; its row says why."
+        return text
+    }
+
+    // "AES-256 GCM · names shown · originals replaced", the Options card while it is closed.
+    function _optionsSummary() {
+        var parts = []
+        if (page.encrypting) {
+            parts.push(page._method ? page._method.label.replace(" (recommended)", "") : "")
+            parts.push(encryptNamesSwitch.checked ? "names hidden" : "names shown")
+            parts.push(page._keepOriginals ? "originals kept" : "originals replaced")
+        } else {
+            parts.push(page._keepOriginals ? "encrypted files kept" : "encrypted files removed")
+        }
+        parts.push(page._outputDir ? "saved to " + page._outputDir : "saved next to each file")
+        return parts.filter(part => part.length > 0).join("  ·  ")
     }
 
     function _rememberOptions() {
         prefsController.rememberEncryptOptions(algorithmCombo.currentValue, encryptNamesSwitch.checked)
+    }
+
+    function _rememberOutput(keep, folder) {
+        prefsController.rememberOutputOptions(page.controller.mode, keep, folder)
     }
 
     Timer {
@@ -77,9 +126,11 @@ Item {
         function onScanChanged() { if (!page.controller.scanning) page._scanShown = false }
         // Once every file is done the password is no longer needed on screen. After a failure or
         // Stop it stays, so the remaining files can run without typing it again; after a failed
-        // decrypt it is selected, since a wrong password is the usual cause.
+        // decrypt it is selected, since a wrong password is the usual cause. A screen reader
+        // hears how the run went.
         function onOperationFinished(elapsed, total, succeeded, failed, skipped) {
-            if (succeeded + skipped === total) {
+            page.Accessible.announce(page.controller.summary)
+            if (succeeded + skipped === total && !page.controller.fileModel.runnableCount) {
                 passwordField.text = ""
                 confirmField.text = ""
             } else if (failed > 0 && !page.encrypting && page.visible) {
@@ -103,6 +154,12 @@ Item {
         title: page.encrypting ? "Encrypt every file in a folder (including subfolders)"
                                : "Decrypt every gfgLock file in a folder (including subfolders)"
         onAccepted: page.controller.addFolder(selectedFolder.toString())
+    }
+
+    FolderDialog {
+        id: outputPicker
+        title: page.encrypting ? "Save the encrypted files in this folder" : "Save the decrypted files in this folder"
+        onAccepted: page._rememberOutput(keepSwitch.checked, selectedFolder.toString())
     }
 
     ColumnLayout {
@@ -145,6 +202,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
+                                textFormat: Text.PlainText
                                 text: "Files"
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontTitle
@@ -155,6 +213,7 @@ Item {
                             }
                             Item { Layout.fillWidth: true }
                             Text {
+                                textFormat: Text.PlainText
                                 text: page.queue.count === 0 ? ""
                                     : page.queue.count + (page.queue.count === 1 ? " file" : " files") + "  ·  " + page.queue.totalSize
                                 font.family: Theme.fontFamily
@@ -191,25 +250,40 @@ Item {
                                 enabled: page.queue.count > 0
                                 onClicked: listMenu.popup(listMenuButton, 0, listMenuButton.height)
 
-                                Menu {
+                                AppMenu {
                                     id: listMenu
-                                    MenuItem {
+                                    AppMenuItem {
                                         text: "Select all"
                                         onTriggered: page.queue.selectAll()
                                     }
-                                    MenuItem {
+                                    AppMenuItem {
+                                        text: "Select failed"
+                                        enabled: page.queue.failedCount > 0
+                                        onTriggered: page.queue.selectFailed()
+                                    }
+                                    AppMenuItem {
+                                        text: page.queue.failedOnly ? "Show all files" : "Show failed only"
+                                        enabled: page.queue.failedOnly || (page.queue.failedCount > 0 && !page.controller.busy)
+                                        onTriggered: page.queue.setFailedOnly(!page.queue.failedOnly)
+                                    }
+                                    AppMenuItem {
+                                        text: "Copy results"
+                                        onTriggered: page.controller.copyResults()
+                                    }
+                                    AppMenuSeparator {}
+                                    AppMenuItem {
                                         text: "Remove selected"
                                         enabled: !page.controller.busy && page.queue.selectedCount > 0
                                         onTriggered: page.queue.removeSelected()
                                     }
-                                    MenuItem {
+                                    AppMenuItem {
                                         text: "Remove finished files"
                                         enabled: !page.controller.busy && page.queue.finishedCount > 0
                                         onTriggered: page.queue.removeFinished()
                                     }
-                                    MenuSeparator {}
-                                    MenuItem {
+                                    AppMenuItem {
                                         text: "Clear the list"
+                                        danger: true
                                         enabled: !page.controller.busy
                                         onTriggered: page.controller.clearFiles()
                                     }
@@ -228,21 +302,24 @@ Item {
                         scanning: page._scanShown
                         scanFound: page.controller.scanFound
                         busy: page.controller.busy
+                        opensFiles: !page.encrypting
                         emptyIcon: page.encrypting ? "lock" : "unlock"
                         addFilesTip: page._addFilesTip
                         addFolderTip: page._addFolderTip
                         emptyTitle: page.encrypting ? "Add files to encrypt" : "Add files to decrypt"
                         emptyText: page.encrypting
-                            ? "Drop files or whole folders here. Files that are already encrypted are left out."
-                            : "Drop " + page._encryptedList + " files, or folders containing them, here."
-                        // What a run does to the files is said once, in the box beside the list.
+                            ? "Drop files or whole folders here, or right-click them in File Explorer and choose "
+                              + "Encrypt with gfgLock. Files that are already encrypted are left out."
+                            : "Drop " + page._encryptedList + " files, or folders containing them, here. You can "
+                              + "also right-click them in File Explorer and choose Decrypt with gfgLock."
+                        // What a run does to the files is said once, in the run bar.
                         firstRunSteps: page.encrypting
                             ? ["Add the files or folders to protect.",
                                "Choose a password and type it twice.",
                                "Press Encrypt or Ctrl+Enter."]
                             : ["Add the encrypted files or a folder that contains them.",
                                "Enter their password.",
-                               "Press Decrypt or Ctrl+Enter."]
+                               "Press Decrypt or Ctrl+Enter. Check tests the password without changing anything."]
                         // Focus moves to the password once there is something to work on, unless
                         // it is on the list, where the next key belongs to the list.
                         onFilled: focused => {
@@ -253,8 +330,10 @@ Item {
                         onStopScanRequested: page.controller.cancelScan()
                         onClearRequested: page.controller.clearFiles()
                         onShowInFolderRequested: row => page.controller.showInFolder(row)
+                        onOpenRequested: row => page.controller.openRow(row)
                         onCopyNamesRequested: page.controller.copySelectedNames()
                         onCopyPathsRequested: page.controller.copySelectedPaths()
+                        onCopyResultsRequested: page.controller.copyResults()
                     }
                 }
             }
@@ -286,6 +365,7 @@ Item {
 
                         PasswordField {
                             id: passwordField
+                            objectName: "passwordField"
                             Layout.fillWidth: true
                             label: "Password"
                             showStrength: page.encrypting
@@ -295,6 +375,7 @@ Item {
                         }
                         PasswordField {
                             id: confirmField
+                            objectName: "confirmField"
                             Layout.fillWidth: true
                             visible: page.encrypting
                             label: "Confirm password"
@@ -305,14 +386,26 @@ Item {
                         }
                     }
 
-                    // The tab keeps its own choices: each change is saved for next time.
+                    // The tab keeps its own choices: each change is saved for next time. Closed, the
+                    // card is one line that says what they are.
                     Card {
                         Layout.fillWidth: true
-                        visible: page.encrypting
                         title: "Options"
                         iconName: "settings"
+                        description: page._optionsOpen ? "Kept for next time." : page._optionsSummary()
+
+                        trailing: AppButton {
+                            kind: "ghost"
+                            compact: true
+                            text: page._optionsOpen ? "Done" : "Change"
+                            iconName: page._optionsOpen ? "chevronUp" : "chevronDown"
+                            toolTipText: page._optionsOpen ? "Close the options" : "Change how the files are " + (page.encrypting ? "encrypted" : "decrypted")
+                            Accessible.name: (page._optionsOpen ? "Close options" : "Change options")
+                            onClicked: page._optionsOpen = !page._optionsOpen
+                        }
 
                         FormRow {
+                            visible: page.encrypting && page._optionsOpen
                             label: "Hide file names"
                             hint: "The original names come back when you decrypt."
                             Item { Layout.fillWidth: true }
@@ -320,11 +413,14 @@ Item {
                                 id: encryptNamesSwitch
                                 checked: page._hideNamesSaved
                                 accessibleName: "Hide file names"
-                                toolTipText: "Kept for next time"
-                                onToggled: page._rememberOptions()
+                                onToggled: {
+                                    page._rememberOptions()
+                                    encryptNamesSwitch.checked = Qt.binding(() => page._hideNamesSaved)
+                                }
                             }
                         }
                         FormRow {
+                            visible: page.encrypting && page._optionsOpen
                             label: "Encryption method"
                             hint: page._method ? page._method.hint : ""
                             StyledComboBox {
@@ -333,41 +429,43 @@ Item {
                                 model: prefsController.algorithmOptions
                                 value: prefsController.encMode
                                 accessibleName: "Encryption method"
-                                toolTipText: "Decrypting picks the right method automatically. Kept for next time."
+                                toolTipText: "Decrypting picks the right method automatically."
                                 onActivated: page._rememberOptions()
                             }
                         }
-                    }
-
-                    // What will happen to the files, said before anything changes.
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: whatHappens.implicitHeight + 2 * Theme.spaceMd
-                        radius: Theme.radius
-                        color: Theme.accentSoft
-
-                        RowLayout {
-                            id: whatHappens
-                            anchors.fill: parent
-                            anchors.margins: Theme.spaceMd
-                            spacing: Theme.spaceSm
-                            Icon {
-                                Layout.alignment: Qt.AlignTop
-                                name: "info"
-                                size: Theme.iconMd
-                                color: Theme.accent
+                        FormRow {
+                            visible: page._optionsOpen
+                            label: page.encrypting ? "Keep the originals" : "Keep the encrypted files"
+                            hint: page.encrypting
+                                ? "Off: each file is replaced by its encrypted copy. On a hard drive a deleted original may still be recoverable."
+                                : "Off: each encrypted file is removed once its decrypted copy is safely saved."
+                            Item { Layout.fillWidth: true }
+                            AppSwitch {
+                                id: keepSwitch
+                                checked: page._keepOriginals
+                                accessibleName: page.encrypting ? "Keep the originals" : "Keep the encrypted files"
+                                onToggled: {
+                                    page._rememberOutput(keepSwitch.checked, page._outputDir)
+                                    keepSwitch.checked = Qt.binding(() => page._keepOriginals)
+                                }
                             }
-                            Text {
-                                Layout.fillWidth: true
-                                readonly property string ext: page._method ? page._method.ext : ""
-                                text: page.encrypting
-                                    ? "Each file is replaced by an encrypted copy in the same folder: report.docx becomes "
-                                      + (encryptNamesSwitch.checked ? "a randomly named " + ext + " file." : "report.docx" + ext + ".")
-                                    : "Each file is restored next to itself under its original name, and the encrypted copy is removed. With a wrong password nothing changes. An older .gfglck file may be kept; its row says why."
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontCaption
-                                color: Theme.text
-                                wrapMode: Text.WordWrap
+                        }
+                        FormRow {
+                            visible: page._optionsOpen
+                            label: "Save to"
+                            hint: page._outputDir || "Next to each file."
+                            AppButton {
+                                text: "Choose..."
+                                iconName: "folder"
+                                toolTipText: "Choose a folder for the " + (page.encrypting ? "encrypted" : "decrypted") + " files"
+                                onClicked: outputPicker.open()
+                            }
+                            AppButton {
+                                visible: page._outputDir.length > 0
+                                kind: "ghost"
+                                text: "Next to each file"
+                                toolTipText: "Save each result in the folder of the file it came from"
+                                onClicked: page._rememberOutput(keepSwitch.checked, "")
                             }
                         }
                     }
@@ -381,10 +479,14 @@ Item {
             controller: page.controller
             updates: updateController
             blocker: page.blocker
+            readyText: page._readyText()
             scanning: page._scanShown
             startText: page.encrypting ? "Encrypt" : "Decrypt"
             startIcon: page.encrypting ? "lock" : "unlock"
+            checkText: page.encrypting ? "" : "Check"
+            checkTip: "Check the password and that the files are intact, without changing anything"
             onStartRequested: page.start()
+            onCheckRequested: page.check()
         }
     }
 }

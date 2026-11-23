@@ -1,6 +1,9 @@
 singleton Theme 1.0 Theme.qml
 AppButton 1.0 AppButton.qml
 AppDialog 1.0 AppDialog.qml
+AppMenu 1.0 AppMenu.qml
+AppMenuItem 1.0 AppMenuItem.qml
+AppMenuSeparator 1.0 AppMenuSeparator.qml
 AppSwitch 1.0 AppSwitch.qml
 AppWindow 1.0 AppWindow.qml
 Card 1.0 Card.qml
@@ -11,6 +14,7 @@ Icon 1.0 Icon.qml
 PasswordField 1.0 PasswordField.qml
 ResizeHandles 1.0 ResizeHandles.qml
 RunBar 1.0 RunBar.qml
+StatusBadge 1.0 StatusBadge.qml
 StyledComboBox 1.0 StyledComboBox.qml
 TitleBar 1.0 TitleBar.qml
 Toast 1.0 Toast.qml

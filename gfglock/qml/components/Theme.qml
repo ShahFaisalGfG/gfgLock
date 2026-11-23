@@ -37,6 +37,7 @@ QtObject {
     readonly property color danger:      dark ? "#ff6b63" : "#c62828"
     readonly property color dangerSoft:  dark ? "#3a1d1d" : "#fdecec"
     readonly property color warning:     dark ? "#e0b341" : "#8a5a00"
+    readonly property color warningSoft: dark ? "#332a16" : "#fbf2dd"
     readonly property color focusRing:   dark ? "#8cc4ff" : "#0b62c4"
     // Dims the window behind a dialog. Dark in both themes: a pale wash over the dark theme looks
     // like Windows fading out a frozen app.
@@ -114,6 +115,10 @@ QtObject {
         skip: "",
         speed: "",
         notify: "",
-        copy: ""
+        copy: "",
+        chevronUp: "",
+        chevronRight: "",
+        filter: "",
+        openFile: ""
     })
 }

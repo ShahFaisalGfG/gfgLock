@@ -19,8 +19,9 @@ ColumnLayout {
     // Enter or leaving the box (see TextInput.editingFinished).
     signal editingFinished()
 
-    // 0 empty, 1 very weak (under 8 characters), 2 weak, 3 fair, 4 good, 5 strong
-    readonly property int strength: field._strength(input.text)
+    // 0 empty, 1 very weak (under 8 characters), 2 weak, 3 fair, 4 good, 5 strong; the rules are
+    // shared with the command line (core/passwords.py).
+    readonly property int strength: appController.passwordStrength(input.text)
     readonly property var _strengthNames: ["", "Very weak", "Weak", "Fair", "Good", "Strong"]
     property bool _capsLock: false
 
@@ -34,20 +35,10 @@ ColumnLayout {
 
     function _checkCapsLock() { field._capsLock = input.activeFocus && appController.capsLockOn() }
 
-    function _strength(pass) {
-        if (pass.length === 0) return 0
-        if (pass.length < 8) return 1
-        var lower = pass.toLowerCase()
-        var common = ["password", "123456", "qwerty", "letmein", "iloveyou", "admin", "welcome", "abc123", "111111"]
-        if (common.some(word => lower.indexOf(word) >= 0) || /^(.)\1+$/.test(pass)) return 2
-        var kinds = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(re => re.test(pass)).length
-        var score = (pass.length >= 12 ? 2 : 1) + (pass.length >= 16 ? 1 : 0) + Math.max(0, kinds - 1)
-        return score <= 2 ? 2 : score <= 3 ? 3 : score <= 4 ? 4 : 5
-    }
-
     spacing: Theme.spaceXs
 
     Text {
+        textFormat: Text.PlainText
         text: field.label
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontBody
@@ -100,7 +91,8 @@ ColumnLayout {
             checkable: true
             iconName: checked ? "hide" : "view"
             toolTipText: checked ? "Hide the password" : "Show the password"
-            focusPolicy: Qt.TabFocus
+            // Out of the Tab order, so Tab goes straight from one password box to the next.
+            focusPolicy: Qt.NoFocus
         }
     }
 
@@ -115,6 +107,7 @@ ColumnLayout {
             color: Theme.warning
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: "Caps Lock is on"
             font.family: Theme.fontFamily
@@ -147,6 +140,7 @@ ColumnLayout {
             }
         }
         Text {
+            textFormat: Text.PlainText
             text: "Strength: " + field._strengthNames[field.strength]
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontCaption
@@ -157,6 +151,7 @@ ColumnLayout {
     }
 
     Text {
+        textFormat: Text.PlainText
         Layout.fillWidth: true
         visible: text.length > 0
         text: field.errorText || field.helpText

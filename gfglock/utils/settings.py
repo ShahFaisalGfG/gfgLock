@@ -149,6 +149,7 @@ _ALLOWED: Dict[str, Callable[[Any], bool]] = {
     "encryption_mode": lambda value: value in AlgorithmDefaults.SUPPORTED_ALGORITHMS,
     "read_size": lambda value: value in _READ_SIZES,
     "cpu_threads": lambda value: 1 <= value <= (os.cpu_count() or 1),
+    "output_dir": lambda value: value == "" or os.path.isabs(value),
 }
 
 

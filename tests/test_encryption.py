@@ -68,7 +68,7 @@ class TestV1Files:
         assert os.path.basename(result.output) == info["stored_name"]
         assert hashlib.sha256(Path(result.output).read_bytes()).hexdigest() == info["sha256"]
         if name in KEPT_FIXTURES:
-            assert os.path.exists(encrypted) and "CFB" in result.reason
+            assert os.path.exists(encrypted) and result.category == "cfb_kept" and ".gfglck" in result.reason
         else:
             assert not os.path.exists(encrypted) and result.reason == ""
 
@@ -88,7 +88,7 @@ class TestV1Files:
     def test_wrong_password_fails_and_keeps_the_file(self, engine, tmp_path):
         encrypted = shutil.copy(FIXTURES / "photo.jpg.gfgcha", tmp_path)
         result = file_ops.decrypt_file(str(encrypted), KeyRing("not the password"))
-        assert result.outcome == "failed" and "authentication failed" in result.reason
+        assert result.outcome == "failed" and result.reason == "Wrong password, or the file is damaged"
         assert sorted(os.listdir(tmp_path)) == ["photo.jpg.gfgcha"]
 
     def test_pycryptodome_loads_only_for_v1_chacha(self):
@@ -199,7 +199,7 @@ class TestLayout:
         result = open_stream("chacha", str(sealed), str(opened), bytes(other), key, header.nonce_prefix,
                              header.chunk_size)
 
-        assert result == (False, "wrong password or the file was modified (authentication failed)", b"")
+        assert result == (False, "wrong password, or the file is damaged", b"")
 
     @pytest.mark.parametrize("change, message", [
         ({"algorithm": "cfb"}, "CFB only decrypts v1 files"),
@@ -255,19 +255,19 @@ class TestIntegrity:
         assert encrypted.read_bytes() == before
 
     @pytest.mark.parametrize("offset, xor, message", [
-        (0, 0x01, "authentication failed"),   # magic: read as a v1 file, which fails its tag
+        (0, 0x01, "wrong password, or the file is damaged"),   # magic: read as a v1 file, which fails its tag
         (7, 0x01, "newer gfgLock"),           # version 2 -> 3
-        (8, 0x03, "authentication failed"),   # algorithm 1 -> 2: another key and cipher
+        (8, 0x03, "wrong password, or the file is damaged"),   # algorithm 1 -> 2: another key and cipher
         (8, 0x01, "encryption method"),       # algorithm 1 -> 0: unknown
         (9, 0x01, "newer gfgLock"),           # KDF id
-        (13, 0x01, "authentication failed"),  # Argon2 memory
-        (17, 0x02, "authentication failed"),  # Argon2 iterations
-        (18, 0x02, "authentication failed"),  # Argon2 lanes
-        (19, 0x01, "authentication failed"),  # chunk size
+        (13, 0x01, "wrong password, or the file is damaged"),  # Argon2 memory
+        (17, 0x02, "wrong password, or the file is damaged"),  # Argon2 iterations
+        (18, 0x02, "wrong password, or the file is damaged"),  # Argon2 lanes
+        (19, 0x01, "wrong password, or the file is damaged"),  # chunk size
         (20, 0x01, "newer gfgLock"),          # flags
-        (21, 0x80, "authentication failed"),  # KDF salt
-        (37, 0x80, "authentication failed"),  # file salt
-        (53, 0x80, "authentication failed"),  # nonce prefix
+        (21, 0x80, "wrong password, or the file is damaged"),  # KDF salt
+        (37, 0x80, "wrong password, or the file is damaged"),  # file salt
+        (53, 0x80, "wrong password, or the file is damaged"),  # nonce prefix
     ], ids=["magic", "version", "algorithm", "unknown-algorithm", "kdf", "memory", "iterations", "lanes",
             "chunk-size", "flags", "kdf-salt", "file-salt", "nonce-prefix"])
     def test_header_change_fails(self, engine, tmp_path, keys, offset, xor, message):
@@ -278,14 +278,14 @@ class TestIntegrity:
         self._assert_rejected(encrypted, keys, message)
 
     @pytest.mark.parametrize("change, message", [
-        (lambda raw: raw[:HEADER + 2 * STRIDE], "authentication failed"),
+        (lambda raw: raw[:HEADER + 2 * STRIDE], "wrong password, or the file is damaged"),
         (lambda raw: raw[:HEADER + 2 * STRIDE + 10], "truncated or corrupted"),
         (lambda raw: raw[:HEADER], "truncated or corrupted"),
         (lambda raw: raw[:HEADER] + raw[HEADER + STRIDE:HEADER + 2 * STRIDE] + raw[HEADER:HEADER + STRIDE]
-         + raw[HEADER + 2 * STRIDE:], "authentication failed"),
-        (lambda raw: raw[:-1] + bytes([raw[-1] ^ 0x01]), "authentication failed"),
-        (lambda raw: raw + b"\x00", "authentication failed"),
-        (lambda raw: raw + raw[HEADER:HEADER + STRIDE], "authentication failed"),
+         + raw[HEADER + 2 * STRIDE:], "wrong password, or the file is damaged"),
+        (lambda raw: raw[:-1] + bytes([raw[-1] ^ 0x01]), "wrong password, or the file is damaged"),
+        (lambda raw: raw + b"\x00", "wrong password, or the file is damaged"),
+        (lambda raw: raw + raw[HEADER:HEADER + STRIDE], "wrong password, or the file is damaged"),
     ], ids=["cut-at-chunk-boundary", "cut-inside-tag", "header-only", "chunks-swapped", "tag-flipped",
             "byte-appended", "chunk-appended"])
     def test_body_change_fails(self, engine, tmp_path, keys, change, message):
@@ -328,7 +328,8 @@ class TestIntegrity:
 
         result = file_ops.decrypt_file(str(newer), keys)
 
-        assert result.outcome == "failed" and "newer gfgLock version" in result.reason
+        assert result.outcome == "failed" and result.category == "newer_version"
+        assert "Update gfgLock from About" in result.reason
         assert sorted(os.listdir(tmp_path)) == [newer.name]
 
     def test_short_output_from_an_engine_keeps_the_encrypted_file(self, monkeypatch, tmp_path, keys):
@@ -345,7 +346,7 @@ class TestIntegrity:
         monkeypatch.setattr(py_cipher, "open_stream", dropping_a_byte)
         result = file_ops.decrypt_file(str(encrypted), keys)
 
-        assert result.outcome == "failed" and "incomplete" in result.reason
+        assert result.outcome == "failed" and "incomplete" in result[1] and result.category in ("io_error", "disk_full")
         assert sorted(os.listdir(tmp_path)) == [encrypted.name]
 
 

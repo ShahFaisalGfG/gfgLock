@@ -26,7 +26,7 @@ native = pytest.importorskip("gfglock_native")
 if getattr(native, "API_VERSION", 0) < 5:
     pytest.skip("gfglock_native is older than API 5; run scripts/build_native.ps1", allow_module_level=True)
 
-AUTH_FAILED = "wrong password or the file was modified (authentication failed)"
+AUTH_FAILED = "wrong password, or the file is damaged"
 TRUNCATED = "the file is truncated or corrupted"
 CORRUPTED = "the file is corrupted"
 SIZE_CHANGED = "the source file changed size while it was being read"

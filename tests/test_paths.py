@@ -12,6 +12,7 @@ from gfglock.utils import paths
 def fresh(monkeypatch, tmp_path):
     """Each test resolves the data folder anew, with APPDATA inside tmp_path."""
     monkeypatch.setattr(paths, "_data_dir", paths._UNSET)
+    monkeypatch.setattr(paths, "_levels_up", None)
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
 
 
@@ -120,3 +121,31 @@ def test_portable_on_a_read_only_drive_falls_back_to_appdata(monkeypatch, tmp_pa
     _frozen(monkeypatch, tmp_path / "cd", onefile=True)
     monkeypatch.setattr(paths, "_writable", lambda folder: False)
     assert paths.data_dir() == os.path.join(str(tmp_path / "appdata"), "gfgLock")
+
+
+class TestCommandLineExe:
+    """The command line (bin/gfglock.exe) is a one-file exe inside the app's folder and uses the app's data folder."""
+
+    def _command_line(self, monkeypatch, app_dir):
+        bin_dir = app_dir / "bin"
+        bin_dir.mkdir(parents=True)
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(bin_dir / "gfglock.exe"))
+        monkeypatch.setattr(sys, "_MEIPASS", str(app_dir / "temp" / "_MEI99"), raising=False)
+        paths.use_app_folder(1)
+
+    def test_installed_it_shares_the_apps_appdata_folder(self, monkeypatch, tmp_path):
+        install = tmp_path / "Programs" / "gfgLock"
+        self._command_line(monkeypatch, install)
+        assert not paths.is_portable()
+        assert paths.data_dir() == os.path.join(str(tmp_path / "appdata"), "gfgLock")
+        assert paths.app_folder() == str(install)
+        assert not (install / "bin" / paths.PORTABLE_FOLDER).exists()
+
+    def test_in_the_portable_folder_it_shares_its_data_folder(self, monkeypatch, tmp_path):
+        usb = tmp_path / "usb" / "gfgLock"
+        usb.mkdir(parents=True)
+        (usb / paths.PORTABLE_MARKER).write_text("", encoding="utf-8")
+        self._command_line(monkeypatch, usb)
+        assert paths.is_portable()
+        assert paths.data_dir() == os.path.join(str(usb), paths.PORTABLE_FOLDER)

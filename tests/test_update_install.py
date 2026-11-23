@@ -78,16 +78,17 @@ class TestDownload:
     def test_wrong_content_is_deleted(self, tmp_path):
         tampered = bytearray(BODY)
         tampered[5] ^= 1
-        with pytest.raises(install.InstallError, match="checksum"):
+        with pytest.raises(install.FileMismatch, match="checksum"):
             download(tmp_path, FakeServer(bytes(tampered)))
         assert list(tmp_path.iterdir()) == []
 
-    def test_more_data_than_published_stops(self, tmp_path):
-        with pytest.raises(install.InstallError, match="larger"):
+    def test_more_data_than_published_is_deleted(self, tmp_path):
+        with pytest.raises(install.FileMismatch, match="larger"):
             download(tmp_path, FakeServer(BODY + b"extra"))
+        assert list(tmp_path.iterdir()) == []  # resuming it would hit the same wall every time
 
     def test_a_short_download_keeps_its_part_for_next_time(self, tmp_path):
-        with pytest.raises(install.InstallError, match="ended early"):
+        with pytest.raises(install.DownloadInterrupted, match="ended early"):
             download(tmp_path, FakeServer(BODY[:5000]))
         assert (tmp_path / "gfgLock_3.4.0_user_installer.exe.part").stat().st_size == 5000
 
@@ -95,8 +96,21 @@ class TestDownload:
         def offline(source, url, timeout, headers=None):
             raise urllib.error.URLError("no route")
 
-        with pytest.raises(install.InstallError, match="no route"):
+        with pytest.raises(install.DownloadInterrupted, match="no route"):
             download(tmp_path, offline)
+
+    def test_a_full_drive_is_not_blamed_on_the_connection(self, tmp_path):
+        def full(source, url, timeout, headers=None):
+            raise OSError(28, "No space left on device")  # errno.ENOSPC
+
+        with pytest.raises(install.SaveError):
+            download(tmp_path, full)
+
+    def test_a_folder_that_cant_be_created_is_a_save_error(self, tmp_path):
+        blocker = tmp_path / "file"
+        blocker.write_bytes(b"")
+        with pytest.raises(install.SaveError):
+            download(blocker / "updates", FakeServer())
 
     def test_cancel_stops_the_download(self, tmp_path):
         cancel = install.DownloadCancel()

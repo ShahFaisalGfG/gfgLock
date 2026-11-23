@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 from gfglock.controllers import update_ctrl
 from gfglock.controllers.update_ctrl import UpdateController, UpdaterConfig
 from gfglock.services import update_install as install
-from gfglock.services.update_feed import FeedError, Release, UpdateFile, UpdatePackage, UpdateSource
+from gfglock.services.update_feed import FeedError, FeedUnreachable, Release, UpdateFile, UpdatePackage, UpdateSource
 
 BODY = b"installer bytes"
 SHA = hashlib.sha256(BODY).hexdigest()
@@ -36,7 +36,7 @@ class SyncPool:
 
 
 class Run(QObject):
-    busyChanged = Signal(bool)
+    busyChanged = Signal(bool)  # like EncryptController's: the new value
 
     def __init__(self):
         super().__init__()
@@ -46,11 +46,12 @@ class Run(QObject):
 class Harness:
     """A controller for one install kind, with the network, installer, and preferences faked."""
 
-    def __init__(self, monkeypatch, tmp_path, kind="user", latest=None, error="", metered=False,
-                 auto_check=True, auto_install=True, runtime_id=""):
+    def __init__(self, monkeypatch, tmp_path, kind="user", latest=None, error="", error_type=FeedError,
+                 metered=False, auto_check=True, auto_install=True, runtime_id=""):
         self.prefs = [auto_check, auto_install]
         self.latest = latest
         self.error = error
+        self.download_error: Exception | None = None
         self.logs: list[tuple[str, bool]] = []
         self.launched: list[tuple[str, str]] = []
         self.started: list[str] = []
@@ -63,11 +64,13 @@ class Harness:
 
         def fetch(source):
             if self.error:
-                raise FeedError(self.error)
+                raise error_type(self.error)
             return self.latest
 
         def fake_download(source, tag, package, folder, progress, cancel, target_names=()):
             self.downloads += 1
+            if self.download_error is not None:
+                raise self.download_error
             names = list(target_names) or [item.name for item in package.files]
             paths = []
             for name in names:
@@ -168,10 +171,17 @@ class TestCheck:
         assert h.ctrl.status == "idle" and h.notices == [] and h.state().last_check == 0
         assert h.logs == [("Update check failed: no route", False)]
 
-    def test_a_failed_manual_check_says_why(self, harness):
-        h = harness(error="no route")
+    def test_a_failed_manual_check_says_what_to_do(self, harness):
+        h = harness(error="https://example.com/update.json could not be read: no route", error_type=FeedUnreachable)
         h.ctrl.checkNow()
-        assert h.ctrl.status == "error" and h.notices == ["Couldn't check for updates: no route."]
+        assert h.ctrl.status == "error" and h.notices == [update_ctrl.CHECK_OFFLINE]
+        assert h.logs == [("Update check failed: https://example.com/update.json could not be read: no route", True)]
+
+    def test_untrusted_update_information_is_not_blamed_on_the_connection(self, harness):
+        h = harness(error="the update information is not signed by the publisher")
+        h.ctrl.checkNow()
+        assert h.ctrl.status == "error" and h.ctrl.message == update_ctrl.CHECK_FAILED
+        assert "signed" not in h.ctrl.message
 
     def test_daily_check_respects_the_switch_and_the_day(self, harness):
         h = harness(latest=release("3.3.0"), auto_check=False)
@@ -206,7 +216,7 @@ class TestCheck:
         h = harness(latest=release(), metered=True)
         h.ctrl.checkNow()
         assert h.ctrl.status == "available" and h.downloads == 0
-        assert "metered" in h.ctrl.message
+        assert "limited connection" in h.ctrl.message
 
     def test_turning_installs_on_starts_the_download(self, harness):
         h = harness(latest=release(), auto_install=False)
@@ -216,13 +226,36 @@ class TestCheck:
         assert h.ctrl.status == "ready"
 
 
+class TestDownloadFailures:
+    @pytest.mark.parametrize("error, text", [
+        (install.DownloadInterrupted("The download of setup.exe stopped: [WinError 10054] reset"),
+         update_ctrl.DOWNLOAD_INTERRUPTED),
+        (install.FileMismatch("setup.exe didn't match its published checksum, so it was deleted."),
+         update_ctrl.DOWNLOAD_DAMAGED),
+        (install.SaveError(r"Couldn't create C:\updates\3.4.0: Access is denied"), update_ctrl.SAVE_FAILED),
+        (RuntimeError("a bug"), update_ctrl.DOWNLOAD_FAILED),
+    ])
+    def test_the_notice_says_what_to_do_and_the_log_keeps_the_details(self, harness, error, text):
+        h = harness(latest=release())
+        h.download_error = error
+        h.ctrl.checkNow()
+        h.ctrl.dismiss()
+        h.ctrl.download()  # Try again
+        assert h.ctrl.status == "error" and h.ctrl.message == text and h.ctrl.bannerVisible
+        message, is_error = h.logs[-1]
+        assert is_error and message.startswith("Update download failed: ") and str(error) in message
+        h.download_error = None
+        h.ctrl.download()
+        assert h.ctrl.status == "ready"
+
+
 class TestCopiesThatCantUpdateThemselves:
     @pytest.mark.parametrize("kind", [install.PORTABLE_FOLDER, install.SOURCE])
-    def test_they_link_to_the_releases_page(self, harness, kind):
+    def test_they_link_to_the_download_page(self, harness, kind):
         h = harness(kind=kind, latest=release())
         h.ctrl.checkNow()
         assert h.ctrl.status == "available" and not h.ctrl.canDownload and h.downloads == 0
-        assert h.ctrl.message == "gfgLock 3.4.0 is available. Get it from the releases page."
+        assert h.ctrl.message == "gfgLock 3.4.0 is available. Get it from the download page."
         h.ctrl.download()
         assert h.opened == ["https://github.com/owner/repo/releases/latest"]
 
@@ -247,11 +280,16 @@ class TestInstallOnExit:
     def test_restart_waits_for_a_run(self, harness):
         h = harness(latest=release())
         h.ctrl.checkNow()
+        changes = []
+        h.ctrl.stateChanged.connect(lambda: changes.append(h.ctrl.canRestart))
         h.run.busy = True
         h.run.busyChanged.emit(True)
-        assert not h.ctrl.canRestart
+        assert changes == [False] and not h.ctrl.canRestart
         h.ctrl.restartNow()
         assert not h.ctrl._relaunch
+        h.run.busy = False
+        h.run.busyChanged.emit(False)
+        assert changes == [False, True]
 
     def test_nothing_runs_without_a_download(self, harness):
         h = harness(latest=release(), auto_install=False)
@@ -283,6 +321,7 @@ class TestInstallOnExit:
         again = h.make()
         again.start()
         assert again.status == "failed" and "wasn't installed" in again.message
+        assert "choose Yes when Windows asks for permission" in again.message
         again.install_on_exit()  # not on its own
         assert h.launched == []
         monkeypatch.setattr(update_ctrl.install, "launch_installer", lambda path, args: h.launched.append((path, args)))
@@ -337,6 +376,11 @@ class TestPatches:
         h = harness(latest=release(patch_runtime="ab" * 32), runtime_id="cd" * 32)
         h.ctrl.checkNow()
         assert h.state().pending_kind == "user"
+
+
+def test_the_exit_word_reaches_the_window(harness):
+    h = harness()
+    assert h.ctrl.exitWord == "close"
 
 
 def test_sizes_read_naturally():

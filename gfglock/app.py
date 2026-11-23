@@ -26,6 +26,11 @@ _MODES = ("encrypt", "decrypt")
 _SHUTDOWN_WAIT_MS = 2000
 _SELF_TEST_FLAG = "--self-test"
 _UNREADABLE_LIST = "The file list from Explorer couldn't be read."
+# The start-up failure dialog: what happened and what to do, with the technical reason last.
+_STARTUP_FAILED = ("gfgLock couldn't open its window. Your files weren't touched.\n\n"
+                   "Restart your PC and open gfgLock again. If it still doesn't open, install it again from "
+                   "the download page (github.com/ShahFaisalGfG/gfgLock/releases), or report the problem there.\n\n"
+                   "Details: {details}")
 # Images loaded outside QML; the self-test checks they are bundled.
 SPLASH_LOGO = "gfglock/assets/icons/Square310x310Logo.scale-100.png"
 WINDOW_ICONS = {size: f"gfglock/assets/icons/Square44x44Logo.targetsize-{size}.png" for size in (16, 32, 48, 256)}
@@ -121,7 +126,7 @@ class _Startup:
         """Log the failure, show it, and quit instead of hanging silently."""
         write_log(f"Startup failed: {message}", "critical", force=True)
         self._splash.close()  # it stays on top, so a dialog shown under it couldn't be seen
-        QMessageBox.critical(None, "gfgLock", f"gfgLock couldn't start:\n\n{message}")
+        QMessageBox.critical(None, "gfgLock", _STARTUP_FAILED.format(details=message))
         self._app.exit(-1)
 
     def shutdown(self) -> None:

@@ -7,7 +7,8 @@ import winreg
 from PySide6.QtCore import Property, QObject, QPoint, QRect, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
-from gfglock.config.defaults import AppInfo
+from gfglock.config.defaults import AppInfo, UpdateInfo
+from gfglock.core import passwords
 from gfglock.core.file_ops import ENCRYPTED_EXTS
 from gfglock.utils.settings import load_settings, take_read_error
 
@@ -49,7 +50,6 @@ class AppController(QObject):
         super().__init__(parent)
         raw = load_settings().get("theme", "system")
         self._theme = _detect_system_theme() if raw == "system" else raw
-        self._preview = ""  # the theme Preferences is showing before Save, "" when none
 
     # ── Properties ──────────────────────────────────────────────────────────
 
@@ -78,6 +78,21 @@ class AppController(QObject):
         """Application author."""
         return AppInfo.APP_AUTHOR
 
+    @Property(str, constant=True)
+    def privacyUrl(self) -> str:
+        """The privacy policy on the project's site."""
+        return UpdateInfo.PRIVACY_URL
+
+    @Property(str, constant=True)
+    def licensesUrl(self) -> str:
+        """The licences of gfgLock and the software it includes."""
+        return UpdateInfo.LICENSES_URL
+
+    @Property(str, constant=True)
+    def issuesUrl(self) -> str:
+        """Where to report a problem."""
+        return UpdateInfo.ISSUES_URL
+
     @Property(list, constant=True)
     def encryptedExtensions(self) -> list:
         """The extensions of gfgLock's encrypted files, sorted (".gfgcha", ".gfglck", ".gfglock")."""
@@ -87,24 +102,10 @@ class AppController(QObject):
 
     @Slot()
     def detectTheme(self) -> None:
-        """Re-detect the theme (called when a window regains focus) and emit themeChanged if it changed.
-
-        A theme being previewed in Preferences wins over the saved one until the preview ends.
-        """
-        raw = self._preview or load_settings().get("theme", "system")
+        """Re-detect the theme (a window regained focus, or Preferences saved a new one) and emit
+        themeChanged if it changed."""
+        raw = load_settings().get("theme", "system")
         self._set_theme(_detect_system_theme() if raw == "system" else raw)
-
-    @Slot(str)
-    def previewTheme(self, theme: str) -> None:
-        """Show a theme choice ("system", "light", or "dark") without saving it (Preferences, before Save)."""
-        self._preview = theme
-        self.detectTheme()
-
-    @Slot()
-    def endPreview(self) -> None:
-        """Go back to the saved theme: Preferences closed, after saving its choice or not."""
-        self._preview = ""
-        self.detectTheme()
 
     @Slot(str, list)
     def openFiles(self, mode: str, paths: list) -> None:
@@ -122,6 +123,11 @@ class AppController(QObject):
         """The area windows may use (without the taskbar) on the screen at (x, y), else the primary screen."""
         screen = QGuiApplication.screenAt(QPoint(x, y)) or QGuiApplication.primaryScreen()
         return screen.availableGeometry()
+
+    @Slot(str, result=int)
+    def passwordStrength(self, password: str) -> int:
+        """0 empty, 1 very weak, 2 weak, 3 fair, 4 good, 5 strong (core/passwords.py)."""
+        return passwords.strength(password)
 
     @Slot(result=bool)
     def capsLockOn(self) -> bool:

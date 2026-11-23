@@ -487,3 +487,63 @@ class TestIncrementalCounts:
         assert time.perf_counter() - start < 1.0
         assert changed == [(0, 9_999)] and counted == [True]
         assert _counts(model) == (10_000, 0, 0)
+
+
+class TestFailedFiles:
+    """Big batches: show the failed files only, select them, put them first, and copy the results."""
+
+    def _run(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.txt", "b.txt", "c.txt", "d.gfglck"])
+        model.set_status(_path(tmp_path, "a.txt"), "done", message="Saved as a.txt.gfglock")
+        model.set_status(_path(tmp_path, "b.txt"), "failed", message="The file is open in another program")
+        model.set_status(_path(tmp_path, "d.gfglck"), "failed", message="Wrong password, or the file is damaged")
+        model.flush_counts()
+
+    def test_show_failed_only_maps_rows_both_ways(self, model, tmp_path):
+        self._run(model, tmp_path)
+        model.setFailedOnly(True)
+        assert model.failedOnly and model.rowCount() == 2 and model.count == 4
+        assert [model.data(model.index(row), FileListModel.NameRole) for row in range(2)] == ["b.txt", "d.gfglck"]
+        model.setSingle(1)
+        assert model.getSelectedNamesText() == "d.gfglck"
+        model.removeAt(0)
+        assert model.count == 3 and model.rowCount() == 1
+        model.setFailedOnly(False)
+        assert model.rowCount() == 3
+
+    def test_the_filter_ends_when_nothing_failed_is_left_or_files_are_added(self, model, tmp_path):
+        self._run(model, tmp_path)
+        model.setFailedOnly(True)
+        model.add_scanned([(_path(tmp_path, "new.txt"), 1)])
+        assert not model.failedOnly and model.rowCount() == 5
+        model.setFailedOnly(True)
+        model.selectAll()
+        model.removeSelected()
+        assert not model.failedOnly and model.rowCount() == 3
+
+    def test_a_run_shows_every_file(self, model, tmp_path):
+        self._run(model, tmp_path)
+        model.setFailedOnly(True)
+        model.reset_for_run(model.runnable_paths())
+        assert not model.failedOnly
+
+    def test_select_failed_and_failed_first(self, model, tmp_path):
+        self._run(model, tmp_path)
+        model.selectFailed()
+        assert model.getSelectedNamesText() == "b.txt\nd.gfglck"
+        model.move_failed_first()
+        assert [os.path.basename(p) for p in _paths(model)] == ["b.txt", "d.gfglck", "a.txt", "c.txt"]
+        assert model.getSelectedNamesText() == "b.txt\nd.gfglck"  # the selection moved with its rows
+
+    def test_results_text_and_legacy_count(self, model, tmp_path):
+        self._run(model, tmp_path)
+        lines = model.resultsText().splitlines()
+        assert lines[0] == f"{_path(tmp_path, 'a.txt')}\tDone\tSaved as a.txt.gfglock"
+        assert lines[2] == f"{_path(tmp_path, 'c.txt')}\tWaiting"
+        assert model.legacyCount == 1
+
+    def test_checked_files_can_still_run(self, model, tmp_path):
+        _populate(model, tmp_path, ["a.gfglock"])
+        model.set_status(_path(tmp_path, "a.gfglock"), "checked", message="The password is right")
+        model.flush_counts()
+        assert model.runnableCount == 1 and model.outputAt(0) == ""

@@ -192,6 +192,65 @@ PUBLIC_KEYS = ("""$key
     if (-not (Test-Bundle $exe)) {
         Fail "Self-test failed for $exe - a module, DLL, or data file is missing from the build. See the report above."
     }
+    if ($Mode -eq "onedir") {
+        $null = New-ConsoleExe -BundleDir $output
+    }
+    return $exe
+}
+
+function New-ConsoleExe {
+    <#
+    .SYNOPSIS
+        Builds the command line, bin\gfglock.exe, into a onedir bundle and checks that it runs.
+    .DESCRIPTION
+        A one-file console exe without Qt, carrying the native engine and the Agent Skill (which
+        `gfglock skill install` copies out). It sits in a bin folder because Windows ignores case,
+        so gfglock.exe can't sit next to gfgLock.exe; the installers can add that folder to PATH,
+        and the portable .7z ships it inside the bundle. It finds the app's settings one folder up.
+    #>
+    param([Parameter(Mandatory)] [string]$BundleDir)
+    $root = Split-Path -Parent $PSScriptRoot
+    $name = "gfglock"
+    $bin = Join-Path $BundleDir "bin"
+    Write-Step "Building the command line ($bin\$name.exe)"
+    $pyinstaller = (Get-Command pyinstaller -ErrorAction Stop).Source
+    $pyArgs = @(
+        "--name",      $name,
+        "--console",
+        "--onefile",
+        "--icon",      "$root\gfglock\assets\icons\gfgLock.ico",
+        "--version-file", (New-VersionFile -Exe $name -Description "$((Get-AppMeta).AppName) command line"),
+        "--exclude-module", "PySide6",
+        "--exclude-module", "shiboken6",
+        "--paths",     $root,
+        # The native engine and its pinned OpenSSL, as in the app (see Get-PyInstallerArgs).
+        "--paths",     "$root\gfglock\core",
+        "--hidden-import", "gfglock_native",
+        "--add-binary", "$root\gfglock\core\libcrypto-3-x64.dll;.",
+        "--add-data",  "$root\skills\gfglock;skills\gfglock",
+        "--distpath",  $bin,
+        "--workpath",  "$root\build\pyinstaller",
+        "--specpath",  "$root\build\pyinstaller",
+        "--noconfirm", "--clean",
+        "$root\gfglock\cli.py"
+    )
+    $savedPath = $env:PATH
+    $env:PATH = Get-IsolatedPath
+    try {
+        & $pyinstaller @pyArgs | Out-Host
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $env:PATH = $savedPath
+    }
+    if ($exitCode -ne 0) { Fail "PyInstaller failed for $name (exit $exitCode)." }
+    $exe = Join-Path $bin "$name.exe"
+    if (-not (Test-Path $exe)) { Fail "Console exe not found: $exe" }
+    Write-Host "   Built $exe ($(Get-SizeMb $exe) MB)" -ForegroundColor DarkGray
+    $version = & $exe --version
+    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^gfglock \d+\.\d+\.\d+$') { Fail "$name.exe --version failed: $version" }
+    $skill = & $exe skill show --json | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $skill.files.'SKILL.md') { Fail "$name.exe doesn't carry its skill." }
+    Write-Host "   $version, with its skill" -ForegroundColor DarkGray
     return $exe
 }
 

@@ -35,6 +35,8 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
     - [Option 2 - Installers](#option-2---installers)
     - [Updating](#updating)
   - [Quick Start](#quick-start)
+  - [Command Line](#command-line)
+    - [For AI Coding Agents](#for-ai-coding-agents)
   - [Screenshots](#screenshots)
   - [Encryption Algorithms](#encryption-algorithms)
     - [Quick Decision Guide](#quick-decision-guide)
@@ -44,10 +46,11 @@ gfgLock is a **free, open-source** desktop app that encrypts and decrypts files 
     - [Best Practices](#best-practices)
   - [Code Signing Policy](#code-signing-policy)
   - [Settings \& Preferences](#settings--preferences)
-    - [Appearance](#appearance)
+    - [General](#general)
     - [Speed](#speed)
-    - [Notifications \& Logs](#notifications--logs)
+    - [Logs](#logs)
     - [Updates](#updates)
+    - [Advanced](#advanced)
   - [Building from Source](#building-from-source)
     - [Prerequisites](#prerequisites)
     - [Development Setup](#development-setup)
@@ -106,15 +109,20 @@ Most encryption tools make you choose between complexity and trust. Either the U
 - **Strong keys** - Argon2id turns your password into a key once per run, and every file gets its own key from it
 - **Native C++ engine** - OpenSSL-backed AES-NI hardware acceleration with transparent Python fallback
 - **Batch processing** - encrypt or decrypt entire folders in one operation using multi-threading
-- **A result for every file** - each file shows its own progress, then *Done* with the name it was saved as, *Skipped*, or *Failed* with the reason (for example a wrong password). Failed files stay in the list, so you can fix the problem and run them again
-- **Guided form** - the Encrypt and Decrypt tabs say what is still missing before you can start, show password strength and mismatches, and explain what will happen to the files before anything changes
+- **A result for every file** - each file shows its own progress, then *Done* with the name it was saved as, *Skipped*, or *Failed* with the reason in plain words and what to do (a wrong password, a file open in another program, a full drive). Failed files stay in the list, so you can fix the problem and run them again
+- **Guided form** - the Encrypt and Decrypt tabs say what is still missing before you can start, show password strength and mismatches, and say what will happen to the files before anything changes
+- **Replace, keep, or save elsewhere** - by default each file is replaced by its encrypted (or decrypted) copy; each tab's **Options** can keep the originals or save the results to a folder you choose
+- **Check without changing anything** - **Check** on the Decrypt tab tests the password and that the files are intact, writing nothing
+- **Found before the work starts** - a file open in another program, a read-only file, or a drive without enough free space is reported before any file is changed, and a run stops with one message if a drive fills up
+- **Big batches** - time remaining during long runs, failed files moved to the top, **Show failed only**, **Select failed**, and **Copy results**
+- **Command line** - the `gfglock` command encrypts, decrypts, and checks from any terminal or script, with JSON output for automation and an [Agent Skill](#for-ai-coding-agents) for AI coding agents
 - **Fast on big files** - each file is read, encrypted, and written at the same time, so one large file encrypts about as fast as the disk can copy it
 - **File Explorer context menu** - right-click any file → *Encrypt with gfgLock* / *Decrypt with gfgLock* (on Windows 11 under **Show more options**); while gfgLock is open, more files you send this way join the same window
 - **Drag & drop** - drop files or folders anywhere on the window; encrypted files go to the Decrypt tab, other files to the Encrypt tab, and folders to the tab in view
 - **Keeps what matters** - decrypted files get their original name and modification time back, and downloaded files stay marked as downloaded
 - **Keyboard friendly** - every control can be reached with Tab and shows a focus outline, and the main actions have shortcuts
 - **Detailed logging** - full activity or critical-only log levels saved to `%APPDATA%\gfgLock\logs\` (the portable exe: `gfgLock data\logs\` beside it)
-- **Live theme switching** - System / Light / Dark with instant preview
+- **Live theme switching** - System / Light / Dark, applied as you pick it
 - **Zero dependencies at runtime** - fully self-contained executable
 
 ---
@@ -153,13 +161,14 @@ gfgLock 3.2.0 and older can't update themselves: install 3.2.1 once over them (`
 
 1. On the **Encrypt** tab, add files or folders: drag them onto the window, use **Add files** / **Add folder**, or right-click them in File Explorer and choose *Encrypt with gfgLock*
 2. **Type a password twice** - 12+ characters strongly recommended; the strength meter helps
-3. **Optional:** turn on **Hide file names**, or pick another encryption method (AES-256 GCM is the default; see [Encryption Algorithms](#encryption-algorithms) if unsure). The tab remembers both choices for next time
-4. Press **Encrypt** - each file shows its progress, then *Done* and the name it was saved as
+3. **Optional:** press **Change** on the **Options** card to hide file names, pick another encryption method (AES-256 GCM is the default; see [Encryption Algorithms](#encryption-algorithms) if unsure), keep the originals, or save the encrypted files to another folder. The closed card shows the choices in one line, and the tab remembers them for next time
+4. Check the line at the bottom: it says what Encrypt will do to the files. Press **Encrypt** - each file shows its progress, then *Done* and the name it was saved as
 
 **To open them again**
 
 1. On the **Decrypt** tab, add the encrypted files (or right-click them and choose *Decrypt with gfgLock*)
-2. Enter the password and press **Decrypt** - each file gets its original name back. With a wrong password the files are marked *Failed* and nothing changes; correct the password and press **Decrypt** again
+2. Enter the password and press **Decrypt** - each file gets its original name back. With a wrong password the files are marked *Failed* and nothing changes; type the password again and press **Decrypt**. **Check** tests the password and the files without changing anything
+3. Double-click a decrypted file, or press **Open file** at the bottom, to open it
 
 | Shortcut | Action |
 |---|---|
@@ -169,10 +178,47 @@ gfgLock 3.2.0 and older can't update themselves: install 3.2.1 once over them (`
 | **Esc** | Stop a running job (the files in progress stop and stay unchanged) or a folder scan |
 | **Ctrl+,** / **F1** | Preferences / About |
 | **Ctrl+A**, **Space**, **Ctrl+C**, **Delete** in the list | Select all, select a file, copy the file names, remove from the list |
-| **Shift+F10** or the **Menu** key in the list | Show in folder, copy paths, and the other file actions |
-| **Ctrl+S** / **Esc** in Preferences | Save / close without saving |
+| **Enter** on a finished file | Open it (Decrypt tab) or show it in its folder (Encrypt tab) |
+| **Shift+F10** or the **Menu** key in the list | Open, show in folder, copy paths or results, and the other file actions |
+| **Esc** in Preferences | Close (changes are saved as you make them) |
 
-Encrypted files are saved in the same folder as the original under its full name plus the algorithm's extension (`report.docx` → `report.docx.gfglock`), and the original is removed only after the encrypted copy is completely written to disk, and only if the original wasn't changed meanwhile. To decrypt, drop an encrypted file onto gfgLock - the method is read from the file itself, no configuration needed. Neither step ever overwrites an existing file: if the name is taken, the new file gets a suffix such as `report (2).docx`. Dropping a folder adds every file inside it, including subfolders; even folders with tens of thousands of files load in about a second. Encrypting leaves Windows, program and app folders (including AppData) and files marked *System* alone, and says how many it left out.
+The About dialog (**F1**) lists every shortcut.
+
+Encrypted files are saved in the same folder as the original (or the folder chosen in **Options**) under its full name plus the algorithm's extension (`report.docx` → `report.docx.gfglock`), and the original is removed only after the encrypted copy is completely written to disk, and only if the original wasn't changed meanwhile. With **Keep the originals** on, the original stays. To decrypt, drop an encrypted file onto gfgLock - the method is read from the file itself, no configuration needed. Neither step ever overwrites an existing file: if the name is taken, the new file gets a suffix such as `report (2).docx`. Dropping a folder adds every file inside it, including subfolders; even folders with tens of thousands of files load in about a second. Encrypting leaves Windows, program and app folders (including AppData) and files marked *System* alone, and says how many it left out.
+
+---
+
+## Command Line
+
+`gfglock` does what the window does from any terminal, script, or AI coding agent: the same engine, the same safety rules, and the same preferences. The installers can add it to PATH (the unchecked task *Add the gfglock command to PATH*); otherwise it is `bin\gfglock.exe` in gfgLock's install folder or in the folder unpacked from the portable `.7z`. From source: `python -m gfglock.cli`.
+
+```powershell
+gfglock encrypt "D:\Taxes" --dry-run
+gfglock encrypt "D:\Taxes" --password-env GFGLOCK_PASSWORD
+gfglock encrypt report.docx --password-file "C:\Users\me\key.txt" --keep-originals
+gfglock verify "D:\Taxes" --password-env GFGLOCK_PASSWORD
+gfglock decrypt "D:\Taxes" --password-env GFGLOCK_PASSWORD --output-dir "D:\Opened"
+gfglock info "D:\Taxes\2025.pdf.gfglock"
+gfglock settings set encryption.cpu_threads 4
+```
+
+- **Passwords never go on the command line**, where other programs and logs could see them. Use `--password-env NAME`, `--password-file FILE`, or `--password-stdin` (the first line piped in, as UTF-8). Without one, `gfglock` asks on a terminal and refuses to run without one.
+- **The same rules as the window**: a file is replaced only after its new copy is written and checked, nothing is overwritten, and system and app folders are left out. `--dry-run` lists what would change, `--keep-originals` keeps the originals, and `--output-dir` saves the results elsewhere. Without them, `gfglock` does what the tab was last set to.
+- `verify` checks the password and the files without writing anything; `info` reads a file's header without a password.
+- `--json` prints JSON Lines (`start`, `progress`, `file`, `skipped`, `error`, `warning`, and a closing `done`) for scripts. The exit status is `0` when every file was done, `1` when some failed, `2` when the input, password, folders, or free space can't be used, and `130` after Ctrl+C (files in progress stay unchanged).
+- `gfglock --help` and `gfglock COMMAND --help` describe every option; [skills/gfglock/references](skills/gfglock/references) has the full reference and the JSON events.
+
+### For AI Coding Agents
+
+The [gfglock Agent Skill](skills/gfglock/SKILL.md) teaches coding agents (Claude Code, Codex, Cursor, Copilot, Gemini CLI, and others) to use `gfglock` safely: where to find it, how to pass the password, how to read `--json`, and to ask before replacing files.
+
+```powershell
+gfglock skill install
+gfglock skill install --agent cursor
+gfglock skill show
+```
+
+`gfglock skill install` copies it into `~/.agents/skills` and `~/.claude/skills`; `--agent NAME` or `--dir FOLDER` choose other folders, and `gfglock skill show` prints it for agents that can't load skills. It can also be added straight from GitHub with `npx skills add ShahFaisalGfG/gfgLock`.
 
 ---
 
@@ -263,6 +309,7 @@ Decrypting restores the name, the contents, and the modification time. Other det
 - Keep encrypted files in a **secure location** - gfgLock protects content, not storage
 - Enable **logging** for audit trails in compliance-sensitive environments
 - **Back up your passwords** - there is no recovery mechanism by design
+- **Know what a replaced original leaves behind** - gfgLock deletes the original the way Windows does. On a hard drive (not an SSD), a deleted file can sometimes be recovered with recovery tools until its space is reused. Encrypt files before they hold secrets on a shared hard drive, or keep them on an encrypted drive (BitLocker)
 
 ---
 
@@ -281,13 +328,16 @@ Privacy policy: see [PRIVACY.md](PRIVACY.md). This program connects only to GitH
 
 ## Settings & Preferences
 
-Open **Preferences** from the title bar (**Ctrl+,**). Changes apply when you press **Save**; the theme previews as you pick it, and Cancel or **Esc** puts the saved one back. **Reset to defaults** asks first, then saves the defaults at once. The encryption method and **Hide file names** live on the Encrypt tab, which remembers them.
+Open **Preferences** from the title bar (**Ctrl+,**). Each change is saved as you make it, and **Close** or **Esc** closes the window. **Reset to defaults** asks first, then saves the defaults at once. The `gfglock settings` command reads and changes the same preferences.
 
-### Appearance
+Each tab keeps its own choices on its **Options** card and remembers them: the encryption method and **Hide file names** (Encrypt), **Keep the originals** (or keep the encrypted files, on Decrypt), and **Save to** (next to each file, or a folder you choose).
+
+### General
 
 | Setting | Description |
 |---|---|
 | **App theme** | System (follows your Windows light or dark mode), Light, or Dark |
+| **Notify when finished** | Show a Windows notification when a job ends while gfgLock is in the background, or after a job longer than 10 seconds |
 
 ### Speed
 
@@ -295,14 +345,11 @@ Open **Preferences** from the title bar (**Ctrl+,**). Changes apply when you pre
 |---|---|
 | **Files at a time** | How many files are encrypted or decrypted at once, set separately for each (1 up to your processor threads). Each file is already read, encrypted, and written at the same time, so this mostly speeds up batches of smaller files |
 | **Keep the PC responsive** | Leave one processor thread free for Windows (on by default; turn off to use every thread) |
-| **Read size** | How much of a file is read at once, set separately for encrypting and decrypting. The **Default (4 MB)** suits most PCs; 1 MB to 64 MB can be picked by hand. Each file being worked on holds about eight times the size in memory, and gfgLock picks a smaller size when free memory is short |
-| **Optimize for this PC** | Times a test file in the temp folder with every read size, then times each number of files at a time (about a minute, with a progress bar), and saves the fastest of each for encrypting and for decrypting. A value replaces the default only when it is at least 5% faster. It can't run while a job is running |
 
-### Notifications & Logs
+### Logs
 
 | Setting | Description |
 |---|---|
-| **Notify when finished** | Show a Windows notification when a job ends while gfgLock is in the background, or after a job longer than 10 seconds |
 | **Keep logs** / **What to log** | Write log files with errors only, or every file processed. Logs list file names, never passwords; with **Hide file names** on they don't record the original names of encrypted files. Each log keeps up to 5 MB plus one older copy |
 | **Open logs folder** / **Clear logs** | Show the log files in File Explorer, or empty them |
 
@@ -312,6 +359,13 @@ Open **Preferences** from the title bar (**Ctrl+,**). Changes apply when you pre
 |---|---|
 | **Check automatically** | Ask GitHub at most once a day whether a newer version is out (on by default). **Check now** asks at once, and the About dialog (**F1**) has the same button |
 | **Install automatically** | Download a new version in the background and install it when you close gfgLock (on by default). Not on a metered connection; the notice offers **Update** instead. Turned off, the notice asks before downloading |
+
+### Advanced
+
+| Setting | Description |
+|---|---|
+| **Read size** | How much of a file is read at once, set separately for encrypting and decrypting. The **Default (4 MB)** suits most PCs; 1 MB to 64 MB can be picked by hand. Each file being worked on holds about eight times the size in memory, and gfgLock picks a smaller size when free memory is short |
+| **Optimize for this PC** | Times a test file in the temp folder with every read size, then times each number of files at a time (about a minute, with a progress bar), and saves the fastest of each for encrypting and for decrypting. A value replaces the default only when it is at least 5% faster. It can't run while a job is running |
 
 ---
 
@@ -340,7 +394,13 @@ pip install -r requirements.txt
 
 # 4. Run directly (no native build required)
 python -m gfglock
+
+# The command line, and the tests (offscreen, so no window opens)
+python -m gfglock.cli --help
+$env:QT_QPA_PLATFORM = "offscreen"; python -m pytest
 ```
+
+`python scripts\render_screenshots.py --out screenshots --size 1000x720` renders the window in each state offscreen (add `--theme dark`), which is how the screenshots here are made.
 
 ### Full Build - Native Extension + All Installers
 
@@ -348,7 +408,7 @@ python -m gfglock
 .\scripts\build.ps1
 ```
 
-This single script runs `scripts\build_native.ps1` (bootstraps vcpkg, installs OpenSSL through it, and builds the CMake project), then PyInstaller bundling, Inno Setup compilation, and the portable exe. Each build runs the app's `--self-test` before it counts as done. The installers land in `build\installer\` and the portable exe in `build\`. See [dev_setup.md](dev_setup.md) for the individual scripts (`build_installer.ps1 -Kind User|System`, `build_portable.ps1`).
+This single script runs `scripts\build_native.ps1` (bootstraps vcpkg, installs OpenSSL through it, and builds the CMake project), then PyInstaller bundling (the app, and the command line `bin\gfglock.exe` beside it), Inno Setup compilation, and the portable exe. Each build runs the app's `--self-test`, and `gfglock --version`, before it counts as done. The installers land in `build\installer\` and the portable exe in `build\`. See [dev_setup.md](dev_setup.md) for the individual scripts (`build_installer.ps1 -Kind User|System`, `build_portable.ps1`).
 
 > **First-run note:** vcpkg is downloaded from GitHub as a source archive of the pinned commit, and it then downloads and builds OpenSSL - internet access is required for the first build only.
 
@@ -358,7 +418,7 @@ Every exe and native module the build makes carries gfgLock's name as its produc
 
 The release workflow signs through SignPath when the repository has the variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, and `SIGNPATH_POLICY_SLUG` and the secret `SIGNPATH_API_TOKEN`; without them it publishes unsigned files. Each release makes two signing requests, and each waits up to two hours for approval in SignPath:
 
-1. `gfgLock.exe` and the Explorer extension `gfglock_shell.dll`, before the installers are built from them.
+1. `gfgLock.exe`, the command line `bin\gfglock.exe`, and the Explorer extension `gfglock_shell.dll`, before the installers are built from them.
 2. Both installers and the portable exe.
 
 The SignPath project takes its artifact configurations from `.signpath/artifact-configurations/`: `programs.xml` under the slug `programs` and `packages.xml` under `packages`. Both accept a file only when its product name is gfgLock and its product version is the release's.
@@ -370,13 +430,14 @@ The SignPath project takes its artifact configurations from `.signpath/artifact-
 | Issue | Solution |
 |---|---|
 | *"Could not parse stylesheet"* warning | Harmless Qt startup message - no data loss, safe to ignore |
-| A file is marked *Failed* | Its row says why. "Wrong password or the file was modified" means the password is wrong or the file was damaged; correct the password and press **Decrypt** again. "Made by a newer gfgLock version" means the file needs a newer gfgLock. Nothing is changed when a file fails |
+| A file is marked *Failed* | Its row says why and what to do. "Wrong password, or the file is damaged" means the password is wrong or the file was damaged; type the password again and press **Decrypt**. "Made by a newer gfgLock" means the file needs a newer gfgLock (update it from About). "Open in another program" means a program such as Word still has the file open; close it and try again. Nothing is changed when a file fails. In a long list, **Show failed only** in the list menu (**⋯**) shows just those files |
 | A `.gfglck` file was kept after decrypting | The old AES-256 CFB method can't confirm the password, so the encrypted file stays unless the restored name matches it. Check that the decrypted file opens, then delete the `.gfglck` file |
 | A file I added isn't in the list | The Encrypt tab leaves out files that are already encrypted, files in Windows, program, or app folders (including AppData), and files marked *System*; the Decrypt tab leaves out files that aren't encrypted. A notice says how many. Use the other tab, or move the file somewhere else first |
 | A file is still waiting after Stop | Stop ends the files in progress without changing them; press **Encrypt** or **Decrypt** again to process them |
 | Slow performance | For many small files, raise **Files at a time** in **Preferences → Speed**, or let **Optimize for this PC** pick it. A single large file goes about as fast as the disk allows; close background apps that use the same disk |
 | Context menu not appearing | On Windows 11 the entries are under **Show more options** (or press Shift+F10). Otherwise re-run the installer; use *Run as administrator* for the system installer |
-| Logs not created | Turn on **Keep logs** in **Preferences → Notifications & logs**; check write permissions on `%APPDATA%\gfgLock\logs\` (portable exe: `gfgLock data\logs\` beside it) |
+| Logs not created | Turn on **Keep logs** in **Preferences → Logs**; check write permissions on `%APPDATA%\gfgLock\logs\` (portable exe: `gfgLock data\logs\` beside it) |
+| `gfglock` isn't found in a terminal | Install again with *Add the gfglock command to PATH* ticked and open a new terminal, or run `bin\gfglock.exe` from gfgLock's folder |
 
 Still stuck? [Open an issue](https://github.com/ShahFaisalGfG/gfgLock/issues) with your log file and gfgLock version - I'll get back to you.
 
@@ -416,6 +477,17 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 
 ### Unreleased
 - 🔏 A [privacy policy](PRIVACY.md) describes gfgLock's one connection, its update check; the installers show it and let you turn the check off. Every exe and native module carries gfgLock's name and version, and releases are ready to be signed through SignPath ([Code signing policy](#code-signing-policy))
+- ⌨️ **Command line:** `gfglock encrypt`, `decrypt`, `verify`, `info`, and `settings`, with passwords from an environment variable, a file, or stdin (never the command line), JSON Lines output, and clear exit codes. The installers can add it to PATH, and its [Agent Skill](#for-ai-coding-agents) teaches AI coding agents to use it
+- 🗂️ **Keep the originals, or save to another folder:** each tab's Options can keep the files that were read, or save the results to a folder you choose. Replacing them stays the default
+- ✅ **Check:** the Decrypt tab tests the password and that the files are intact, without writing anything
+- 💬 **Plain reasons:** every failure says what happened and what to do ("Wrong password, or the file is damaged", "The file is open in another program. Close it and try again", "The drive is full. Free up 1.2 GB and try again"). A wrong password says so in red, without timings; mixed failures are counted by reason
+- 🛑 **Found before the work:** a file open in another program, or a drive without enough free space, is reported before anything changes, and a run stops with one message if a drive fills up
+- 📋 **Big batches:** time remaining, failed files first, **Show failed only**, **Select failed**, and **Copy results**; **Open** a decrypted file from its row, by double-click or Enter, or from **Open file** at the bottom; **Open folder** names its folder, or lists each folder a run wrote to
+- 🧭 **Tidier tabs:** the options fold into one line, and what Encrypt or Decrypt will do is said at the bottom, so everything fits at small window sizes. The empty list mentions File Explorer's right-click menu
+- ⚙️ **Preferences:** changes are saved as you make them, with **Close**; Appearance and Notifications form a General page, and Read size sits under Advanced beside **Optimize for this PC**. The Updates page says what happens when automatic checks are off
+- ♿ **Screen readers and keyboard:** run results and notices are announced, moving through the list reads each file, Preferences' sections are read as tabs, the show-password button is out of the Tab order, and the window starts with focus on Add files (or the password)
+- 🔄 **Update messages** say in plain words what went wrong ("Couldn't check for updates. Check your internet connection and try again."), with the details in the log
+- ℹ️ **About** has a table of every shortcut and links to the privacy policy, the licences, and reporting a problem; a start-up failure says what to do next
 
 ### v3.2.1 - November 2026 *(current)*
 - 🔄 **Updates itself:** a daily check finds new versions, which download in the background and install when you close gfgLock, or at once with **Restart now**. Every update is checked against the publisher's signature and SHA-256 checksums before it runs; metered connections wait. Both steps can be turned off in the new **Preferences > Updates** page, and **Check for updates** in the About dialog now checks in place.

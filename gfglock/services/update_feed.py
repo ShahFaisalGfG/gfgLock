@@ -37,6 +37,10 @@ class FeedError(Exception):
     """The update information could not be fetched or trusted; the message suits a log line."""
 
 
+class FeedUnreachable(FeedError):
+    """The update information couldn't be downloaded: no connection, a server error, or a refused address."""
+
+
 @dataclass(frozen=True)
 class UpdateSource:
     """Where an app looks for updates and how it proves them genuine.
@@ -260,9 +264,9 @@ def _read(source: UpdateSource, url: str, limit: int, opener: Callable[..., Any]
     except urllib.error.HTTPError as error:
         if missing_ok and error.code == 404:
             return None
-        raise FeedError(f"{url} answered HTTP {error.code}") from error
+        raise FeedUnreachable(f"{url} answered HTTP {error.code}") from error
     except (urllib.error.URLError, OSError, ValueError) as error:
-        raise FeedError(f"{url} could not be read: {getattr(error, 'reason', error)}") from error
+        raise FeedUnreachable(f"{url} could not be read: {getattr(error, 'reason', error)}") from error
     if len(data) > limit:
         raise FeedError(f"{url} is larger than {limit} bytes")
     return data
@@ -275,7 +279,7 @@ def _check_url(source: UpdateSource, url: str) -> None:
         return
     if source.allow_local_http and parts.scheme == "http" and parts.hostname == "127.0.0.1":
         return
-    raise FeedError(f"refused to open {url}: updates are only fetched over HTTPS")
+    raise FeedUnreachable(f"refused to open {url}: updates are only fetched over HTTPS")
 
 
 class _SafeRedirects(urllib.request.HTTPRedirectHandler):

@@ -65,6 +65,7 @@ ComboBox {
     ToolTip.timeout: control.hovered ? -1 : Theme.focusTipTimeout
 
     contentItem: Text {
+        textFormat: Text.PlainText
         leftPadding: 10
         rightPadding: control.indicator.width + 6
         readonly property bool showsPlaceholder: control.currentIndex < 0 && control.placeholderText.length > 0
@@ -129,6 +130,7 @@ ComboBox {
         contentItem: RowLayout {
             spacing: Theme.spaceSm
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: row.modelData[control.textRole]
                 font: control.font

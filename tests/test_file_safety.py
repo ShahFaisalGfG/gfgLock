@@ -18,7 +18,7 @@ from tests.v1_writer import HEADER_SIZES, v1_bytes, v1_key
 
 FIXTURES = Path(__file__).parent / "fixtures" / "v1"
 V1_SALT = bytes(range(16))
-KEPT_REASON = "The encrypted file was kept because the old CFB format can't confirm the password"
+KEPT_REASON = "The .gfglck file was kept: its old format can't confirm the password"
 
 
 @pytest.fixture(params=[
@@ -260,7 +260,7 @@ class TestNames:
         """Decrypting refuses invisible format characters, so encrypting such a name would strand the file."""
         name = "invoice\u202efdp.exe"
         result = file_ops.encrypt_file(_write(tmp_path / name, b"data"), keys, "gcm")
-        assert result.outcome == "failed" and "rename the file" in result.reason
+        assert result.outcome == "failed" and "Rename the file" in result.reason
         assert sorted(os.listdir(tmp_path)) == [name]
 
 

@@ -6,6 +6,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "components"
 
+// Preferences, saved as each one changes (as in the sister apps): Close, Esc, and the title bar
+// only close the window.
 AppWindow {
     id: prefsWin
 
@@ -17,47 +19,41 @@ AppWindow {
     showMaximize: false
     modality: Qt.ApplicationModal
 
-    property bool dirty: false
-    property bool _closeAfterSave: false
     property string _statusMessage: ""
+    property bool _statusIsError: false
     property string _speedTestMessage: ""
     // The values shown when the speed test started, by setting key, so the lists it changes
     // can be pointed out.
     property var _beforeTest: ({})
-    property bool _statusIsError: false
-    property var _values: ({})
     readonly property bool _runBusy: encryptController.busy || decryptController.busy
 
     readonly property var sections: [
-        { name: "Appearance", icon: "settings" },
+        { name: "General", icon: "settings" },
         { name: "Speed", icon: "speed" },
-        { name: "Notifications & logs", icon: "notify" },
-        { name: "Updates", icon: "sync" }
+        { name: "Logs", icon: "notify" },
+        { name: "Updates", icon: "sync" },
+        { name: "Advanced", icon: "more" }
     ]
 
     // 1 up to every thread, or one fewer when a thread is kept free for Windows.
     readonly property var threadOptions: {
         var total = prefsController.cpuCount
-        var max = prefsWin.value("advanced.clamp_cpu_threads", prefsController.clampThreads) ? Math.max(1, total - 1) : total
+        var max = prefsController.clampThreads ? Math.max(1, total - 1) : total
         var list = []
         for (var i = 1; i <= max; i++) list.push({ label: i === 1 ? "1 file" : i + " files", code: i })
         return list
     }
 
-    Component.onCompleted: prefsWin.loadValues()
-    // Closing ends the preview: the saved theme shows, which is the new one after Save and the
-    // old one after Cancel, Esc, or the title bar.
     onClosing: {
         prefsController.cancelReadSizeTest()
-        appController.endPreview()
         prefsWin.destroy()
     }
 
     Connections {
         target: prefsController
         // The speed test saves what it measured: a read size and a number of files at a time for
-        // each direction, -1 for any it didn't measure. Dropping unsaved choices of those lets
-        // their lists show the saved result; other unsaved edits stay pending.
+        // each direction, -1 for any it didn't measure. The lists show the saved values, so the
+        // ones it changed are pointed out.
         function onReadSizeTestFinished(encryptSize, decryptSize, encryptThreads, decryptThreads, message) {
             var results = [
                 { key: "encryption.read_size", value: encryptSize, combo: encReadCombo },
@@ -65,72 +61,37 @@ AppWindow {
                 { key: "encryption.cpu_threads", value: encryptThreads, combo: encThreadsCombo },
                 { key: "decryption.cpu_threads", value: decryptThreads, combo: decThreadsCombo }
             ].filter(result => result.value >= 0)
-            prefsWin.forget(results.map(result => result.key))
             for (var i = 0; i < results.length; i++) {
                 if (results[i].value !== prefsWin._beforeTest[results[i].key]) results[i].combo.flash()
             }
             prefsWin._speedTestMessage = message
         }
         function onSaveFinished(success, message) {
-            if (success && prefsWin._closeAfterSave) {
-                prefsWin.close()
-                return
-            }
-            prefsWin._closeAfterSave = false
-            prefsWin._statusMessage = message
+            prefsWin._statusMessage = success ? (message || "Saved.") : message
             prefsWin._statusIsError = !success
+            statusClear.restart()
         }
     }
 
-    Shortcut { sequences: [StandardKey.Save]; onActivated: prefsWin.save() }
+    Timer {
+        id: statusClear
+        interval: 4000
+        onTriggered: if (!prefsWin._statusIsError) prefsWin._statusMessage = ""
+    }
+
     Shortcut { sequence: "Escape"; onActivated: prefsWin.close() }
 
-    // ── Value plumbing ─────────────────────────────────────────────────────
-
-    // Record an edited value; controls call this from their change handlers.
-    function set(key, value) {
-        var values = Object.assign({}, prefsWin._values)
-        values[key] = value
-        prefsWin._values = values
-        prefsWin.dirty = true
-        prefsWin._statusMessage = ""
-    }
-
-    // Drop unsaved edits of these keys, so their controls show the saved values again.
-    function forget(keys) {
-        var values = Object.assign({}, prefsWin._values)
-        for (var i = 0; i < keys.length; i++) delete values[keys[i]]
-        prefsWin._values = values
-        prefsWin.dirty = Object.keys(values).length > 0
-    }
-
-    function value(key, fallback) {
-        return key in prefsWin._values ? prefsWin._values[key] : fallback
-    }
-
-    function loadValues() {
-        prefsWin._values = {}
-        themeCombo.value = prefsController.theme
-        reserveSwitch.checked = prefsController.clampThreads
-        notifySwitch.checked = prefsController.operationNotifications
-        logsSwitch.checked = prefsController.enableLogs
-        logLevelCombo.value = prefsController.logLevel
-        autoCheckSwitch.checked = prefsController.autoCheckUpdates
-        autoInstallSwitch.checked = prefsController.autoInstallUpdates
-        prefsWin.dirty = false
+    // Save one preference now; the window says "Saved." or why it couldn't be saved.
+    function save(key, value) {
+        var update = {}
+        update[key] = value
+        prefsController.saveSettings(update)
     }
 
     // "Last checked 17 Nov 2026 10:42", or "" before the first check.
     function lastChecked() {
         var ms = updateController.lastCheckedMs
         return ms > 0 ? "Last checked " + new Date(ms).toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
-    }
-
-    // The theme is already showing (it previews as it is chosen), so saving only stores it.
-    function save() {
-        if (!prefsWin.dirty) { prefsWin.close(); return }
-        prefsWin._closeAfterSave = true
-        prefsController.saveSettings(prefsWin._values)
     }
 
     function startSpeedTest() {
@@ -144,16 +105,30 @@ AppWindow {
         prefsController.startReadSizeTest(prefsController.encMode)
     }
 
+    function _updatesText() {
+        var privacy = " The request carries only gfgLock's name and version; your files, passwords, and settings never leave this PC."
+        if (!updateController.canSelfUpdate)
+            return "This copy runs from an unpacked folder, so it can't replace itself. "
+                + (prefsController.autoCheckUpdates ? "gfgLock still tells you when a new version is out, with a link to download it."
+                                                    : "Press Check now to see whether a new version is out.") + privacy
+        if (!prefsController.autoCheckUpdates)
+            return "gfgLock checks for a new version only when you press Check now." + privacy
+                + " An update installs only after its publisher signature and checksums match."
+        return "gfgLock asks GitHub at most once a day whether a newer version is out." + privacy
+            + " An update installs only after its publisher signature and checksums match."
+    }
+
     AppDialog {
         id: resetDialog
         title: "Reset all preferences?"
         width: Math.min(420, prefsWin.width - 48)
         standardButtons: Dialog.Reset | Dialog.Cancel
         defaultButton: Dialog.Cancel
-        Component.onCompleted: resetDialog.standardButton(Dialog.Reset).text = "Reset and save"
+        Component.onCompleted: resetDialog.standardButton(Dialog.Reset).text = "Reset"
         Text {
+            textFormat: Text.PlainText
             width: parent.width
-            text: "Every preference returns to its default and is saved at once; unsaved changes here are dropped. Your files are not affected."
+            text: "Every preference returns to its default, including each tab's options. Your files are not affected."
             wrapMode: Text.WordWrap
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
@@ -161,8 +136,7 @@ AppWindow {
         }
         onReset: {
             prefsController.resetDefaults()
-            appController.endPreview()  // the saved theme is now the default one
-            prefsWin.loadValues()
+            appController.detectTheme()  // the saved theme is now the default one
             resetDialog.close()
         }
     }
@@ -178,8 +152,8 @@ AppWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // Section navigation (Up/Down to move, Tab to the content). The Control holds the
-            // focus, so the ring shows only when it came from the keyboard.
+            // Section navigation (Up/Down to move, Tab to the content), read as a list of page
+            // tabs. The Control holds the focus, so the ring shows only when it came from the keyboard.
             Rectangle {
                 Layout.fillHeight: true
                 Layout.preferredWidth: 210
@@ -191,16 +165,19 @@ AppWindow {
                     padding: Theme.spaceSm
                     focus: true
                     focusPolicy: Qt.TabFocus
-                    Accessible.role: Accessible.List
+                    Accessible.role: Accessible.PageTabList
                     Accessible.name: "Preference sections"
                     // The arrow keys are keyboard use too, so they bring up the ring.
-                    Keys.onUpPressed: {
-                        nav.decrementCurrentIndex()
+                    Keys.onUpPressed: navBox._move(-1)
+                    Keys.onDownPressed: navBox._move(1)
+
+                    function _move(step) {
+                        var index = Math.max(0, Math.min(prefsWin.sections.length - 1, nav.currentIndex + step))
+                        if (index === nav.currentIndex) return
+                        nav.currentIndex = index
                         navBox.focusReason = Qt.TabFocusReason
-                    }
-                    Keys.onDownPressed: {
-                        nav.incrementCurrentIndex()
-                        navBox.focusReason = Qt.TabFocusReason
+                        navBox.Accessible.announce(prefsWin.sections[index].name + ", " + (index + 1) + " of "
+                                                   + prefsWin.sections.length)
                     }
 
                     contentItem: ListView {
@@ -221,7 +198,9 @@ AppWindow {
                                 nav.currentIndex = navItem.index
                                 navBox.forceActiveFocus(Qt.MouseFocusReason)
                             }
+                            Accessible.role: Accessible.PageTab
                             Accessible.name: navItem.modelData.name
+                            Accessible.selected: navItem.highlighted
 
                             contentItem: RowLayout {
                                 spacing: Theme.spaceSm
@@ -231,6 +210,7 @@ AppWindow {
                                     color: navItem.highlighted ? Theme.accent : Theme.textMuted
                                 }
                                 Text {
+                                    textFormat: Text.PlainText
                                     Layout.fillWidth: true
                                     text: navItem.modelData.name
                                     font.family: Theme.fontFamily
@@ -258,23 +238,36 @@ AppWindow {
                 Layout.fillHeight: true
                 currentIndex: nav.currentIndex
 
-                // Appearance
+                // General
                 PrefsPage {
                     Card {
                         Layout.fillWidth: true
-                        title: "Theme"
+                        title: "Appearance"
                         FormRow {
                             label: "App theme"
                             StyledComboBox {
-                                id: themeCombo
                                 Layout.fillWidth: true
                                 accessibleName: "App theme"
-                                toolTipText: "Previews as you choose; Cancel or Esc puts the saved theme back."
                                 model: prefsController.themeOptions
+                                value: prefsController.theme
                                 onActivated: {
-                                    prefsWin.set("theme", currentValue)
-                                    appController.previewTheme(currentValue)
+                                    prefsWin.save("theme", currentValue)
+                                    appController.detectTheme()
                                 }
+                            }
+                        }
+                    }
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Notifications"
+                        FormRow {
+                            label: "Notify when finished"
+                            hint: "Show a Windows notification when a run ends while you're in another window, or after a run of more than 10 seconds."
+                            Item { Layout.fillWidth: true }
+                            SettingSwitch {
+                                key: "advanced.operation_notifications"
+                                saved: prefsController.operationNotifications
+                                accessibleName: "Notify when finished"
                             }
                         }
                     }
@@ -294,10 +287,8 @@ AppWindow {
                                 Layout.fillWidth: true
                                 accessibleName: "Files encrypted at a time"
                                 model: prefsWin.threadOptions
-                                // Bound to the edited value so rebuilding the list keeps the choice.
-                                value: Math.min(prefsWin.value("encryption.cpu_threads", prefsController.encThreads),
-                                                prefsWin.threadOptions.length)
-                                onActivated: prefsWin.set("encryption.cpu_threads", currentValue)
+                                value: Math.min(prefsController.encThreads, prefsWin.threadOptions.length)
+                                onActivated: prefsWin.save("encryption.cpu_threads", currentValue)
                             }
                         }
                         FormRow {
@@ -308,23 +299,142 @@ AppWindow {
                                 Layout.fillWidth: true
                                 accessibleName: "Files decrypted at a time"
                                 model: prefsWin.threadOptions
-                                value: Math.min(prefsWin.value("decryption.cpu_threads", prefsController.decThreads),
-                                                prefsWin.threadOptions.length)
-                                onActivated: prefsWin.set("decryption.cpu_threads", currentValue)
+                                value: Math.min(prefsController.decThreads, prefsWin.threadOptions.length)
+                                onActivated: prefsWin.save("decryption.cpu_threads", currentValue)
                             }
                         }
                         FormRow {
                             label: "Keep the PC responsive"
                             hint: "Leaves one processor thread free for Windows during large jobs."
                             Item { Layout.fillWidth: true }
-                            AppSwitch {
-                                id: reserveSwitch
+                            SettingSwitch {
+                                key: "advanced.clamp_cpu_threads"
+                                saved: prefsController.clampThreads
                                 accessibleName: "Keep one processor thread free"
                                 toolTipText: "Turn off to use every processor thread"
-                                onToggled: prefsWin.set("advanced.clamp_cpu_threads", checked)
                             }
                         }
                     }
+                }
+
+                // Logs
+                PrefsPage {
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Logs"
+                        description: "Log files help when reporting a problem. They list file names, never passwords."
+                        FormRow {
+                            label: "Keep logs"
+                            Item { Layout.fillWidth: true }
+                            SettingSwitch {
+                                key: "advanced.enable_logs"
+                                saved: prefsController.enableLogs
+                                accessibleName: "Keep logs"
+                                toolTipText: "Logs stay on this PC; nothing is sent anywhere"
+                            }
+                        }
+                        FormRow {
+                            label: "What to log"
+                            enabled: prefsController.enableLogs
+                            StyledComboBox {
+                                Layout.fillWidth: true
+                                accessibleName: "What to log"
+                                toolTipText: "Errors only, or every file processed"
+                                model: prefsController.logLevelOptions
+                                value: prefsController.logLevel
+                                onActivated: prefsWin.save("advanced.log_level", currentValue)
+                            }
+                        }
+                        RowLayout {
+                            spacing: Theme.spaceSm
+                            AppButton {
+                                text: "Open logs folder"
+                                iconName: "folderOpen"
+                                toolTipText: "Show the log files in File Explorer"
+                                onClicked: prefsController.openLogsFolder()
+                            }
+                            AppButton {
+                                kind: "danger"
+                                text: "Clear logs"
+                                iconName: "delete"
+                                toolTipText: "Empty the log files (your files are not affected)"
+                                onClicked: prefsController.clearLogs()
+                            }
+                        }
+                    }
+                }
+
+                // Updates
+                PrefsPage {
+                    Card {
+                        Layout.fillWidth: true
+                        title: "Updates"
+                        description: prefsWin._updatesText()
+                        FormRow {
+                            label: "Check automatically"
+                            hint: "Once a day while gfgLock is open."
+                            Item { Layout.fillWidth: true }
+                            SettingSwitch {
+                                key: "advanced.auto_check_updates"
+                                saved: prefsController.autoCheckUpdates
+                                accessibleName: "Check for updates automatically"
+                            }
+                        }
+                        FormRow {
+                            visible: updateController.canSelfUpdate
+                            label: "Install automatically"
+                            hint: updateController.needsApproval
+                                ? "Downloads in the background and installs when you close gfgLock, after Windows asks for administrator approval. Not on a metered connection."
+                                : "Downloads in the background and installs when you close gfgLock. Not on a metered connection."
+                            Item { Layout.fillWidth: true }
+                            SettingSwitch {
+                                key: "advanced.auto_install_updates"
+                                saved: prefsController.autoInstallUpdates
+                                accessibleName: "Install updates automatically"
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spaceMd
+                            AppButton {
+                                text: "Check now"
+                                iconName: "sync"
+                                enabled: updateController.status !== "checking" && updateController.status !== "downloading"
+                                toolTipText: "Ask GitHub whether a newer version is out"
+                                onClicked: updateController.checkNow()
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    textFormat: Text.PlainText
+                                    Layout.fillWidth: true
+                                    visible: text !== ""
+                                    text: updateController.message
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    color: updateController.status === "error" ? Theme.danger : Theme.text
+                                    wrapMode: Text.WordWrap
+                                    Accessible.role: Accessible.StaticText
+                                    Accessible.name: text
+                                }
+                                Text {
+                                    textFormat: Text.PlainText
+                                    Layout.fillWidth: true
+                                    visible: text !== ""
+                                    text: prefsWin.lastChecked()
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    color: Theme.textMuted
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Advanced
+                PrefsPage {
                     Card {
                         Layout.fillWidth: true
                         title: "Read size"
@@ -337,8 +447,8 @@ AppWindow {
                                 Layout.fillWidth: true
                                 accessibleName: "Read size when encrypting"
                                 model: prefsController.readSizeOptions
-                                value: prefsWin.value("encryption.read_size", prefsController.encReadSize)
-                                onActivated: prefsWin.set("encryption.read_size", currentValue)
+                                value: prefsController.encReadSize
+                                onActivated: prefsWin.save("encryption.read_size", currentValue)
                             }
                         }
                         FormRow {
@@ -349,12 +459,12 @@ AppWindow {
                                 Layout.fillWidth: true
                                 accessibleName: "Read size when decrypting"
                                 model: prefsController.readSizeOptions
-                                value: prefsWin.value("decryption.read_size", prefsController.decReadSize)
-                                onActivated: prefsWin.set("decryption.read_size", currentValue)
+                                value: prefsController.decReadSize
+                                onActivated: prefsWin.save("decryption.read_size", currentValue)
                             }
                         }
                     }
-                    // The test sets both cards above, so it has a card of its own.
+                    // The test sets the read sizes above and the files at a time under Speed.
                     Card {
                         Layout.fillWidth: true
                         title: "Best settings for this PC"
@@ -383,136 +493,6 @@ AppWindow {
                         }
                     }
                 }
-
-                // Notifications & logs
-                PrefsPage {
-                    Card {
-                        Layout.fillWidth: true
-                        title: "Notifications"
-                        FormRow {
-                            label: "Notify when finished"
-                            hint: "Show a Windows notification when a run ends while you're in another window, or after a run of more than 10 seconds."
-                            Item { Layout.fillWidth: true }
-                            AppSwitch {
-                                id: notifySwitch
-                                accessibleName: "Notify when finished"
-                                onToggled: prefsWin.set("advanced.operation_notifications", checked)
-                            }
-                        }
-                    }
-                    Card {
-                        Layout.fillWidth: true
-                        title: "Logs"
-                        description: "Log files help when reporting a problem. They list file names, never passwords."
-                        FormRow {
-                            label: "Keep logs"
-                            Item { Layout.fillWidth: true }
-                            AppSwitch {
-                                id: logsSwitch
-                                accessibleName: "Keep logs"
-                                toolTipText: "Logs stay on this PC; nothing is sent anywhere"
-                                onToggled: prefsWin.set("advanced.enable_logs", checked)
-                            }
-                        }
-                        FormRow {
-                            label: "What to log"
-                            enabled: logsSwitch.checked
-                            StyledComboBox {
-                                id: logLevelCombo
-                                Layout.fillWidth: true
-                                accessibleName: "What to log"
-                                toolTipText: "Errors only, or every file processed"
-                                model: prefsController.logLevelOptions
-                                onActivated: prefsWin.set("advanced.log_level", currentValue)
-                            }
-                        }
-                        RowLayout {
-                            spacing: Theme.spaceSm
-                            AppButton {
-                                text: "Open logs folder"
-                                iconName: "folderOpen"
-                                toolTipText: "Show the log files in File Explorer"
-                                onClicked: prefsController.openLogsFolder()
-                            }
-                            AppButton {
-                                kind: "danger"
-                                text: "Clear logs"
-                                iconName: "delete"
-                                toolTipText: "Empty the log files (your files are not affected)"
-                                onClicked: prefsController.clearLogs()
-                            }
-                        }
-                    }
-                }
-
-                // Updates
-                PrefsPage {
-                    Card {
-                        Layout.fillWidth: true
-                        title: "Updates"
-                        description: updateController.canSelfUpdate
-                            ? "gfgLock asks GitHub at most once a day whether a newer version is out. The request carries only gfgLock's name and version; your files, passwords, and settings never leave this PC. An update installs only after its publisher signature and checksums match."
-                            : "This copy runs from an unpacked folder, so it can't replace itself. gfgLock still tells you when a new version is out, with a link to download it."
-                        FormRow {
-                            label: "Check automatically"
-                            hint: "Once a day while gfgLock is open."
-                            Item { Layout.fillWidth: true }
-                            AppSwitch {
-                                id: autoCheckSwitch
-                                accessibleName: "Check for updates automatically"
-                                onToggled: prefsWin.set("advanced.auto_check_updates", checked)
-                            }
-                        }
-                        FormRow {
-                            visible: updateController.canSelfUpdate
-                            label: "Install automatically"
-                            hint: updateController.needsApproval
-                                ? "Downloads in the background and installs when you close gfgLock, after Windows asks for administrator approval. Not on a metered connection."
-                                : "Downloads in the background and installs when you close gfgLock. Not on a metered connection."
-                            Item { Layout.fillWidth: true }
-                            AppSwitch {
-                                id: autoInstallSwitch
-                                accessibleName: "Install updates automatically"
-                                onToggled: prefsWin.set("advanced.auto_install_updates", checked)
-                            }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Theme.spaceMd
-                            AppButton {
-                                text: "Check now"
-                                iconName: "sync"
-                                enabled: updateController.status !== "checking" && updateController.status !== "downloading"
-                                toolTipText: "Ask GitHub whether a newer version is out"
-                                onClicked: updateController.checkNow()
-                            }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-                                Text {
-                                    Layout.fillWidth: true
-                                    visible: text !== ""
-                                    text: updateController.message
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontCaption
-                                    color: updateController.status === "error" ? Theme.danger : Theme.text
-                                    wrapMode: Text.WordWrap
-                                    Accessible.role: Accessible.StaticText
-                                    Accessible.name: text
-                                }
-                                Text {
-                                    Layout.fillWidth: true
-                                    visible: text !== ""
-                                    text: prefsWin.lastChecked()
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontCaption
-                                    color: Theme.textMuted
-                                    wrapMode: Text.WordWrap
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -531,8 +511,9 @@ AppWindow {
             }
             Text {
                 id: statusText
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
-                text: prefsWin._statusMessage || (prefsWin.dirty ? "Unsaved changes" : "")
+                text: prefsWin._statusMessage || "Changes are saved as you make them."
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontCaption
                 color: prefsWin._statusIsError && prefsWin._statusMessage ? Theme.danger : Theme.textMuted
@@ -541,16 +522,26 @@ AppWindow {
                 Accessible.name: text
             }
             AppButton {
-                text: "Cancel"
-                toolTipText: "Close without saving (Esc)"
+                kind: "primary"
+                text: "Close"
+                toolTipText: "Close Preferences (Esc)"
                 onClicked: prefsWin.close()
             }
-            AppButton {
-                kind: "primary"
-                text: "Save"
-                toolTipText: "Save and close (Ctrl+S)"
-                onClicked: prefsWin.save()
-            }
+        }
+    }
+
+    // A switch that saves its preference when toggled, then follows the saved value again (so a
+    // failed save, or Reset to defaults, shows what is in use).
+    component SettingSwitch: AppSwitch {
+        id: settingSwitch
+        required property string key
+        required property bool saved
+        checked: settingSwitch.saved
+        onToggled: {
+            var update = {}
+            update[settingSwitch.key] = settingSwitch.checked
+            prefsController.saveSettings(update)
+            settingSwitch.checked = Qt.binding(() => settingSwitch.saved)
         }
     }
 

@@ -42,6 +42,8 @@ AppWindow {
         Qt.quit()
     }
     on_AnyBusyChanged: if (!mainWin._anyBusy && mainWin._closeWhenIdle) Qt.quit()
+    // Keyboard focus starts on Add files, or on the password when Explorer handed over files.
+    Component.onCompleted: Qt.callLater(() => mainWin.currentPage.focusStart())
 
     titleActions: [
         AppButton {
@@ -364,15 +366,47 @@ AppWindow {
                 color: Theme.text
                 wrapMode: Text.WordWrap
             }
-            Text {
+            // Every shortcut, in a two-column table: keys, then what they do.
+            GridLayout {
                 Layout.fillWidth: true
-                text: "Shortcuts: Ctrl+O add files, Ctrl+Shift+O add folder, Ctrl+Enter or F5 start, Esc stop, "
-                    + "Ctrl+, preferences, F1 about, Ctrl+1 Encrypt, Ctrl+2 Decrypt. In the list: Ctrl+A select all, "
-                    + "Space select, Ctrl+C copy names, Delete remove, Shift+F10 or Menu key for more."
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontCaption
-                color: Theme.textMuted
-                wrapMode: Text.WordWrap
+                columns: 2
+                columnSpacing: Theme.spaceLg
+                rowSpacing: 2
+                Accessible.role: Accessible.Table
+                Accessible.name: "Keyboard shortcuts"
+
+                Repeater {
+                    // [text, kind]: a key, what it does, or a heading across both columns.
+                    model: [
+                        ["Ctrl+O", "key"], ["Add files", "action"],
+                        ["Ctrl+Shift+O", "key"], ["Add a folder", "action"],
+                        ["Ctrl+Enter or F5", "key"], ["Encrypt or decrypt", "action"],
+                        ["Esc", "key"], ["Stop the run or the folder scan", "action"],
+                        ["Ctrl+1, Ctrl+2", "key"], ["Encrypt tab, Decrypt tab", "action"],
+                        ["Ctrl+,", "key"], ["Preferences", "action"],
+                        ["F1", "key"], ["About", "action"],
+                        ["In the file list", "heading"],
+                        ["Up, Down, Shift", "key"], ["Move and select", "action"],
+                        ["Space", "key"], ["Select or clear a file", "action"],
+                        ["Enter", "key"], ["Open a finished file", "action"],
+                        ["Ctrl+A, Ctrl+C", "key"], ["Select all, copy the names", "action"],
+                        ["Delete", "key"], ["Remove from the list", "action"],
+                        ["Shift+F10 or Menu", "key"], ["More actions", "action"]
+                    ]
+                    delegate: Text {
+                        required property var modelData
+                        textFormat: Text.PlainText
+                        Layout.columnSpan: modelData[1] === "heading" ? 2 : 1
+                        Layout.topMargin: modelData[1] === "heading" ? Theme.spaceXs : 0
+                        Layout.fillWidth: modelData[1] === "action"
+                        text: modelData[0]
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: modelData[1] === "action" ? Font.Normal : Font.DemiBold
+                        color: modelData[1] === "action" ? Theme.textMuted : Theme.text
+                        wrapMode: Text.WordWrap
+                    }
+                }
             }
             RowLayout {
                 spacing: Theme.spaceSm
@@ -385,10 +419,38 @@ AppWindow {
                 }
                 AppButton {
                     kind: "ghost"
-                    text: "Releases"
+                    text: "Download page"
                     iconName: "openExternal"
-                    toolTipText: "Open the gfgLock releases page in your browser"
+                    toolTipText: "Open the gfgLock download page in your browser"
                     onClicked: updateController.openDownloadPage()
+                }
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: Theme.spaceXs
+                AppButton {
+                    kind: "ghost"
+                    compact: true
+                    text: "Privacy policy"
+                    iconName: "openExternal"
+                    toolTipText: "What gfgLock does and doesn't send (opens in your browser)"
+                    onClicked: Qt.openUrlExternally(appController.privacyUrl)
+                }
+                AppButton {
+                    kind: "ghost"
+                    compact: true
+                    text: "Licences"
+                    iconName: "openExternal"
+                    toolTipText: "The licences of gfgLock and the software it includes (opens in your browser)"
+                    onClicked: Qt.openUrlExternally(appController.licensesUrl)
+                }
+                AppButton {
+                    kind: "ghost"
+                    compact: true
+                    text: "Report a problem"
+                    iconName: "openExternal"
+                    toolTipText: "Open a new issue on GitHub (opens in your browser)"
+                    onClicked: Qt.openUrlExternally(appController.issuesUrl)
                 }
             }
             Text {
