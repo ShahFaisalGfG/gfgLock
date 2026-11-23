@@ -1012,6 +1012,7 @@ $env:QT_QPA_PLATFORM = "offscreen"; python -m pytest
 <li>♿ <strong>Screen readers and keyboard:</strong> run results and notices are announced, moving through the list reads each file, Preferences' sections are read as tabs, the show-password button is out of the Tab order, and the window starts with focus on Add files (or the password)</li>
 <li>🔄 <strong>Update messages</strong> say in plain words what went wrong ("Couldn't check for updates. Check your internet connection and try again."), with the details in the log</li>
 <li>ℹ️ <strong>About</strong> has a table of every shortcut and links to the privacy policy, the licences, and reporting a problem; a start-up failure says what to do next</li>
+<li>🐞 Fixed: the portable <code>.7z</code> held gfgLock in a <code>dist\gfgLock</code> folder away from its portable marker, so the unpacked copy kept its settings and logs in <code>%APPDATA%\gfgLock</code> instead of beside itself</li>
 </ul>
 <h3 id="v321---november-2026-current">v3.2.1 - November 2026 <em>(current)</em></h3>
 <ul>

@@ -488,6 +488,7 @@ Have a feature idea or a use case we haven't thought of? [Start a discussion](ht
 - ♿ **Screen readers and keyboard:** run results and notices are announced, moving through the list reads each file, Preferences' sections are read as tabs, the show-password button is out of the Tab order, and the window starts with focus on Add files (or the password)
 - 🔄 **Update messages** say in plain words what went wrong ("Couldn't check for updates. Check your internet connection and try again."), with the details in the log
 - ℹ️ **About** has a table of every shortcut and links to the privacy policy, the licences, and reporting a problem; a start-up failure says what to do next
+- 🐞 Fixed: the portable `.7z` held gfgLock in a `dist\gfgLock` folder away from its portable marker, so the unpacked copy kept its settings and logs in `%APPDATA%\gfgLock` instead of beside itself
 
 ### v3.2.1 - November 2026 *(current)*
 - 🔄 **Updates itself:** a daily check finds new versions, which download in the background and install when you close gfgLock, or at once with **Restart now**. Every update is checked against the publisher's signature and SHA-256 checksums before it runs; metered connections wait. Both steps can be turned off in the new **Preferences > Updates** page, and **Check for updates** in the About dialog now checks in place.
